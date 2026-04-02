@@ -53,6 +53,14 @@ async def get_client_by_id(db: AsyncSession, client_id: str) -> Client:
     return client
 
 
+async def get_client_by_email(db: AsyncSession, email: str) -> Client:
+    result = await db.execute(select(Client).where(Client.email == email))
+    client = result.scalar_one_or_none()
+    if client is None:
+        raise ClientNotFoundError(f"Client not found: {email}")
+    return client
+
+
 async def approve_client(db: AsyncSession, client_id: str) -> Client:
     client = await get_client_by_id(db, client_id)
     if client.status != ClientStatus.PENDING:
