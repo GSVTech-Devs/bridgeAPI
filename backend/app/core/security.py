@@ -1,13 +1,29 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 from datetime import datetime, timedelta, timezone
 
+from cryptography.fernet import Fernet
 from jose import jwt
 from passlib.context import CryptContext
 
 from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def _get_fernet() -> Fernet:
+    key_bytes = hashlib.sha256(settings.encryption_key.encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(key_bytes))
+
+
+def encrypt_value(plain: str) -> str:
+    return _get_fernet().encrypt(plain.encode()).decode()
+
+
+def decrypt_value(encrypted: str) -> str:
+    return _get_fernet().decrypt(encrypted.encode()).decode()
 
 
 def hash_password(plain: str) -> str:
