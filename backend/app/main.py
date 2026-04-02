@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.domains.auth.router import router as auth_router
+from app.domains.clients.router import router as clients_router
 
 app = FastAPI(
     title="Bridge API",
@@ -9,6 +10,7 @@ app = FastAPI(
 )
 
 app.include_router(auth_router)
+app.include_router(clients_router)
 
 
 @app.get("/health", tags=["health"])
