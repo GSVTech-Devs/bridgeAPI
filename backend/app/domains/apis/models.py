@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Optional
 
 from sqlalchemy import DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -38,7 +39,7 @@ class ExternalAPI(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     base_url: Mapped[str] = mapped_column(String(2048))
-    master_key_encrypted: Mapped[str | None] = mapped_column(
+    master_key_encrypted: Mapped[Optional[str]] = mapped_column(
         String(2048), nullable=True
     )
     auth_type: Mapped[str] = mapped_column(String(20), default=APIAuthType.NONE)
@@ -60,7 +61,7 @@ class Endpoint(Base):
     method: Mapped[str] = mapped_column(String(10))
     path: Mapped[str] = mapped_column(String(1024))
     status: Mapped[str] = mapped_column(String(20), default="active")
-    cost_rule: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cost_rule: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import List, Optional
 
 from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
 
@@ -11,7 +12,7 @@ from app.domains.apis.models import APIAuthType, HTTPMethod
 class APICreateRequest(BaseModel):
     name: str
     base_url: AnyHttpUrl
-    master_key: str | None = None
+    master_key: Optional[str] = None
     auth_type: APIAuthType = APIAuthType.NONE
 
 
@@ -29,7 +30,7 @@ class APIResponse(BaseModel):
 class EndpointCreateRequest(BaseModel):
     method: HTTPMethod
     path: str
-    cost_rule: float | None = None
+    cost_rule: Optional[float] = None
 
     @field_validator("path")
     @classmethod
@@ -45,7 +46,7 @@ class EndpointResponse(BaseModel):
     method: str
     path: str
     status: str
-    cost_rule: float | None
+    cost_rule: Optional[float]
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -58,9 +59,9 @@ class APIDetailResponse(BaseModel):
     auth_type: str
     status: str
     created_at: datetime
-    endpoints: list[EndpointResponse] = Field(default_factory=list)
+    endpoints: List[EndpointResponse] = Field(default_factory=list)
 
 
 class APIListResponse(BaseModel):
-    items: list[APIResponse]
+    items: List[APIResponse]
     total: int
