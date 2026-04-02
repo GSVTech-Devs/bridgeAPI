@@ -66,7 +66,7 @@ async def login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Account is {client.status}. Wait for admin approval.",
         )
-    return TokenResponse(access_token=create_access_token(client.email))
+    return TokenResponse(access_token=create_access_token(client.email, role="client"))
 
 
 @router.get("", response_model=ClientListResponse)

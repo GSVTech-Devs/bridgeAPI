@@ -102,3 +102,12 @@ async def test_protected_route_with_valid_token_returns_200(
     )
     assert response.status_code == 200
     assert response.json()["email"] == "admin@bridge.com"
+
+
+@pytest.mark.asyncio
+async def test_client_token_cannot_access_admin_route(client: AsyncClient) -> None:
+    token = create_access_token("acme@example.com", role="client")
+    response = await client.get(
+        "/auth/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 403
