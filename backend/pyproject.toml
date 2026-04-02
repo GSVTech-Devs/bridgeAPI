@@ -14,7 +14,8 @@ dependencies = [
     "httpx>=0.27.0",
     "motor>=3.4.0",
     "redis[asyncio]>=5.0.0",
-    "passlib[bcrypt]>=1.7.4",
+    "passlib[bcrypt]>=1.7.4,<2.0",
+    "bcrypt==4.0.1",
     "python-jose[cryptography]>=3.3.0",
     "python-multipart>=0.0.9",
     "cryptography>=42.0.0",
@@ -42,10 +43,11 @@ addopts = "--cov=app --cov-report=term-missing --cov-fail-under=80"
 
 [tool.ruff]
 line-length = 88
-target-version = "py312"
+target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+ignore = ["UP017", "UP045"]  # datetime.UTC e X|None requerem Python 3.11+/3.10+
 
 [tool.black]
 line-length = 88
