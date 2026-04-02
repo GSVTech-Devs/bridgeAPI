@@ -14,7 +14,10 @@ def mock_db() -> AsyncMock:
 
 @pytest.fixture
 async def client(mock_db: AsyncMock) -> AsyncClient:
-    app.dependency_overrides[get_db] = lambda: mock_db
+    async def override_db():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = override_db
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as ac:
