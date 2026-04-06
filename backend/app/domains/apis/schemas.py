@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
 
@@ -59,9 +59,9 @@ class APIDetailResponse(BaseModel):
     auth_type: str
     status: str
     created_at: datetime
-    endpoints: List[EndpointResponse] = Field(default_factory=list)
+    endpoints: list[EndpointResponse] = Field(default_factory=list)
 
 
 class APIListResponse(BaseModel):
-    items: List[APIResponse]
+    items: list[APIResponse]
     total: int

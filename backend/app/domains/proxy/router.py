@@ -9,7 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.mongo_client import get_mongo_db
 from app.core.redis_client import get_redis
+from app.domains.logs.service import generate_correlation_id, write_request_log
 from app.domains.metrics.service import record_metric
 from app.domains.proxy.service import (
     DisabledAPIError,
@@ -41,7 +43,9 @@ async def proxy(
     db: AsyncSession = Depends(get_db),
     http_client: httpx.AsyncClient = Depends(get_http_client),
     redis=Depends(get_redis),
+    mongo_db=Depends(get_mongo_db),
 ) -> Response:
+    correlation_id = generate_correlation_id()
     presented_key: Optional[str] = request.headers.get("x-bridge-key")
     if not presented_key:
         raise HTTPException(
@@ -108,11 +112,32 @@ async def proxy(
         cost=cost,
     )
 
+    if mongo_db is not None:
+        incoming_headers = {k.lower(): v for k, v in request.headers.items()}
+        await write_request_log(
+            mongo_db,
+            {
+                "correlation_id": correlation_id,
+                "client_id": str(client.id),
+                "api_id": str(api.id),
+                "key_id": str(api_key_obj.id),
+                "path": path,
+                "method": request.method,
+                "status_code": upstream_response.status_code,
+                "latency_ms": latency_ms,
+                "request_headers": incoming_headers,
+                "request_body": (body or b"").decode("utf-8", errors="replace"),
+                "response_headers": dict(upstream_response.headers),
+                "response_body": upstream_response.text[:4096],
+            },
+        )
+
     response_headers = {
         k: v
         for k, v in upstream_response.headers.items()
         if k.lower() not in {"transfer-encoding", "content-encoding"}
     }
+    response_headers["x-correlation-id"] = correlation_id
     return Response(
         content=upstream_response.content,
         status_code=return_status,
