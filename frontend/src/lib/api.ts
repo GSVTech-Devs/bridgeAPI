@@ -27,19 +27,39 @@ export async function apiFetch<T>(
   return res.json() as Promise<T>;
 }
 
+// ---------------------------------------------------------------------------
+// Auth  →  /auth/*
+// ---------------------------------------------------------------------------
 export function login(email: string, password: string) {
-  return apiFetch<{ access_token: string; token_type: string }>("/login", {
+  return apiFetch<{ access_token: string; token_type: string }>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
 }
 
 export function getMe() {
-  return apiFetch<{ email: string; role: string }>("/me");
+  return apiFetch<{ email: string; role: string }>("/auth/me");
 }
 
 // ---------------------------------------------------------------------------
-// Clients (admin)
+// Client auth  →  /clients/register  /clients/login
+// ---------------------------------------------------------------------------
+export function registerClient(data: { name: string; email: string; password: string }) {
+  return apiFetch<{ id: string; name: string; email: string; status: string }>(
+    "/clients/register",
+    { method: "POST", body: JSON.stringify(data) }
+  );
+}
+
+export function clientLogin(email: string, password: string) {
+  return apiFetch<{ access_token: string; token_type: string }>("/clients/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Clients (admin)  →  /clients/*
 // ---------------------------------------------------------------------------
 export function getClients() {
   return apiFetch<{
@@ -57,7 +77,7 @@ export function rejectClient(id: string) {
 }
 
 // ---------------------------------------------------------------------------
-// APIs (admin)
+// APIs (admin)  →  /apis/*
 // ---------------------------------------------------------------------------
 export function getApis() {
   return apiFetch<{
@@ -72,12 +92,50 @@ export function getApis() {
   }>("/apis");
 }
 
+export function createApi(data: {
+  name: string;
+  base_url: string;
+  auth_type: string;
+  master_key: string;
+  description?: string;
+}) {
+  return apiFetch<{ id: string; name: string; base_url: string; status: string; auth_type: string }>(
+    "/apis",
+    { method: "POST", body: JSON.stringify(data) }
+  );
+}
+
+export function enableApi(id: string) {
+  return apiFetch(`/apis/${id}/enable`, { method: "PATCH" });
+}
+
 export function disableApi(id: string) {
   return apiFetch(`/apis/${id}/disable`, { method: "PATCH" });
 }
 
+export function getPermissions() {
+  return apiFetch<{
+    items: { client_id: string; api_id: string; client_name: string; api_name: string; status: string }[];
+    total: number;
+  }>("/permissions");
+}
+
+export function getAdminMetrics(params?: { since?: string; until?: string }) {
+  const qs = params
+    ? "?" + new URLSearchParams(params as Record<string, string>).toString()
+    : "";
+  return apiFetch<{
+    total_requests: number;
+    error_rate: number;
+    avg_latency_ms: number;
+    total_cost: number;
+    billable_requests: number;
+    non_billable_requests: number;
+  }>(`/metrics/admin${qs}`);
+}
+
 // ---------------------------------------------------------------------------
-// Permissions (admin)
+// Permissions (admin)  →  /permissions/*
 // ---------------------------------------------------------------------------
 export function grantPermission(clientId: string, apiId: string) {
   return apiFetch("/permissions", {
@@ -93,16 +151,16 @@ export function revokePermission(clientId: string, apiId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Catalog (client)
+// Catalog (client)  →  /catalog
 // ---------------------------------------------------------------------------
 export function getCatalog() {
-  return apiFetch<{ id: string; name: string; base_url: string; status: string }[]>(
+  return apiFetch<{ items: { id: string; name: string; base_url: string; status: string }[]; total: number }>(
     "/catalog"
   );
 }
 
 // ---------------------------------------------------------------------------
-// Keys (client)
+// Keys (client)  →  /keys/*
 // ---------------------------------------------------------------------------
 export function getKeys() {
   return apiFetch<{
@@ -136,7 +194,7 @@ export function revokeKey(id: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Metrics (client dashboard + admin)
+// Metrics  →  /metrics/*
 // ---------------------------------------------------------------------------
 export function getClientDashboard(params?: {
   since?: string;
@@ -156,7 +214,7 @@ export function getClientDashboard(params?: {
 }
 
 // ---------------------------------------------------------------------------
-// Logs (client)
+// Logs (client)  →  /logs
 // ---------------------------------------------------------------------------
 export function getLogs(skip = 0, limit = 20) {
   return apiFetch<{

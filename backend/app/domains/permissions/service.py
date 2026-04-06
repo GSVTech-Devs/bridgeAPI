@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.apis.models import ExternalAPI
+from app.domains.clients.models import Client
 from app.domains.permissions.models import Permission
 
 
@@ -62,6 +63,31 @@ async def revoke_permission(
     permission.revoked_at = datetime.now(timezone.utc)
     await db.commit()
     return permission
+
+
+async def list_permissions(db: AsyncSession) -> list[dict]:
+    result = await db.execute(
+        select(
+            Permission.client_id,
+            Permission.api_id,
+            Client.name.label("client_name"),
+            ExternalAPI.name.label("api_name"),
+            Permission.revoked_at,
+        )
+        .join(Client, Client.id == Permission.client_id)
+        .join(ExternalAPI, ExternalAPI.id == Permission.api_id)
+    )
+    rows = result.fetchall()
+    return [
+        {
+            "client_id": str(r.client_id),
+            "api_id": str(r.api_id),
+            "client_name": r.client_name,
+            "api_name": r.api_name,
+            "status": "revoked" if r.revoked_at is not None else "active",
+        }
+        for r in rows
+    ]
 
 
 async def get_client_authorized_apis(

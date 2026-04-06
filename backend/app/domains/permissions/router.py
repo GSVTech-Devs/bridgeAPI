@@ -12,6 +12,7 @@ from app.domains.auth.schemas import MeResponse
 from app.domains.permissions.schemas import (
     CatalogResponse,
     PermissionCreateRequest,
+    PermissionListResponse,
     PermissionResponse,
 )
 from app.domains.permissions.service import (
@@ -19,10 +20,20 @@ from app.domains.permissions.service import (
     PermissionNotFoundError,
     get_client_authorized_apis,
     grant_permission,
+    list_permissions,
     revoke_permission,
 )
 
 router = APIRouter(tags=["permissions"])
+
+
+@router.get("/permissions", response_model=PermissionListResponse)
+async def get_permissions(
+    db: AsyncSession = Depends(get_db),
+    current_user: MeResponse = Depends(get_current_user),
+) -> PermissionListResponse:
+    items = await list_permissions(db)
+    return PermissionListResponse(items=items, total=len(items))
 
 
 @router.post(

@@ -22,6 +22,19 @@ class PermissionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PermissionListItem(BaseModel):
+    client_id: str
+    api_id: str
+    client_name: str
+    api_name: str
+    status: str
+
+
+class PermissionListResponse(BaseModel):
+    items: list[PermissionListItem]
+    total: int
+
+
 class CatalogResponse(BaseModel):
     items: list[dict]
     total: int

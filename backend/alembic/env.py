@@ -1,5 +1,4 @@
 import asyncio
-import os
 from logging.config import fileConfig
 
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -8,9 +7,11 @@ import app.domains.apis.models  # noqa: F401
 import app.domains.auth.models  # noqa: F401
 import app.domains.clients.models  # noqa: F401
 import app.domains.keys.models  # noqa: F401
+import app.domains.metrics.models  # noqa: F401
+import app.domains.permissions.models  # noqa: F401
 from alembic import context
 
-# Carrega modelos para autogenerate
+from app.core.config import settings  # noqa: F401
 from app.core.database import Base  # noqa: F401
 
 config = context.config
@@ -22,10 +23,7 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    return os.getenv(
-        "DATABASE_URL",
-        config.get_main_option("sqlalchemy.url", ""),
-    )
+    return settings.database_url
 
 
 def run_migrations_offline() -> None:
