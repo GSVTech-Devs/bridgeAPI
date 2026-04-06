@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.redis_client import get_redis
 from app.domains.metrics.service import record_metric
 from app.domains.proxy.service import (
     DisabledAPIError,
@@ -39,6 +40,7 @@ async def proxy(
     request: Request,
     db: AsyncSession = Depends(get_db),
     http_client: httpx.AsyncClient = Depends(get_http_client),
+    redis=Depends(get_redis),
 ) -> Response:
     presented_key: Optional[str] = request.headers.get("x-bridge-key")
     if not presented_key:
@@ -49,7 +51,7 @@ async def proxy(
 
     try:
         api_key_obj, client, api = await validate_request(
-            db, presented_key, str(api_id)
+            db, presented_key, str(api_id), redis
         )
     except InvalidKeyError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))

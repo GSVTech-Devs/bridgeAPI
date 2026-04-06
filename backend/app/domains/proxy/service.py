@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 import httpx
@@ -39,6 +40,7 @@ async def validate_request(
     db: AsyncSession,
     presented_key: str,
     api_id: str,
+    redis=None,
 ) -> tuple[APIKey, Client, ExternalAPI]:
     # 1. Valida a API key
     api_key = await authenticate_api_key(db, presented_key)
@@ -69,15 +71,47 @@ async def validate_request(
             f"Client {client.id} has no permission for API {api.id}"
         )
 
-    # 5. Verifica rate limit (stub — implementado na iteração 7)
-    await check_rate_limit(str(api_key.id))
+    # 5. Verifica rate limit
+    await check_rate_limit(str(api_key.id), api_key.rate_limit, redis)
 
     return api_key, client, api
 
 
-async def check_rate_limit(key_id: str) -> None:
-    """Stub de rate limit. Sempre permite. Iteração 7 conecta ao Redis."""
-    pass
+async def check_rate_limit(
+    key_id: str,
+    rate_limit: int = 60,
+    redis=None,
+) -> None:
+    """Sliding window rate limit usando sorted sets do Redis.
+
+    Usa uma janela de 60 segundos. Falha aberta (fail open) se Redis
+    estiver indisponível — o serviço não é derrubado por problemas no Redis.
+    """
+    if redis is None:
+        return
+
+    now = time.time()
+    window_start = now - 60
+    redis_key = f"rate_limit:{key_id}"
+
+    try:
+        async with redis.pipeline(transaction=True) as pipe:
+            pipe.zremrangebyscore(redis_key, "-inf", window_start)
+            pipe.zadd(redis_key, {str(now): now})
+            pipe.zcard(redis_key)
+            pipe.expire(redis_key, 60)
+            results = await pipe.execute()
+
+        count = results[2]
+        if count > rate_limit:
+            raise RateLimitExceededError(
+                f"Rate limit exceeded: {count}/{rate_limit} req/min"
+            )
+    except RateLimitExceededError:
+        raise
+    except Exception:
+        # Redis indisponível — fail open para não derrubar o serviço
+        pass
 
 
 def build_upstream_headers(
