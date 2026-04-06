@@ -6,9 +6,11 @@ Create Date: 2026-04-02 00:00:00.000000
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
+from typing import Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "c4d5e6f7a8b9"
@@ -38,9 +40,7 @@ def upgrade() -> None:
     op.create_index("ix_request_metrics_client_id", "request_metrics", ["client_id"])
     op.create_index("ix_request_metrics_api_id", "request_metrics", ["api_id"])
     op.create_index("ix_request_metrics_key_id", "request_metrics", ["key_id"])
-    op.create_index(
-        "ix_request_metrics_created_at", "request_metrics", ["created_at"]
-    )
+    op.create_index("ix_request_metrics_created_at", "request_metrics", ["created_at"])
 
 
 def downgrade() -> None:
