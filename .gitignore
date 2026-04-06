@@ -27,3 +27,5 @@ coverage/
 
 CLAUDE.md
 .codex
+
+frontend/.env.local
