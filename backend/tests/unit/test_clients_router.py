@@ -173,6 +173,36 @@ async def test_admin_can_reject_pending_client(client: AsyncClient) -> None:
     assert response.json()["status"] == "rejected"
 
 
+@pytest.mark.asyncio
+async def test_reject_nonexistent_client_returns_404(client: AsyncClient) -> None:
+    from app.domains.clients.service import ClientNotFoundError
+
+    with patch(
+        "app.domains.clients.router.reject_client",
+        new=AsyncMock(side_effect=ClientNotFoundError),
+    ):
+        response = await client.patch(
+            f"/clients/{uuid.uuid4()}/reject", headers=admin_headers()
+        )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_cannot_reject_already_rejected_client_returns_409(
+    client: AsyncClient,
+) -> None:
+    from app.domains.clients.service import InvalidStatusTransitionError
+
+    with patch(
+        "app.domains.clients.router.reject_client",
+        new=AsyncMock(side_effect=InvalidStatusTransitionError),
+    ):
+        response = await client.patch(
+            f"/clients/{uuid.uuid4()}/reject", headers=admin_headers()
+        )
+    assert response.status_code == 409
+
+
 # ---------------------------------------------------------------------------
 # POST /clients/login
 # ---------------------------------------------------------------------------

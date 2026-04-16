@@ -15,6 +15,7 @@ from app.domains.clients.service import (
     InvalidStatusTransitionError,
     approve_client,
     authenticate_client,
+    get_client_by_email,
     list_clients,
     register_client,
     reject_client,
@@ -164,3 +165,23 @@ async def test_authenticate_returns_none_on_unknown_email() -> None:
     db = make_db(scalar_result=None)
     result = await authenticate_client(db, "unknown@example.com", "any")
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# get_client_by_email
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_client_by_email_returns_client_when_found() -> None:
+    stored = make_client()
+    db = make_db(scalar_result=stored)
+    result = await get_client_by_email(db, "acme@example.com")
+    assert result is stored
+
+
+@pytest.mark.asyncio
+async def test_get_client_by_email_raises_not_found() -> None:
+    db = make_db(scalar_result=None)
+    with pytest.raises(ClientNotFoundError):
+        await get_client_by_email(db, "missing@example.com")
