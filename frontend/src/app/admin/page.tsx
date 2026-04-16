@@ -1,35 +1,136 @@
 import Link from "next/link";
 
-const cards = [
-  { title: "Clientes", desc: "Gerencie e aprove clientes", href: "/admin/clients", color: "bg-blue-500", icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
-  { title: "APIs", desc: "Cadastre e gerencie APIs externas", href: "/admin/apis", color: "bg-purple-500", icon: "M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
-  { title: "Permissões", desc: "Conceda acesso de clientes às APIs", href: "/admin/permissions", color: "bg-green-500", icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" },
-  { title: "Métricas", desc: "Veja métricas globais de uso", href: "/admin/metrics", color: "bg-orange-500", icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
+const actionCards = [
+  {
+    href: "/admin/clients",
+    icon: "group",
+    title: "Manage Clientes",
+    desc: "View and edit partner access",
+    gradient: true,
+  },
+  {
+    href: "/admin/apis",
+    icon: "api",
+    title: "Explore APIs",
+    desc: "Configure bridge endpoints",
+    gradient: false,
+  },
+  {
+    href: "/admin/permissions",
+    icon: "vpn_key",
+    title: "Permissions",
+    desc: "Security & authentication",
+    gradient: false,
+  },
+  {
+    href: "/admin/metrics",
+    icon: "analytics",
+    title: "Analytics",
+    desc: "Deep usage insights",
+    gradient: false,
+  },
+];
+
+const recentActivity = [
+  { icon: "key", title: "New API Key generated for", highlight: "Starlight Corp", time: "2 minutes ago", tag: "Security Audit", id: "982-XQ", isError: false },
+  { icon: "dns", title: "Endpoint", highlight: "/v2/auth", time: "14 minutes ago", tag: "Deployment", id: "774-TR", isError: false },
+  { icon: "report", title: "Rate limit exceeded for", highlight: "Acme AI", time: "45 minutes ago", tag: "Traffic Incident", id: "112-BB", isError: true },
+  { icon: "person_add", title: "New team member", highlight: "Elena Rodriguez", time: "2 hours ago", tag: "Team Management", id: "004-KM", isError: false },
 ];
 
 export default function AdminPage() {
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Painel Admin</h1>
-        <p className="text-gray-500 mt-1">Bem-vindo ao Bridge API — gerencie toda a plataforma por aqui.</p>
+      {/* Hero */}
+      <div className="mb-10">
+        <h1 className="text-4xl font-extrabold font-headline tracking-tight text-on-surface mb-2">
+          Welcome back, Architect.
+        </h1>
+        <p className="text-on-surface-variant max-w-2xl">
+          Monitor your bridge performance and system health across all integrated endpoints in real-time.
+        </p>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {cards.map((c) => (
-          <Link key={c.href} href={c.href} className="card hover:shadow-md transition-shadow group">
-            <div className="flex items-start gap-4">
-              <div className={`${c.color} w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0`}>
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={c.icon} />
-                </svg>
-              </div>
-              <div>
-                <h2 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">{c.title}</h2>
-                <p className="text-sm text-gray-500 mt-0.5">{c.desc}</p>
-              </div>
+
+      {/* Metric cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
+        {[
+          { label: "Total Clients", value: "1,284", delta: "+12%" },
+          { label: "API Calls Today", value: "42.8M", delta: "+5.4%" },
+          { label: "Success Rate", value: "99.98%", dot: true },
+          { label: "Active APIs", value: "24", tag: "Live" },
+        ].map((card, i) => (
+          <div
+            key={i}
+            className={`bg-surface-container-lowest p-6 rounded-xl relative overflow-hidden group ${i === 2 ? "border-b-4 border-primary" : ""}`}
+          >
+            <div className="absolute -right-4 -top-4 w-24 h-24 bg-primary/5 rounded-full group-hover:scale-150 transition-transform duration-500" />
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">{card.label}</p>
+            <div className="flex items-end gap-3">
+              <span className="text-4xl font-black font-headline text-on-surface">{card.value}</span>
+              {card.delta && <span className="text-secondary font-bold text-sm mb-1">{card.delta}</span>}
+              {card.dot && <div className="w-2 h-2 rounded-full bg-secondary mb-3 shadow-[0_0_8px_rgba(0,95,175,0.5)]" />}
+              {card.tag && <span className="text-slate-400 font-bold text-sm mb-1">{card.tag}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Action grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+        {actionCards.map((card) => (
+          <Link
+            key={card.href}
+            href={card.href}
+            className={`p-8 rounded-xl text-left flex flex-col justify-between h-48 transition-all ${
+              card.gradient
+                ? "bg-gradient-to-br from-primary to-primary-container text-white hover:shadow-xl hover:shadow-primary/20"
+                : "bg-surface-container-low text-on-surface hover:bg-surface-container-high"
+            }`}
+          >
+            <span className={`material-symbols-outlined text-4xl ${card.gradient ? "" : "text-primary"}`}>
+              {card.icon}
+            </span>
+            <div>
+              <h3 className={`text-xl font-bold font-headline mb-1 ${card.gradient ? "" : "text-primary"}`}>
+                {card.title}
+              </h3>
+              <p className={`text-sm ${card.gradient ? "text-white/70" : "text-on-surface-variant"}`}>
+                {card.desc}
+              </p>
             </div>
           </Link>
         ))}
+      </div>
+
+      {/* Recent activity */}
+      <div>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-bold font-headline">Recent Activity</h3>
+          <button className="text-sm font-bold text-primary flex items-center gap-1">
+            View All <span className="material-symbols-outlined text-sm">arrow_forward</span>
+          </button>
+        </div>
+        <div className="space-y-1">
+          {recentActivity.map((item) => (
+            <div key={item.id} className="flex items-center gap-4 p-4 hover:bg-surface-container-low transition-colors rounded-xl">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${item.isError ? "bg-error-container" : "bg-surface-container-high"}`}>
+                <span className={`material-symbols-outlined text-xl ${item.isError ? "text-error" : "text-primary"}`}>
+                  {item.icon}
+                </span>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold">
+                  {item.title}{" "}
+                  <span className={item.isError ? "text-error" : "text-primary"}>{item.highlight}</span>
+                </p>
+                <p className="text-xs text-on-surface-variant">{item.time} • {item.tag}</p>
+              </div>
+              <span className="text-xs font-mono text-on-surface-variant bg-surface px-2 py-1 rounded">
+                ID: {item.id}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

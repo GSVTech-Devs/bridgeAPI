@@ -12,7 +12,7 @@ export default function ApiCatalog() {
 
   useEffect(() => {
     getCatalog()
-      .then(setApis)
+      .then((data) => setApis(data.items))
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : "Erro ao carregar catálogo")
       )

@@ -27,12 +27,10 @@ export default function LoginForm() {
       let role: string;
 
       try {
-        // Try admin login first
         const res = await login(email, password);
         token = res.access_token;
         role = decodeJwtPayload(token).role;
       } catch {
-        // Fall back to client login
         const res = await clientLogin(email, password);
         token = res.access_token;
         role = decodeJwtPayload(token).role;
@@ -48,68 +46,90 @@ export default function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 via-blue-800 to-blue-600">
-      <div className="w-full max-w-md">
-        {/* Logo / Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4">
-            <svg className="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
+    <div className="bg-surface font-body text-on-surface min-h-screen flex items-center justify-center p-6 relative overflow-hidden">
+      {/* Background decorative elements */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-1/4 -right-1/4 w-[800px] h-[800px] bg-surface-container-high rounded-full blur-[120px] opacity-40" />
+        <div className="absolute -bottom-1/4 -left-1/4 w-[600px] h-[600px] bg-primary-fixed blur-[100px] opacity-30" />
+      </div>
+
+      <div className="w-full max-w-md relative z-10">
+        {/* Header */}
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-16 h-16 mb-4 bg-surface-container-lowest rounded-xl shadow-lg flex items-center justify-center">
+            <span className="material-symbols-outlined text-primary text-4xl">hub</span>
           </div>
-          <h1 className="text-3xl font-bold text-white">Bridge API</h1>
-          <p className="text-blue-200 mt-1 text-sm">Gateway centralizado de APIs</p>
+          <h1 className="font-headline text-3xl font-extrabold tracking-tight text-on-background">Bridge API</h1>
+          <p className="text-on-surface-variant font-medium mt-1">GSV Tech</p>
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-6">Entrar na plataforma</h2>
-
+        <div className="glass-panel bg-surface-container-lowest p-8 rounded-xl shadow-[0_4px_20px_0_rgba(7,30,39,0.05),0_12px_40px_-10px_rgba(43,91,181,0.08)]">
           {error && (
-            <div role="alert" className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2">
-              <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-              </svg>
+            <div role="alert" className="mb-6 p-3 bg-error-container rounded-lg text-on-error-container text-sm flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">error</span>
               {error}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Email */}
             <div>
-              <label htmlFor="email" className="label">Email</label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input"
-                placeholder="seu@email.com"
-                required
-              />
+              <label className="block text-sm font-semibold text-on-surface-variant mb-2" htmlFor="email">
+                Email
+              </label>
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[20px]">mail</span>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-surface-container-low border border-outline-variant/30 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-all outline-none text-on-surface text-sm"
+                  placeholder="nome@email.com"
+                  required
+                />
+              </div>
             </div>
+
+            {/* Password */}
             <div>
-              <label htmlFor="password" className="label">Senha</label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input"
-                placeholder="••••••••"
-                required
-              />
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-sm font-semibold text-on-surface-variant" htmlFor="password">
+                  Senha
+                </label>
+              </div>
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline-variant text-[20px]">lock</span>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-surface-container-low border border-outline-variant/30 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-all outline-none text-on-surface text-sm"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
             </div>
-            <button type="submit" disabled={loading} className="btn-primary w-full mt-2 py-2.5">
+
+            {/* Sign in button */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full primary-gradient text-white py-3.5 rounded-lg font-headline font-bold text-base shadow-lg shadow-primary/20 hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-70"
+            >
               {loading ? (
-                <span className="flex items-center gap-2">
+                <span className="flex items-center justify-center gap-2">
                   <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                   </svg>
                   Entrando…
                 </span>
-              ) : "Entrar"}
+              ) : (
+                "Entrar"
+              )}
             </button>
           </form>
 
@@ -121,6 +141,9 @@ export default function LoginForm() {
           </p>
         </div>
       </div>
+
+      {/* Bottom gradient bar */}
+      <div className="fixed bottom-0 left-0 right-0 h-1.5 primary-gradient opacity-80" />
     </div>
   );
 }

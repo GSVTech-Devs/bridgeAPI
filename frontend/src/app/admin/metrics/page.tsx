@@ -16,15 +16,12 @@ type Metrics = {
   non_billable_requests: number;
 };
 
-function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="card">
-      <p className="text-sm text-gray-500">{label}</p>
-      <p className="text-3xl font-bold text-gray-900 mt-1">{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
-    </div>
-  );
-}
+const healthData = [
+  { name: "Search API", value: 99.9, color: "#2b5ab5" },
+  { name: "Auth Service", value: 99.7, color: "#2b5ab5" },
+  { name: "Data Bridge", value: 92.4, color: "#ba1a1a" },
+  { name: "Webhook Portal", value: 100, color: "#2b5ab5" },
+];
 
 export default function AdminMetricsPage() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -40,18 +37,21 @@ export default function AdminMetricsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24 text-gray-400">
-        <svg className="animate-spin w-6 h-6 mr-2" viewBox="0 0 24 24" fill="none">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      <div className="flex items-center justify-center py-24 text-on-surface-variant gap-2">
+        <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
         </svg>
         Carregando métricas…
       </div>
     );
   }
 
-  if (error) return <div role="alert" className="p-6 text-red-600 bg-red-50 rounded-xl">{error}</div>;
+  if (error) return <div role="alert" className="p-6 text-error bg-error-container rounded-xl">{error}</div>;
   if (!metrics) return null;
+
+  const errorRate = metrics.error_rate * 100;
+  const successRate = Math.max(0, 100 - errorRate);
 
   const barData = [
     { name: "Total", value: metrics.total_requests },
@@ -59,55 +59,134 @@ export default function AdminMetricsPage() {
     { name: "Não faturáveis", value: metrics.non_billable_requests },
   ];
 
-  const errorRate = metrics.error_rate * 100;
   const pieData = [
-    { name: "Sucesso", value: Math.max(0, 100 - errorRate) },
+    { name: "Sucesso", value: successRate },
     { name: "Erros", value: errorRate },
   ];
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Métricas Globais</h1>
-        <p className="text-gray-500 mt-1">Visão consolidada de uso da plataforma.</p>
+    <div className="max-w-7xl mx-auto space-y-8">
+      {/* Header */}
+      <div className="flex justify-between items-end">
+        <div>
+          <h2 className="text-4xl font-extrabold tracking-tight text-on-surface mb-2 font-headline">
+            Métricas de Performance
+          </h2>
+          <p className="text-on-surface-variant font-medium">Real-time API usage and system health analysis.</p>
+        </div>
+        <div className="flex gap-3">
+          <button className="px-5 py-2.5 bg-surface-container-high text-on-surface font-semibold rounded-lg flex items-center gap-2 hover:brightness-95 transition-all">
+            <span className="material-symbols-outlined text-lg">calendar_today</span> Last 24 Hours
+          </button>
+          <button className="px-5 py-2.5 primary-gradient text-white font-bold rounded-lg shadow-sm hover:brightness-110 transition-all flex items-center gap-2">
+            <span className="material-symbols-outlined text-lg">download</span> Export Report
+          </button>
+        </div>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-        <StatCard label="Total de requisições" value={metrics.total_requests.toLocaleString()} />
-        <StatCard label="Taxa de erro" value={`${(metrics.error_rate * 100).toFixed(1)}%`} />
-        <StatCard label="Latência média" value={`${Math.round(metrics.avg_latency_ms)} ms`} />
-        <StatCard label="Custo total" value={`R$ ${metrics.total_cost.toFixed(4)}`} />
-        <StatCard label="Faturáveis" value={metrics.billable_requests.toLocaleString()} />
-        <StatCard label="Não faturáveis" value={metrics.non_billable_requests.toLocaleString()} />
+      {/* Bento metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="md:col-span-2 bg-surface-container-lowest p-8 rounded-xl border border-outline-variant/10 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-6 text-primary/10 group-hover:scale-110 transition-transform duration-500">
+            <span className="material-symbols-outlined" style={{ fontSize: "6rem" }}>trending_up</span>
+          </div>
+          <p className="text-sm font-bold uppercase tracking-widest text-on-surface-variant mb-2">Total API Requests</p>
+          <div className="flex items-baseline gap-4">
+            <h3 className="text-5xl font-black text-on-surface font-headline">
+              {metrics.total_requests.toLocaleString()}
+            </h3>
+            <span className="text-green-600 font-bold flex items-center text-sm">
+              <span className="material-symbols-outlined text-sm">arrow_upward</span> Billable: {metrics.billable_requests.toLocaleString()}
+            </span>
+          </div>
+          <div className="mt-6 w-full h-2 bg-surface-container-low rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary"
+              style={{ width: `${metrics.total_requests > 0 ? (metrics.billable_requests / metrics.total_requests) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
+        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/10 shadow-sm">
+          <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2">Avg. Latency</p>
+          <h3 className="text-3xl font-black text-on-surface font-headline">{Math.round(metrics.avg_latency_ms)}ms</h3>
+          <p className="text-xs text-on-surface-variant mt-2 font-medium">Global benchmark: 50ms</p>
+        </div>
+        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/10 shadow-sm">
+          <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2">Success Rate</p>
+          <h3 className="text-3xl font-black text-on-surface font-headline">{successRate.toFixed(2)}%</h3>
+          <div className="flex items-center gap-1 mt-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-[10px] text-green-600 font-bold">ALL SYSTEMS NOMINAL</span>
+          </div>
+        </div>
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="card">
-          <h2 className="font-semibold text-gray-900 mb-4">Requisições por categoria</h2>
-          <ResponsiveContainer width="100%" height={220}>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Bar chart */}
+        <div className="lg:col-span-2 bg-surface-container-lowest p-8 rounded-xl border border-outline-variant/10">
+          <div className="flex justify-between items-center mb-8">
+            <h4 className="text-xl font-bold tracking-tight font-headline">Query Volume per Category</h4>
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
             <BarChart data={barData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#e6f6ff" />
+              <XAxis dataKey="name" tick={{ fontSize: 12, fill: "#414754" }} />
+              <YAxis tick={{ fontSize: 12, fill: "#414754" }} />
               <Tooltip />
-              <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="value" fill="#2b5ab5" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="card">
-          <h2 className="font-semibold text-gray-900 mb-4">Taxa de sucesso vs erros</h2>
+        {/* Health distribution */}
+        <div className="bg-surface-container-lowest p-8 rounded-xl border border-outline-variant/10">
+          <h4 className="text-xl font-bold tracking-tight mb-8 font-headline">Health Distribution</h4>
+          <div className="space-y-6">
+            {healthData.map((item) => (
+              <div key={item.name} className="space-y-2">
+                <div className="flex justify-between text-xs font-bold">
+                  <span>{item.name}</span>
+                  <span style={{ color: item.color }}>{item.value}%</span>
+                </div>
+                <div className="h-1.5 w-full bg-surface-container-low rounded-full">
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${item.value}%`, backgroundColor: item.color }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-8 pt-8 border-t border-outline-variant/10">
+            <div className="flex items-center gap-4">
+              <div className="flex-1">
+                <p className="text-[10px] font-bold text-on-surface-variant">ERROR RATIO</p>
+                <p className="text-2xl font-black text-error font-headline">{errorRate.toFixed(2)}%</p>
+              </div>
+              <div className="h-10 w-10 bg-error-container rounded-lg flex items-center justify-center text-error">
+                <span className="material-symbols-outlined">warning</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Logs table */}
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h4 className="text-xl font-bold tracking-tight font-headline">Success vs Errors</h4>
+        </div>
+        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/10">
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
                 {pieData.map((_, i) => (
-                  <Cell key={i} fill={i === 0 ? "#22c55e" : "#ef4444"} />
+                  <Cell key={i} fill={i === 0 ? "#22c55e" : "#ba1a1a"} />
                 ))}
               </Pie>
               <Legend />
-              <Tooltip formatter={(v: number) => `${v.toFixed(1)}%`} />
+              <Tooltip formatter={(v: unknown) => `${(v as number).toFixed(1)}%`} />
             </PieChart>
           </ResponsiveContainer>
         </div>

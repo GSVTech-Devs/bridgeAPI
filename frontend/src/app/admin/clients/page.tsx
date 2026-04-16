@@ -5,17 +5,23 @@ import { getClients, approveClient, rejectClient } from "@/lib/api";
 
 type Client = { id: string; name: string; email: string; status: string };
 
-const statusBadge: Record<string, string> = {
-  active:   "badge-green",
-  pending:  "badge-yellow",
-  rejected: "badge-red",
+const statusConfig: Record<string, { dot: string; label: string }> = {
+  active:   { dot: "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]", label: "Active" },
+  pending:  { dot: "bg-amber-500 animate-pulse", label: "Pending Approval" },
+  rejected: { dot: "bg-error shadow-[0_0_8px_rgba(186,26,26,0.4)]", label: "Rejected" },
 };
 
-const statusLabel: Record<string, string> = {
-  active:   "Ativo",
-  pending:  "Pendente",
-  rejected: "Rejeitado",
-};
+function Spinner() {
+  return (
+    <div className="flex items-center justify-center py-20 text-on-surface-variant gap-2">
+      <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+      </svg>
+      Carregando…
+    </div>
+  );
+}
 
 export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -53,72 +59,136 @@ export default function ClientsPage() {
   }
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
-        <p className="text-gray-500 mt-1">Gerencie e aprove os clientes da plataforma.</p>
+    <div className="max-w-7xl mx-auto space-y-8">
+      {/* Page header + stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="md:col-span-2 space-y-2">
+          <h2 className="text-4xl font-extrabold tracking-tight text-on-surface font-headline">Client Management</h2>
+          <p className="text-on-surface-variant max-w-md">
+            Orchestrate access levels, monitor status, and manage developer credentials.
+          </p>
+        </div>
+        <div className="bg-surface-container-lowest p-6 rounded-xl flex flex-col justify-between">
+          <span className="text-xs font-bold text-outline uppercase tracking-wider">Active Clients</span>
+          <div className="flex items-end justify-between">
+            <span className="text-3xl font-black text-primary">
+              {clients.filter((c) => c.status === "active").length}
+            </span>
+            <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">Live</span>
+          </div>
+        </div>
+        <div className="bg-surface-container-lowest p-6 rounded-xl flex flex-col justify-between">
+          <span className="text-xs font-bold text-outline uppercase tracking-wider">Pending Tasks</span>
+          <div className="flex items-end justify-between">
+            <span className="text-3xl font-black text-tertiary">
+              {clients.filter((c) => c.status === "pending").length}
+            </span>
+            <span className="material-symbols-outlined text-tertiary">pending_actions</span>
+          </div>
+        </div>
       </div>
 
-      <div className="card p-0 overflow-hidden">
-        {loading && (
-          <div className="flex items-center justify-center py-16 text-gray-400">
-            <svg className="animate-spin w-6 h-6 mr-2" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-            </svg>
-            Carregando…
+      {/* Table */}
+      <div className="bg-surface-container-lowest rounded-xl overflow-hidden">
+        {/* Filters bar */}
+        <div className="px-6 py-4 flex items-center justify-between gap-4 bg-surface-container-low/30">
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-outline text-lg">filter_list</span>
+            <input
+              className="pl-10 pr-4 py-2 bg-white rounded-lg border border-outline-variant/30 focus:border-primary focus:ring-0 text-sm w-72 transition-all outline-none"
+              placeholder="Filter by name or email..."
+            />
           </div>
-        )}
-        {error && <div role="alert" className="p-6 text-red-600 bg-red-50">{error}</div>}
+          <button className="flex items-center gap-2 px-6 py-2 bg-gradient-to-br from-primary to-primary-container text-white rounded-lg font-bold text-sm hover:scale-[1.02] transition-all shadow-sm">
+            <span className="material-symbols-outlined text-sm">person_add</span>
+            Onboard Client
+          </button>
+        </div>
+
+        {loading && <Spinner />}
+        {error && <div role="alert" className="p-6 text-error bg-error-container/20">{error}</div>}
+
         {!loading && !error && (
-          <table className="table-auto w-full">
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th>Email</th>
-                <th>Status</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {clients.length === 0 && (
-                <tr><td colSpan={4} className="text-center py-10 text-gray-400">Nenhum cliente cadastrado</td></tr>
-              )}
-              {clients.map((c) => (
-                <tr key={c.id}>
-                  <td className="font-medium text-gray-900">{c.name}</td>
-                  <td className="text-gray-500">{c.email}</td>
-                  <td>
-                    <span className={statusBadge[c.status] ?? "badge-gray"}>
-                      {statusLabel[c.status] ?? c.status}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="flex items-center gap-2">
-                      {c.status === "pending" && (
-                        <>
-                          <button
-                            onClick={() => handleApprove(c.id)}
-                            disabled={actionLoading === c.id + "-approve"}
-                            className="btn-success btn-sm"
-                          >
-                            Aprovar
-                          </button>
-                          <button
-                            onClick={() => handleReject(c.id)}
-                            disabled={actionLoading === c.id + "-reject"}
-                            className="btn-danger btn-sm"
-                          >
-                            Rejeitar
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-surface-container-low/50">
+                    {["Client & Company", "Email", "Status", "Actions"].map((h) => (
+                      <th key={h} className="px-6 py-4 text-xs font-bold text-outline uppercase tracking-widest">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant/10">
+                  {clients.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="text-center py-12 text-on-surface-variant">
+                        Nenhum cliente cadastrado
+                      </td>
+                    </tr>
+                  )}
+                  {clients.map((c) => {
+                    const cfg = statusConfig[c.status] ?? { dot: "bg-outline", label: c.status };
+                    const initials = c.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+                    return (
+                      <tr key={c.id} className="hover:bg-surface-container-low/20 transition-colors group">
+                        <td className="px-6 py-5">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary font-bold text-sm">
+                              {initials}
+                            </div>
+                            <span className="text-sm font-bold text-on-surface">{c.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5 text-sm text-outline">{c.email}</td>
+                        <td className="px-6 py-5">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
+                            <span className="text-sm font-medium text-on-surface">{cfg.label}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5">
+                          <div className="flex gap-2">
+                            {c.status === "pending" && (
+                              <>
+                                <button
+                                  onClick={() => handleApprove(c.id)}
+                                  disabled={actionLoading === c.id + "-approve"}
+                                  className="px-3 py-1 bg-tertiary text-white rounded-md text-xs font-bold shadow-sm hover:brightness-110 transition-all disabled:opacity-50"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => handleReject(c.id)}
+                                  disabled={actionLoading === c.id + "-reject"}
+                                  className="px-3 py-1 bg-error-container text-on-error-container rounded-md text-xs font-bold hover:brightness-95 transition-all disabled:opacity-50"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )}
+                            {c.status === "active" && (
+                              <button className="p-2 hover:bg-error-container/20 rounded-md text-error transition-colors opacity-0 group-hover:opacity-100">
+                                <span className="material-symbols-outlined text-sm">block</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {/* Pagination footer */}
+            <div className="px-6 py-4 flex items-center justify-between border-t border-outline-variant/10">
+              <span className="text-xs font-medium text-outline">
+                Showing {clients.length} client{clients.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+          </>
         )}
       </div>
     </div>

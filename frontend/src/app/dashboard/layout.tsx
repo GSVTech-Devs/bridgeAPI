@@ -5,9 +5,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { clearAuth } from "@/lib/auth";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
-  { href: "/dashboard/catalog", label: "Catálogo de APIs", icon: "M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
-  { href: "/dashboard/keys", label: "Minhas Chaves", icon: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" },
+  { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
+  { href: "/dashboard/catalog", label: "Catalog", icon: "api" },
+  { href: "/dashboard/keys", label: "My Keys", icon: "vpn_key" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -20,65 +20,84 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-surface text-on-surface font-body">
       {/* Sidebar */}
-      <aside className="w-64 bg-gray-900 text-white flex flex-col shadow-xl">
-        {/* Logo */}
-        <div className="p-6 border-b border-gray-800">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-blue-500 rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <div>
-              <p className="font-bold text-sm">Bridge API</p>
-              <p className="text-gray-400 text-xs">Portal do Cliente</p>
-            </div>
-          </div>
+      <nav className="fixed left-0 top-0 h-screen w-64 bg-surface-container-low flex flex-col py-8 px-4 z-50">
+        <div className="mb-10 px-4">
+          <h1 className="text-xl font-black tracking-tight text-on-surface font-headline">Bridge API</h1>
+          <p className="text-sm text-on-surface-variant mt-1">Developer Console</p>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 p-4 space-y-1">
+        <ul className="flex-1 space-y-2">
           {navItems.map((item) => {
             const active = pathname === item.href;
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  active
-                    ? "bg-blue-600 text-white"
-                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
-                }`}
-              >
-                <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />
-                </svg>
-                {item.label}
-              </Link>
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={
+                    active
+                      ? "flex items-center gap-3 px-4 py-3 rounded-full bg-surface-container-lowest text-primary font-bold border-r-4 border-primary transition-all"
+                      : "flex items-center gap-3 px-4 py-3 rounded-full text-slate-500 hover:bg-surface transition-colors"
+                  }
+                >
+                  <span
+                    className="material-symbols-outlined text-[20px]"
+                    style={active ? { fontVariationSettings: "'FILL' 1" } : undefined}
+                  >
+                    {item.icon}
+                  </span>
+                  <span className="text-sm">{item.label}</span>
+                </Link>
+              </li>
             );
           })}
-        </nav>
+        </ul>
 
-        {/* Logout */}
-        <div className="p-4 border-t border-gray-800">
+        <div className="mt-auto space-y-2 border-t border-outline-variant/15 pt-4">
+          <a
+            href="#"
+            className="flex items-center gap-3 px-4 py-2 rounded-full text-slate-500 hover:bg-surface transition-colors"
+          >
+            <span className="material-symbols-outlined text-[20px]">help_outline</span>
+            <span className="text-sm">Help</span>
+          </a>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-white transition-colors w-full"
+            className="flex items-center gap-3 px-4 py-2 rounded-full text-slate-500 hover:bg-surface transition-colors w-full text-left"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-            Sair
+            <span className="material-symbols-outlined text-[20px]">logout</span>
+            <span className="text-sm">Sair</span>
           </button>
         </div>
-      </aside>
+      </nav>
 
-      {/* Main */}
-      <main className="flex-1 overflow-auto">
-        <div className="p-8">{children}</div>
-      </main>
+      {/* Main area */}
+      <div className="ml-64 flex-1 flex flex-col min-h-screen">
+        {/* Top header */}
+        <header className="fixed top-0 right-0 left-64 z-40 bg-surface/80 backdrop-blur-md flex justify-between items-center px-8 h-16 shadow-[0_4px_20px_0_rgba(7,30,39,0.05)]">
+          <div className="flex items-center bg-surface-container-low rounded-full px-4 py-2 w-72 border border-outline-variant/15 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-all">
+            <span className="material-symbols-outlined text-on-surface-variant text-[18px] mr-2">search</span>
+            <input
+              className="bg-transparent border-none focus:ring-0 w-full text-sm text-on-surface outline-none"
+              placeholder="Search resources..."
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <button className="text-slate-500 hover:bg-surface-container-low rounded-full p-2 transition-colors">
+              <span className="material-symbols-outlined text-[20px]">notifications</span>
+            </button>
+            <button className="text-slate-500 hover:bg-surface-container-low rounded-full p-2 transition-colors">
+              <span className="material-symbols-outlined text-[20px]">settings</span>
+            </button>
+            <div className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-sm ml-1">
+              U
+            </div>
+          </div>
+        </header>
+
+        <main className="mt-16 flex-1 p-8">{children}</main>
+      </div>
     </div>
   );
 }

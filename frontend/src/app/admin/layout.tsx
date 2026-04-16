@@ -5,11 +5,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { clearAuth } from "@/lib/auth";
 
 const navItems = [
-  { href: "/admin", label: "Dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
-  { href: "/admin/clients", label: "Clientes", icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
-  { href: "/admin/apis", label: "APIs", icon: "M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
-  { href: "/admin/permissions", label: "Permissões", icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" },
-  { href: "/admin/metrics", label: "Métricas", icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
+  { href: "/admin", label: "Dashboard", icon: "dashboard" },
+  { href: "/admin/clients", label: "Clientes", icon: "group" },
+  { href: "/admin/apis", label: "APIs", icon: "api" },
+  { href: "/admin/permissions", label: "Permissões", icon: "vpn_key" },
+  { href: "/admin/metrics", label: "Métricas", icon: "analytics" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -22,65 +22,72 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-surface text-on-surface font-body">
       {/* Sidebar */}
-      <aside className="w-64 bg-blue-900 text-white flex flex-col shadow-xl">
-        {/* Logo */}
-        <div className="p-6 border-b border-blue-800">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-blue-500 rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <div>
-              <p className="font-bold text-sm">Bridge API</p>
-              <p className="text-blue-300 text-xs">Admin Panel</p>
-            </div>
-          </div>
+      <aside className="fixed left-0 top-0 h-screen w-64 bg-surface-container-low flex flex-col py-6 z-40">
+        <div className="px-8 mb-10">
+          <h1 className="text-lg font-bold text-on-surface font-headline">GSV Tech</h1>
+          <p className="text-[10px] uppercase tracking-widest text-primary opacity-70 mt-0.5">Developer Portal</p>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 space-y-1">
           {navItems.map((item) => {
             const active = pathname === item.href;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                className={
                   active
-                    ? "bg-blue-700 text-white"
-                    : "text-blue-200 hover:bg-blue-800 hover:text-white"
-                }`}
+                    ? "flex items-center gap-3 bg-surface-container-lowest text-primary font-bold rounded-l-full ml-4 shadow-sm px-6 py-3 transition-all"
+                    : "flex items-center gap-3 text-slate-600 hover:text-primary px-6 py-3 hover:bg-surface transition-all"
+                }
               >
-                <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />
-                </svg>
-                {item.label}
+                <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
+                <span className="text-sm">{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
-        {/* Logout */}
-        <div className="p-4 border-t border-blue-800">
+        <div className="mt-auto space-y-1 px-2">
+          <a
+            href="#"
+            className="flex items-center gap-3 text-slate-600 hover:text-primary px-6 py-3 transition-all"
+          >
+            <span className="material-symbols-outlined text-[20px]">help</span>
+            <span className="text-sm">Suporte</span>
+          </a>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-blue-200 hover:bg-blue-800 hover:text-white transition-colors w-full"
+            className="flex items-center gap-3 text-slate-600 hover:text-error px-6 py-3 transition-all w-full text-left"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-            Sair
+            <span className="material-symbols-outlined text-[20px]">logout</span>
+            <span className="text-sm">Sair</span>
           </button>
         </div>
       </aside>
 
-      {/* Main */}
-      <main className="flex-1 overflow-auto">
-        <div className="p-8">{children}</div>
-      </main>
+      {/* Main content */}
+      <div className="ml-64 flex-1 flex flex-col min-h-screen">
+        {/* Top header */}
+        <header className="sticky top-0 z-30 flex justify-between items-center px-8 h-16 bg-surface border-b border-outline-variant/10">
+          <span className="text-xl font-black text-primary font-headline tracking-tight">Bridge API</span>
+          <div className="flex items-center gap-3">
+            <button className="p-2 rounded-full hover:bg-surface-container-low transition-colors">
+              <span className="material-symbols-outlined text-slate-500 text-[20px]">notifications</span>
+            </button>
+            <button className="p-2 rounded-full hover:bg-surface-container-low transition-colors">
+              <span className="material-symbols-outlined text-slate-500 text-[20px]">settings</span>
+            </button>
+            <div className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-sm ml-1">
+              A
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 p-8">{children}</main>
+      </div>
     </div>
   );
 }

@@ -58,112 +58,172 @@ export default function KeysPage() {
     }
   }
 
+  const activeKeys = keys.filter((k) => k.status === "active");
+  const revokedKeys = keys.filter((k) => k.status !== "active");
+
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Minhas Chaves</h1>
-        <p className="text-gray-500 mt-1">Gerencie as chaves de acesso às APIs.</p>
+    <div className="max-w-5xl mx-auto">
+      {/* Header */}
+      <div className="mb-10 flex items-end justify-between">
+        <div>
+          <h1 className="text-4xl font-headline font-extrabold tracking-tight text-on-surface mb-2">My API Keys</h1>
+          <p className="text-on-surface-variant text-base max-w-xl">
+            Manage your active access tokens. Keep these keys secure and rotate them regularly.
+          </p>
+        </div>
       </div>
 
-      {/* Create form */}
-      <div className="card mb-6">
-        <h2 className="font-semibold text-gray-900 mb-3">Nova chave</h2>
-        {createError && (
-          <div role="alert" className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-            {createError}
-          </div>
-        )}
-        <form onSubmit={handleCreate} className="flex gap-3">
-          <input
-            className="input flex-1"
-            placeholder="Nome da chave (ex: Produção, Dev...)"
-            value={newKeyName}
-            onChange={(e) => setNewKeyName(e.target.value)}
-            required
-          />
-          <button type="submit" disabled={creating} className="btn-primary flex-shrink-0">
-            {creating ? "Criando…" : "Criar chave"}
-          </button>
-        </form>
-      </div>
-
-      {/* Secret reveal modal */}
+      {/* Revealed key modal */}
       {revealedKey && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
+        <div className="mb-8 p-5 bg-green-50 border border-green-200 rounded-xl">
           <div className="flex items-start justify-between">
-            <div>
-              <p className="font-semibold text-green-800 mb-1">Chave criada! Copie agora — não será exibida novamente.</p>
-              <code className="text-sm bg-white border border-green-300 rounded px-3 py-1.5 block mt-2 break-all text-gray-800">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="material-symbols-outlined text-green-700 text-[20px]">info</span>
+                <p className="font-semibold text-green-800">Chave criada! Copie agora — não será exibida novamente.</p>
+              </div>
+              <code className="text-sm bg-white border border-green-300 rounded-lg px-4 py-3 block mt-2 break-all text-on-surface font-mono">
                 {revealedKey.secret}
               </code>
             </div>
-            <button onClick={() => setRevealedKey(null)} className="text-green-600 hover:text-green-800 ml-4 flex-shrink-0">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+            <button onClick={() => setRevealedKey(null)} className="text-green-600 hover:text-green-800 ml-4 flex-shrink-0 p-1">
+              <span className="material-symbols-outlined text-[20px]">close</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* Keys table */}
-      <div className="card p-0 overflow-hidden">
-        {loading && (
-          <div className="flex items-center justify-center py-16 text-gray-400">
-            <svg className="animate-spin w-6 h-6 mr-2" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-            </svg>
-            Carregando…
+      {/* Create form */}
+      <div className="mb-12">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center">
+              <span className="material-symbols-outlined text-primary">vpn_key</span>
+            </div>
+            <h2 className="text-2xl font-headline font-bold text-on-surface tracking-tight">Generate New Key</h2>
+          </div>
+        </div>
+
+        {createError && (
+          <div role="alert" className="mb-4 p-3 bg-error-container rounded-lg text-on-error-container text-sm">
+            {createError}
           </div>
         )}
-        {error && <div role="alert" className="p-6 text-red-600 bg-red-50">{error}</div>}
-        {!loading && !error && (
-          <table className="table-auto w-full">
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th>Prefixo</th>
-                <th>Status</th>
-                <th>Criado em</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {keys.length === 0 && (
-                <tr><td colSpan={5} className="text-center py-10 text-gray-400">Nenhuma chave criada</td></tr>
-              )}
-              {keys.map((k) => (
-                <tr key={k.id}>
-                  <td className="font-medium text-gray-900">{k.name}</td>
-                  <td>
-                    <code className="text-sm bg-gray-100 rounded px-2 py-0.5 text-gray-700">{k.key_prefix}…</code>
-                  </td>
-                  <td>
-                    <span className={k.status === "active" ? "badge-green" : "badge-red"}>
-                      {k.status === "active" ? "Ativa" : "Revogada"}
-                    </span>
-                  </td>
-                  <td className="text-gray-500 text-sm">
-                    {new Date(k.created_at).toLocaleDateString("pt-BR")}
-                  </td>
-                  <td>
-                    {k.status === "active" && (
+
+        <form onSubmit={handleCreate} className="flex gap-3">
+          <input
+            className="flex-1 bg-surface-container-lowest border border-outline-variant/30 rounded-xl py-3.5 px-5 text-sm text-on-surface focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
+            placeholder="Nome da chave (ex: Produção, Dev...)"
+            value={newKeyName}
+            onChange={(e) => setNewKeyName(e.target.value)}
+            required
+          />
+          <button
+            type="submit"
+            disabled={creating}
+            className="bg-gradient-to-br from-primary to-primary-container text-white rounded-xl px-6 py-3.5 text-sm font-semibold hover:from-primary-container hover:to-primary transition-all shadow-[0_4px_14px_0_rgba(43,91,181,0.2)] flex items-center gap-2 disabled:opacity-70"
+          >
+            <span className="material-symbols-outlined text-[18px]">add_circle</span>
+            {creating ? "Criando…" : "Gerar Nova Chave"}
+          </button>
+        </form>
+      </div>
+
+      {error && <div role="alert" className="mb-6 p-4 bg-error-container text-on-error-container rounded-xl text-sm">{error}</div>}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16 text-on-surface-variant gap-2">
+          <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+          </svg>
+          Carregando…
+        </div>
+      ) : (
+        <>
+          {/* Active keys */}
+          {activeKeys.length > 0 && (
+            <section className="mb-12">
+              <h2 className="text-xl font-headline font-bold text-on-surface tracking-tight mb-6">Active Keys</h2>
+              <div className="space-y-4">
+                {activeKeys.map((k) => (
+                  <div
+                    key={k.id}
+                    className="bg-tertiary-container rounded-xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-6 shadow-sm"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-1">
+                        <span className="text-on-surface font-bold text-base font-headline">{k.name}</span>
+                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-highest">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Active</span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-on-surface-variant font-medium">
+                        Created {new Date(k.created_at).toLocaleDateString("pt-BR")}
+                      </p>
+                    </div>
+                    <div className="bg-surface-container-lowest px-4 py-3 rounded-lg border border-outline-variant/15 flex items-center min-w-0 flex-1 max-w-xs">
+                      <code className="font-mono text-on-surface tracking-widest text-sm truncate">{k.key_prefix}…</code>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button className="bg-surface-container-highest hover:bg-surface-variant text-on-surface rounded-lg p-2.5 transition-colors" title="Copy Prefix">
+                        <span className="material-symbols-outlined text-[20px]">content_copy</span>
+                      </button>
                       <button
                         onClick={() => handleRevoke(k.id)}
                         disabled={actionLoading === k.id}
-                        className="btn-danger btn-sm"
+                        className="bg-surface-container-highest hover:bg-error-container text-on-surface hover:text-error rounded-lg p-2.5 transition-colors"
+                        title="Revoke Key"
                       >
-                        {actionLoading === k.id ? "…" : "Revogar"}
+                        <span className="material-symbols-outlined text-[20px]">
+                          {actionLoading === k.id ? "hourglass_empty" : "delete"}
+                        </span>
                       </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Revoked keys */}
+          {revokedKeys.length > 0 && (
+            <section>
+              <h2 className="text-xl font-headline font-bold text-on-surface-variant tracking-tight mb-6">Revoked Keys</h2>
+              <div className="space-y-4">
+                {revokedKeys.map((k) => (
+                  <div
+                    key={k.id}
+                    className="bg-surface-container-lowest rounded-xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-6 opacity-60"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-1">
+                        <span className="text-on-surface font-bold text-base font-headline">{k.name}</span>
+                        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-high">
+                          <span className="w-1.5 h-1.5 rounded-full bg-error" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Revoked</span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-on-surface-variant">{new Date(k.created_at).toLocaleDateString("pt-BR")}</p>
+                    </div>
+                    <div className="bg-surface-container-low px-4 py-3 rounded-lg border border-outline-variant/15 flex items-center max-w-xs flex-1">
+                      <code className="font-mono text-on-surface-variant tracking-widest text-sm truncate">{k.key_prefix}…</code>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {keys.length === 0 && (
+            <div className="text-center py-16 text-on-surface-variant">
+              <span className="material-symbols-outlined text-5xl mb-4 block opacity-40">vpn_key</span>
+              <p>Nenhuma chave criada ainda.</p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
