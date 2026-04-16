@@ -45,14 +45,10 @@ def _build_aggregation_query(
     """Constrói query de agregação com filtros opcionais."""
     stmt = select(
         func.count(RequestMetric.id).label("total"),
-        func.sum(func.cast(RequestMetric.status_code >= 500, Integer)).label(
-            "errors"
-        ),
+        func.sum(func.cast(RequestMetric.status_code >= 500, Integer)).label("errors"),
         func.avg(RequestMetric.latency_ms).label("avg_latency"),
         func.sum(RequestMetric.cost).label("total_cost"),
-        func.sum(func.cast(RequestMetric.cost.isnot(None), Integer)).label(
-            "billable"
-        ),
+        func.sum(func.cast(RequestMetric.cost.isnot(None), Integer)).label("billable"),
     )
     if client_id is not None:
         stmt = stmt.where(RequestMetric.client_id == client_id)
@@ -70,7 +66,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
     total_cost = float(row.total_cost) if row.total_cost is not None else 0.0
     billable = int(row.billable or 0)
     non_billable = total - billable
-    error_rate = (errors / total) if total > 0 else 0.0
+    error_rate = (errors / total * 100) if total > 0 else 0.0
     return {
         "total_requests": total,
         "error_rate": round(error_rate, 4),
