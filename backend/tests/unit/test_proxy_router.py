@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -446,3 +446,46 @@ async def test_request_body_is_forwarded_to_upstream(client: AsyncClient) -> Non
 
     assert captured["method"] == "POST"
     assert captured["content"] == b'{"amount": 500}'
+
+
+@pytest.mark.asyncio
+async def test_successful_request_writes_log_to_mongo(client: AsyncClient) -> None:
+    """Quando mongo_db está ativo, o router chama write_request_log."""
+    from app.core.mongo_client import get_mongo_db
+    from app.main import app
+
+    fake_mongo = MagicMock(name="mongo_db")
+
+    async def override_mongo():
+        yield fake_mongo
+
+    app.dependency_overrides[get_mongo_db] = override_mongo
+    try:
+        api_id = uuid.uuid4()
+        upstream_resp = make_upstream_response(200, json_body={"id": "ch_logged"})
+
+        with (
+            patch(
+                "app.domains.proxy.router.validate_request",
+                new=AsyncMock(return_value=(make_api_key(), make_client(), make_api())),
+            ),
+            patch("app.domains.proxy.router.build_upstream_headers", return_value={}),
+            patch(
+                "app.domains.proxy.router.forward_to_upstream",
+                new=AsyncMock(return_value=upstream_resp),
+            ),
+            patch("app.domains.proxy.router.record_metric", new=AsyncMock()),
+            patch(
+                "app.domains.proxy.router.write_request_log", new=AsyncMock()
+            ) as mock_log,
+        ):
+            await client.get(f"/proxy/{api_id}/charges", headers=proxy_headers())
+
+        mock_log.assert_awaited_once()
+        called_db, payload = mock_log.await_args.args
+        assert called_db is fake_mongo
+        assert payload["path"] == "charges"
+        assert payload["status_code"] == 200
+        assert "correlation_id" in payload
+    finally:
+        del app.dependency_overrides[get_mongo_db]

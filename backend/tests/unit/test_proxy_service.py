@@ -314,6 +314,17 @@ def test_build_upstream_headers_for_none_auth_injects_nothing() -> None:
     assert headers["x-custom"] == "value"
 
 
+def test_build_upstream_headers_without_master_key_returns_filtered_only() -> None:
+    api = make_api(auth_type=APIAuthType.API_KEY, master_key="")
+    assert api.master_key_encrypted is None
+    incoming = {"x-bridge-key": "brg_x", "accept": "application/json"}
+    headers = build_upstream_headers(api, incoming)
+    assert "x-bridge-key" not in headers
+    assert "x-api-key" not in headers
+    assert "authorization" not in headers
+    assert headers["accept"] == "application/json"
+
+
 def test_build_upstream_headers_strips_bridge_key() -> None:
     api = make_api(auth_type=APIAuthType.NONE, master_key="ignored")
     incoming = {
