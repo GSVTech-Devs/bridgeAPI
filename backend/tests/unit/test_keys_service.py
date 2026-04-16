@@ -10,6 +10,7 @@ import pytest
 
 from app.core.security import hash_password
 from app.domains.clients.models import Client, ClientStatus
+from app.domains.clients.service import ClientNotFoundError
 from app.domains.keys.models import APIKey, APIKeyStatus
 from app.domains.keys.service import (
     APIKeyNotFoundError,
@@ -164,3 +165,66 @@ async def test_list_api_keys_returns_only_current_client_keys() -> None:
 
     assert len(result) == 2
     assert all(key.client_id == client.id for key in result)
+
+
+# ---------------------------------------------------------------------------
+# create_api_key — cliente inativo
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_for_inactive_client_raises() -> None:
+    pending_client = make_client(status=ClientStatus.PENDING)
+    db = make_db(make_execute_result(scalar_result=pending_client))
+
+    with pytest.raises(ClientNotFoundError):
+        await create_api_key(db, pending_client.email, "Production Key")
+
+
+# ---------------------------------------------------------------------------
+# authenticate_api_key — cenários de rejeição por formato e senha
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_authenticate_api_key_rejects_key_without_brg_prefix() -> None:
+    db = make_db()
+    result = await authenticate_api_key(db, "not-a-bridge-key")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_authenticate_api_key_rejects_malformed_key() -> None:
+    db = make_db()
+    # começa com brg_ mas não tem as 3 partes separadas por "_"
+    result = await authenticate_api_key(db, "brg_onlyprefix")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_authenticate_api_key_rejects_wrong_secret() -> None:
+    stored = make_api_key(
+        status=APIKeyStatus.ACTIVE,
+        prefix="abcd1234",
+        secret_hash=hash_password("brg_abcd1234_correct-secret"),
+    )
+    db = make_db(make_execute_result(scalar_result=stored))
+
+    result = await authenticate_api_key(db, "brg_abcd1234_wrong-secret")
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_authenticate_api_key_returns_key_on_valid_credentials() -> None:
+    plain_secret = "brg_abcd1234_super-secret-value"
+    stored = make_api_key(
+        status=APIKeyStatus.ACTIVE,
+        prefix="abcd1234",
+        secret_hash=hash_password(plain_secret),
+    )
+    db = make_db(make_execute_result(scalar_result=stored))
+
+    result = await authenticate_api_key(db, plain_secret)
+
+    assert result is stored
