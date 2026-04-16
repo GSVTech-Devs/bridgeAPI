@@ -18,6 +18,7 @@ from app.domains.permissions.service import (
     PermissionNotFoundError,
     get_client_authorized_apis,
     grant_permission,
+    list_permissions,
     revoke_permission,
 )
 
@@ -204,3 +205,46 @@ async def test_client_with_no_permissions_gets_empty_catalog() -> None:
     result = await get_client_authorized_apis(db, acme.email)
 
     assert result == []
+
+
+# ---------------------------------------------------------------------------
+# list_permissions
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_permissions_returns_formatted_rows_with_status() -> None:
+    acme_id, stripe_id = uuid.uuid4(), uuid.uuid4()
+    other_id, gh_id = uuid.uuid4(), uuid.uuid4()
+
+    active_row = MagicMock(
+        client_id=acme_id,
+        api_id=stripe_id,
+        client_name="Acme Corp",
+        api_name="Stripe API",
+        revoked_at=None,
+    )
+    revoked_row = MagicMock(
+        client_id=other_id,
+        api_id=gh_id,
+        client_name="Other Inc",
+        api_name="GitHub API",
+        revoked_at=datetime.now(timezone.utc),
+    )
+
+    db = AsyncMock()
+    execute_result = MagicMock()
+    execute_result.fetchall.return_value = [active_row, revoked_row]
+    db.execute.return_value = execute_result
+
+    result = await list_permissions(db)
+
+    assert len(result) == 2
+    assert result[0] == {
+        "client_id": str(acme_id),
+        "api_id": str(stripe_id),
+        "client_name": "Acme Corp",
+        "api_name": "Stripe API",
+        "status": "active",
+    }
+    assert result[1]["status"] == "revoked"

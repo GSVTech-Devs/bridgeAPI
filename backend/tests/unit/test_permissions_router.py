@@ -53,6 +53,48 @@ def client_headers() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# GET /permissions  (admin)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_admin_can_list_permissions(client: AsyncClient) -> None:
+    items = [
+        {
+            "client_id": str(uuid.uuid4()),
+            "api_id": str(uuid.uuid4()),
+            "client_name": "Acme Corp",
+            "api_name": "Stripe API",
+            "status": "active",
+        },
+        {
+            "client_id": str(uuid.uuid4()),
+            "api_id": str(uuid.uuid4()),
+            "client_name": "Other Inc",
+            "api_name": "GitHub API",
+            "status": "revoked",
+        },
+    ]
+    with patch(
+        "app.domains.permissions.router.list_permissions",
+        new=AsyncMock(return_value=items),
+    ):
+        response = await client.get("/permissions", headers=admin_headers())
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert body["items"][0]["status"] == "active"
+    assert body["items"][1]["status"] == "revoked"
+
+
+@pytest.mark.asyncio
+async def test_list_permissions_requires_auth(client: AsyncClient) -> None:
+    response = await client.get("/permissions")
+    assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
 # POST /permissions  (admin)
 # ---------------------------------------------------------------------------
 
