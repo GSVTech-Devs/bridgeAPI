@@ -198,7 +198,7 @@ export function createKey(name: string, apiId: string) {
     api_id: string;
     name: string;
     key_prefix: string;
-    secret: string;
+    api_key: string;
     status: string;
     created_at: string;
   }>("/keys", {

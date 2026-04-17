@@ -35,9 +35,9 @@ export default function ApiKeysList() {
 
   async function handleCreate() {
     try {
-      const key = await createKey("nova-chave");
-      setNewSecret(key.secret);
-      setKeys((prev) => [...prev, key]);
+      const key = await createKey("nova-chave", "");
+      setNewSecret(key.api_key);
+      setKeys((prev) => [...prev, { ...key, secret: key.api_key }]);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erro ao criar chave");
     }

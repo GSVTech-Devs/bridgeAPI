@@ -49,7 +49,7 @@ describe("ApiKeysList", () => {
             id: "k2",
             name: "new-key",
             key_prefix: "brg_xyz",
-            secret: "brg_xyz_full-secret",
+            api_key: "brg_xyz_full-secret",
             status: "active",
             created_at: "2024-06-01T00:00:00Z",
           },

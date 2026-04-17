@@ -5,7 +5,6 @@ import { getCatalog, getKeys, createKey, revokeKey } from "@/lib/api";
 
 type CatalogEntry = { id: string; name: string; slug?: string; base_url: string; status: string };
 type Key = { id: string; api_id: string | null; name: string; key_prefix: string; status: string; created_at: string };
-type NewKey = Key & { secret: string };
 
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
@@ -33,7 +32,8 @@ export default function KeysPage() {
   const [keys, setKeys] = useState<Key[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [newSecrets, setNewSecrets] = useState<Record<string, string>>({});
+  const [fullKeys, setFullKeys] = useState<Record<string, string>>({});
+  const [visible, setVisible] = useState<Record<string, boolean>>({});
   const [creating, setCreating] = useState<string | null>(null);
   const [newKeyNames, setNewKeyNames] = useState<Record<string, string>>({});
   const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
@@ -56,9 +56,10 @@ export default function KeysPage() {
     setCreating(apiId);
     setCreateErrors((prev) => ({ ...prev, [apiId]: "" }));
     try {
-      const key = await createKey(name, apiId) as NewKey;
-      setNewSecrets((prev) => ({ ...prev, [key.id]: key.secret }));
-      setKeys((prev) => [key, ...prev]);
+      const created = await createKey(name, apiId);
+      setFullKeys((prev) => ({ ...prev, [created.id]: created.api_key }));
+      setVisible((prev) => ({ ...prev, [created.id]: false }));
+      setKeys((prev) => [created, ...prev]);
       setNewKeyNames((prev) => ({ ...prev, [apiId]: "" }));
     } catch (err: unknown) {
       setCreateErrors((prev) => ({
@@ -115,13 +116,10 @@ export default function KeysPage() {
 
             return (
               <section key={api.id} className="bg-surface-container-lowest rounded-2xl border border-outline-variant/15 overflow-hidden">
-                {/* API header */}
                 <div className="px-6 py-4 border-b border-outline-variant/10 flex items-center justify-between bg-surface-container-low/50">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <span className="material-symbols-outlined text-primary text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                        api
-                      </span>
+                      <span className="material-symbols-outlined text-primary text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>api</span>
                     </div>
                     <div>
                       <span className="font-headline font-bold text-on-surface">{api.name}</span>
@@ -139,7 +137,6 @@ export default function KeysPage() {
                 </div>
 
                 <div className="p-6 space-y-6">
-                  {/* Create key form */}
                   {createErrors[api.id] && (
                     <div role="alert" className="p-3 bg-error-container rounded-lg text-on-error-container text-sm">
                       {createErrors[api.id]}
@@ -163,11 +160,16 @@ export default function KeysPage() {
                     </button>
                   </form>
 
-                  {/* Active keys */}
                   {activeKeys.length > 0 && (
                     <div className="space-y-3">
                       {activeKeys.map((k) => {
-                        const secret = newSecrets[k.id];
+                        const full = fullKeys[k.id];
+                        const isVisible = visible[k.id] ?? false;
+                        const displayValue = full
+                          ? (isVisible ? full : "●".repeat(32))
+                          : `${k.key_prefix}…`;
+                        const copyValue = full ?? k.key_prefix;
+
                         return (
                           <div key={k.id} className="bg-tertiary-container rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div className="flex-1 min-w-0">
@@ -182,13 +184,26 @@ export default function KeysPage() {
                                 Criado em {new Date(k.created_at).toLocaleDateString("pt-BR")}
                               </p>
                             </div>
-                            <div className="bg-surface-container-lowest px-4 py-2.5 rounded-lg border border-outline-variant/15 flex items-center min-w-0 flex-1 max-w-xs overflow-x-auto">
-                              <code className="font-mono text-on-surface text-sm whitespace-nowrap">
-                                {secret ?? `${k.key_prefix}…`}
+
+                            <div className="bg-surface-container-lowest px-4 py-2.5 rounded-lg border border-outline-variant/15 flex items-center min-w-0 flex-1 max-w-sm overflow-x-auto">
+                              <code className="font-mono text-on-surface text-sm whitespace-nowrap tracking-wider">
+                                {displayValue}
                               </code>
                             </div>
+
                             <div className="flex items-center gap-2 flex-shrink-0">
-                              <CopyButton value={secret ?? k.key_prefix} />
+                              {full && (
+                                <button
+                                  onClick={() => setVisible((prev) => ({ ...prev, [k.id]: !isVisible }))}
+                                  title={isVisible ? "Ocultar chave" : "Exibir chave"}
+                                  className="bg-surface-container-highest hover:bg-surface-variant text-on-surface rounded-lg p-2.5 transition-colors"
+                                >
+                                  <span className="material-symbols-outlined text-[20px]">
+                                    {isVisible ? "visibility_off" : "visibility"}
+                                  </span>
+                                </button>
+                              )}
+                              <CopyButton value={copyValue} />
                               <button
                                 onClick={() => handleRevoke(k.id)}
                                 disabled={actionLoading === k.id}
@@ -206,7 +221,6 @@ export default function KeysPage() {
                     </div>
                   )}
 
-                  {/* Revoked keys (collapsed) */}
                   {revokedKeys.length > 0 && (
                     <details className="group">
                       <summary className="cursor-pointer text-xs text-on-surface-variant hover:text-on-surface transition-colors list-none flex items-center gap-1">
