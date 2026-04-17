@@ -7,12 +7,33 @@ type CatalogEntry = { id: string; name: string; slug?: string; base_url: string;
 type Key = { id: string; api_id: string | null; name: string; key_prefix: string; status: string; created_at: string };
 type NewKey = Key & { secret: string };
 
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  function handle() {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+  return (
+    <button
+      onClick={handle}
+      title="Copiar chave"
+      className="bg-surface-container-highest hover:bg-surface-variant text-on-surface rounded-lg p-2.5 transition-colors flex-shrink-0"
+    >
+      <span className="material-symbols-outlined text-[20px]">
+        {copied ? "check" : "content_copy"}
+      </span>
+    </button>
+  );
+}
+
 export default function KeysPage() {
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [keys, setKeys] = useState<Key[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [revealedKey, setRevealedKey] = useState<NewKey | null>(null);
+  const [newSecrets, setNewSecrets] = useState<Record<string, string>>({});
   const [creating, setCreating] = useState<string | null>(null);
   const [newKeyNames, setNewKeyNames] = useState<Record<string, string>>({});
   const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
@@ -35,8 +56,8 @@ export default function KeysPage() {
     setCreating(apiId);
     setCreateErrors((prev) => ({ ...prev, [apiId]: "" }));
     try {
-      const key = await createKey(name, apiId);
-      setRevealedKey(key);
+      const key = await createKey(name, apiId) as NewKey;
+      setNewSecrets((prev) => ({ ...prev, [key.id]: key.secret }));
       setKeys((prev) => [key, ...prev]);
       setNewKeyNames((prev) => ({ ...prev, [apiId]: "" }));
     } catch (err: unknown) {
@@ -69,25 +90,6 @@ export default function KeysPage() {
           Generate and manage access keys per API. Each key is tied to one specific API for easier monitoring.
         </p>
       </div>
-
-      {revealedKey && (
-        <div className="mb-8 p-5 bg-green-50 border border-green-200 rounded-xl">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="material-symbols-outlined text-green-700 text-[20px]">info</span>
-                <p className="font-semibold text-green-800">Chave criada! Copie agora — não será exibida novamente.</p>
-              </div>
-              <code className="text-sm bg-white border border-green-300 rounded-lg px-4 py-3 block mt-2 break-all text-on-surface font-mono">
-                {revealedKey.secret}
-              </code>
-            </div>
-            <button onClick={() => setRevealedKey(null)} className="text-green-600 hover:text-green-800 ml-4 flex-shrink-0 p-1">
-              <span className="material-symbols-outlined text-[20px]">close</span>
-            </button>
-          </div>
-        </div>
-      )}
 
       {error && <div role="alert" className="mb-6 p-4 bg-error-container text-on-error-container rounded-xl text-sm">{error}</div>}
 
@@ -164,35 +166,43 @@ export default function KeysPage() {
                   {/* Active keys */}
                   {activeKeys.length > 0 && (
                     <div className="space-y-3">
-                      {activeKeys.map((k) => (
-                        <div key={k.id} className="bg-tertiary-container rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <span className="font-bold text-sm text-on-surface">{k.name}</span>
-                              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-highest">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Active</span>
-                              </span>
+                      {activeKeys.map((k) => {
+                        const secret = newSecrets[k.id];
+                        return (
+                          <div key={k.id} className="bg-tertiary-container rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-0.5">
+                                <span className="font-bold text-sm text-on-surface">{k.name}</span>
+                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-highest">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Active</span>
+                                </span>
+                              </div>
+                              <p className="text-xs text-on-surface-variant">
+                                Criado em {new Date(k.created_at).toLocaleDateString("pt-BR")}
+                              </p>
                             </div>
-                            <p className="text-xs text-on-surface-variant">
-                              Criado em {new Date(k.created_at).toLocaleDateString("pt-BR")}
-                            </p>
+                            <div className="bg-surface-container-lowest px-4 py-2.5 rounded-lg border border-outline-variant/15 flex items-center min-w-0 flex-1 max-w-xs overflow-x-auto">
+                              <code className="font-mono text-on-surface text-sm whitespace-nowrap">
+                                {secret ?? `${k.key_prefix}…`}
+                              </code>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <CopyButton value={secret ?? k.key_prefix} />
+                              <button
+                                onClick={() => handleRevoke(k.id)}
+                                disabled={actionLoading === k.id}
+                                className="bg-surface-container-highest hover:bg-error-container text-on-surface hover:text-error rounded-lg p-2.5 transition-colors"
+                                title="Revogar chave"
+                              >
+                                <span className="material-symbols-outlined text-[20px]">
+                                  {actionLoading === k.id ? "hourglass_empty" : "delete"}
+                                </span>
+                              </button>
+                            </div>
                           </div>
-                          <div className="bg-surface-container-lowest px-4 py-2.5 rounded-lg border border-outline-variant/15 flex items-center min-w-0 max-w-[200px]">
-                            <code className="font-mono text-on-surface text-sm truncate">{k.key_prefix}…</code>
-                          </div>
-                          <button
-                            onClick={() => handleRevoke(k.id)}
-                            disabled={actionLoading === k.id}
-                            className="bg-surface-container-highest hover:bg-error-container text-on-surface hover:text-error rounded-lg p-2.5 transition-colors flex-shrink-0"
-                            title="Revogar chave"
-                          >
-                            <span className="material-symbols-outlined text-[20px]">
-                              {actionLoading === k.id ? "hourglass_empty" : "delete"}
-                            </span>
-                          </button>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
