@@ -1,0 +1,33 @@
+repos:
+  # ── Backend: lint ──────────────────────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.10
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^backend/
+
+  - repo: https://github.com/psf/black
+    rev: 24.4.2
+    hooks:
+      - id: black
+        language_version: python3.12
+        files: ^backend/
+
+  # ── Backend: unit tests (pre-commit — fast, no Docker) ────────────────────
+  - repo: local
+    hooks:
+      - id: pytest-unit
+        name: pytest unit tests
+        entry: bash -c 'cd backend && pytest tests/unit/ -x -q --no-cov'
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # Integration tests run on pre-push (require `make up` first)
+      - id: pytest-integration
+        name: pytest integration tests
+        entry: bash -c 'cd backend && TEST_DATABASE_URL="postgresql+asyncpg://bridge:bridge@localhost:5433/bridgeapi_test" TEST_MONGO_URL="mongodb://bridge:bridge@localhost:27018/bridgelogs_test?authSource=admin" TEST_REDIS_URL="redis://:bridge@localhost:6380/1" pytest tests/integration/ -v'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

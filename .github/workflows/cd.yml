@@ -1,0 +1,125 @@
+name: CD
+
+on:
+  push:
+    branches: ["staging", "master"]
+
+# Required GitHub Secrets:
+#   VPS_STAGING_HOST      — IP or hostname of the staging VPS
+#   VPS_STAGING_USER      — SSH user (e.g. deploy)
+#   VPS_STAGING_SSH_KEY   — private key for SSH access
+#   VPS_PROD_HOST         — IP or hostname of the production VPS
+#   VPS_PROD_USER         — SSH user
+#   VPS_PROD_SSH_KEY      — private key for SSH access
+#   GHCR_READ_TOKEN       — GitHub PAT with read:packages scope (to pull images on VPS)
+#
+# Required GitHub Environment (repo Settings → Environments):
+#   "production" — add required reviewers to gate the prod deploy
+
+jobs:
+
+  # ── Staging: automatic on merge to staging ─────────────────────────────────
+
+  deploy-staging:
+    name: Deploy — Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/staging'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tags
+        id: vars
+        run: |
+          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "backend_image=ghcr.io/${REPO}-backend:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "frontend_image=ghcr.io/${REPO}-frontend:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Deploy to staging VPS
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          BACKEND_IMAGE: ${{ steps.vars.outputs.backend_image }}
+          FRONTEND_IMAGE: ${{ steps.vars.outputs.frontend_image }}
+          GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        with:
+          host: ${{ secrets.VPS_STAGING_HOST }}
+          username: ${{ secrets.VPS_STAGING_USER }}
+          key: ${{ secrets.VPS_STAGING_SSH_KEY }}
+          envs: BACKEND_IMAGE,FRONTEND_IMAGE,GHCR_TOKEN,GHCR_USER
+          script: |
+            set -e
+            cd /opt/bridge
+
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml --profile app pull
+
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml --profile app up -d
+
+            echo "Waiting for backend to be ready..."
+            sleep 10
+            curl -sf http://localhost:8000/health || {
+              echo "Health check failed"
+              docker compose logs backend --tail 50
+              exit 1
+            }
+            echo "Staging deploy OK — $BACKEND_IMAGE"
+
+  # ── Production: requires manual approval via GitHub Environment ────────────
+
+  deploy-prod:
+    name: Deploy — Production
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+    environment: production   # pauses here until a reviewer approves in GitHub UI
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tags
+        id: vars
+        run: |
+          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "backend_image=ghcr.io/${REPO}-backend:${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "frontend_image=ghcr.io/${REPO}-frontend:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Deploy to production VPS
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          BACKEND_IMAGE: ${{ steps.vars.outputs.backend_image }}
+          FRONTEND_IMAGE: ${{ steps.vars.outputs.frontend_image }}
+          GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        with:
+          host: ${{ secrets.VPS_PROD_HOST }}
+          username: ${{ secrets.VPS_PROD_USER }}
+          key: ${{ secrets.VPS_PROD_SSH_KEY }}
+          envs: BACKEND_IMAGE,FRONTEND_IMAGE,GHCR_TOKEN,GHCR_USER
+          script: |
+            set -e
+            cd /opt/bridge
+
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+            # Save current image for rollback
+            PREV_BACKEND=$(docker inspect bridge_backend \
+              --format='{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null || echo "")
+
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile app pull
+
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile app up -d
+
+            echo "Waiting for backend to be ready..."
+            sleep 10
+            if ! curl -sf http://localhost:8000/health; then
+              echo "Health check failed — rolling back"
+              docker compose logs backend --tail 50
+              if [ -n "$PREV_BACKEND" ]; then
+                REPO=$(echo "$BACKEND_IMAGE" | sed 's/:.*//')
+                export BACKEND_IMAGE="${REPO}:${PREV_BACKEND}"
+                export FRONTEND_IMAGE="${FRONTEND_IMAGE}"
+                docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile app up -d
+              fi
+              exit 1
+            fi
+            echo "Production deploy OK — $BACKEND_IMAGE"

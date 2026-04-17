@@ -1,0 +1,36 @@
+# Development overrides — hot-reload para backend e frontend dentro do Docker.
+# Usage: make dev
+#
+# Este arquivo sobrescreve as URLs de banco para usar os nomes dos containers
+# (postgres, mongo, redis) em vez de localhost, que é o valor padrão do .env local.
+
+services:
+
+  migrator:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bridge}:${POSTGRES_PASSWORD:-bridge}@postgres:5432/${POSTGRES_DB:-bridgeapi}
+
+  backend:
+    build:
+      context: ./backend
+      target: development      # pip install -e ".[dev]" + uvicorn --reload
+    volumes:
+      - ./backend:/app         # mudanças no código refletem sem rebuild
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-bridge}:${POSTGRES_PASSWORD:-bridge}@postgres:5432/${POSTGRES_DB:-bridgeapi}
+      MONGO_URL: mongodb://${MONGO_USER:-bridge}:${MONGO_PASSWORD:-bridge}@mongo:27017/${MONGO_DB:-bridgelogs}?authSource=admin
+      REDIS_URL: redis://:${REDIS_PASSWORD:-bridge}@redis:6379/0
+
+  frontend:
+    build:
+      context: ./frontend
+      target: development      # node_modules instalados + next dev
+    command: npm run dev
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./frontend:/app        # mudanças no código refletem sem rebuild
+      - /app/node_modules      # preserva o node_modules do container (não sobrescreve com o do host)

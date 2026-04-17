@@ -1,0 +1,44 @@
+# Production overrides — combine with docker-compose.yml:
+#
+#   VPS APP:  docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile app up -d
+#   VPS DB:   docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile db  up -d
+#
+# Required in /opt/bridge/.env on each VPS:
+#   BACKEND_IMAGE          ghcr.io/youruser/bridgeapi-backend:abc1234   (app VPS only)
+#   FRONTEND_IMAGE         ghcr.io/youruser/bridgeapi-frontend:abc1234  (app VPS only)
+#   NEXT_PUBLIC_API_URL    https://api.yourdomain.com                   (app VPS only)
+#   POSTGRES_HOST          <DB VPS internal IP>                         (app VPS only)
+#   MONGO_HOST             <DB VPS internal IP>                         (app VPS only)
+#   REDIS_HOST             <DB VPS internal IP>                         (app VPS only)
+#   + all secrets with production values
+
+services:
+
+  # ── DB VPS: close external ports, add restart policy ─────────────────────
+  postgres:
+    ports: []
+    restart: unless-stopped
+
+  mongo:
+    ports: []
+    restart: unless-stopped
+
+  redis:
+    ports: []
+    restart: unless-stopped
+
+  # ── App VPS: pull from GHCR, add restart policy ───────────────────────────
+  migrator:
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE in .env}
+    build: null
+    restart: "no"
+
+  backend:
+    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE in .env}
+    build: null
+    restart: unless-stopped
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?set FRONTEND_IMAGE in .env}
+    build: null
+    restart: unless-stopped

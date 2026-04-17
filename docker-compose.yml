@@ -1,4 +1,10 @@
 services:
+
+  # ── profile: db ────────────────────────────────────────────────────────────
+  # Runs on: VPS DB (staging/prod) and local dev.
+  # VPS DB:  docker compose --profile db up -d
+  # Local:   make up
+
   postgres:
     image: postgres:16-alpine
     container_name: bridge_postgres
@@ -7,7 +13,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bridge}
       POSTGRES_DB: ${POSTGRES_DB:-bridgeapi}
     ports:
-      - "5433:5432"
+      - "${POSTGRES_PORT_EXPOSED:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -15,6 +21,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    profiles: [db]
 
   mongo:
     image: mongo:7-jammy
@@ -24,7 +31,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-bridge}
       MONGO_INITDB_DATABASE: ${MONGO_DB:-bridgelogs}
     ports:
-      - "27018:27017"
+      - "${MONGO_PORT_EXPOSED:-27018}:27017"
     volumes:
       - mongo_data:/data/db
     healthcheck:
@@ -32,13 +39,14 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    profiles: [db]
 
   redis:
     image: redis:7-alpine
     container_name: bridge_redis
     command: redis-server --requirepass ${REDIS_PASSWORD:-bridge}
     ports:
-      - "6380:6379"
+      - "${REDIS_PORT_EXPOSED:-6380}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -46,6 +54,57 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    profiles: [db]
+
+  # ── profile: app ───────────────────────────────────────────────────────────
+  # Runs on: VPS APP (staging/prod) and local dev.
+  # VPS APP: docker compose --profile app up -d
+  # Local:   make stack-up
+  #
+  # DB connection: controlled by POSTGRES_HOST / MONGO_HOST / REDIS_HOST.
+  #   Local stack → defaults to container names (postgres, mongo, redis)
+  #   VPS APP     → set to the DB VPS IP in /opt/bridge/.env
+
+  migrator:
+    build:
+      context: ./backend
+      target: production
+    container_name: bridge_migrator
+    command: alembic upgrade head
+    env_file: .env
+    # DB URLs são definidas pelo override do ambiente (dev/staging/prod).
+    # env_file sozinho é suficiente para VPS APP (aponta para a VPS DB via .env).
+    profiles: [app]
+
+  backend:
+    build:
+      context: ./backend
+      target: production
+    container_name: bridge_backend
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    profiles: [app]
+
+  frontend:
+    build:
+      context: ./frontend
+      # NEXT_PUBLIC_API_URL é injetada no bundle no momento do build.
+      # Local dev: http://localhost:8000
+      # Prod/staging: definido no override (docker-compose.prod.yml etc.)
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: bridge_frontend
+    environment:
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    profiles: [app]
 
 volumes:
   postgres_data:
