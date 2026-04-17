@@ -24,14 +24,19 @@ async def grant_permission(db: AsyncSession, client_id: str, api_id: str) -> Per
         select(Permission).where(
             Permission.client_id == uuid.UUID(client_id),
             Permission.api_id == uuid.UUID(api_id),
-            Permission.revoked_at.is_(None),
         )
     )
     existing = result.scalar_one_or_none()
     if existing is not None:
-        raise DuplicatePermissionError(
-            f"Permission already exists for client {client_id} and api {api_id}"
-        )
+        if existing.revoked_at is None:
+            raise DuplicatePermissionError(
+                f"Permission already exists for client {client_id} and api {api_id}"
+            )
+        existing.revoked_at = None
+        existing.granted_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(existing)
+        return existing
 
     permission = Permission(
         client_id=uuid.UUID(client_id),

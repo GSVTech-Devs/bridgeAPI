@@ -125,6 +125,26 @@ async def test_grant_permission_stores_correct_ids() -> None:
     assert added.api_id == api.id
 
 
+@pytest.mark.asyncio
+async def test_grant_permission_reactivates_revoked_row() -> None:
+    client = make_client()
+    api = make_api()
+    revoked = make_permission(
+        client_id=client.id,
+        api_id=api.id,
+        revoked_at=datetime.now(timezone.utc),
+    )
+    db = make_db(make_execute_result(scalar_result=revoked))
+
+    result = await grant_permission(db, str(client.id), str(api.id))
+
+    assert result is revoked
+    assert result.revoked_at is None
+    db.add.assert_not_called()
+    db.commit.assert_called_once()
+    db.refresh.assert_called_once_with(revoked)
+
+
 # ---------------------------------------------------------------------------
 # revoke_permission
 # ---------------------------------------------------------------------------
