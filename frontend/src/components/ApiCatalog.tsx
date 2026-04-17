@@ -3,7 +3,29 @@
 import { useEffect, useState } from "react";
 import { getCatalog } from "@/lib/api";
 
-type Api = { id: string; name: string; base_url: string; status: string };
+const BRIDGE_BASE =
+  process.env.NEXT_PUBLIC_BRIDGE_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://localhost:8000";
+
+type Api = {
+  id: string;
+  name: string;
+  slug?: string;
+  base_url: string;
+  url_template?: string;
+  status: string;
+};
+
+function BridgeUrl({ slug }: { slug: string }) {
+  return (
+    <span data-testid="bridge-url" className="font-mono text-sm break-all">
+      {BRIDGE_BASE}/apis/{slug}/
+      <span className="text-primary font-bold">{"{query}"}</span>/
+      <span className="text-emerald-600 font-bold">{"{seu-token}"}</span>
+    </span>
+  );
+}
 
 export default function ApiCatalog() {
   const [apis, setApis] = useState<Api[]>([]);
@@ -28,7 +50,11 @@ export default function ApiCatalog() {
       {apis.map((a) => (
         <li key={a.id}>
           <strong>{a.name}</strong>
-          <span> — {a.base_url}</span>
+          {a.slug ? (
+            <> — <BridgeUrl slug={a.slug} /></>
+          ) : (
+            <span> — {a.base_url}</span>
+          )}
           <span> — {a.status}</span>
         </li>
       ))}

@@ -4,9 +4,89 @@ import { useEffect, useState } from "react";
 import { getCatalog } from "@/lib/api";
 import Link from "next/link";
 
-type ApiEntry = { id: string; name: string; base_url: string; status: string };
+const BRIDGE_BASE =
+  process.env.NEXT_PUBLIC_BRIDGE_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://localhost:8000";
+
+type ApiEntry = {
+  id: string;
+  name: string;
+  slug?: string;
+  base_url: string;
+  url_template?: string;
+  status: string;
+};
 
 const apiIcons = ["payments", "person_search", "insights", "cloud_sync", "dataset", "monitoring"];
+
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  function handleCopy() {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+  return (
+    <button
+      onClick={handleCopy}
+      title="Copiar URL"
+      className="ml-2 p-1 rounded hover:bg-surface-container-high transition-colors text-on-surface-variant hover:text-primary"
+    >
+      <span className="material-symbols-outlined text-[16px]">
+        {copied ? "check" : "content_copy"}
+      </span>
+    </button>
+  );
+}
+
+function ApiUrlBlock({ api }: { api: ApiEntry }) {
+  if (api.slug) {
+    const url = `${BRIDGE_BASE}/apis/${api.slug}/{query}/{seu-token}`;
+    return (
+      <div className="bg-surface-container-low rounded-lg p-4 mb-6 flex-1 space-y-3">
+        <div className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
+          Como usar
+        </div>
+        <div className="flex items-start gap-1">
+          <code className="font-mono text-sm break-all leading-relaxed flex-1">
+            <span className="text-on-surface-variant">{BRIDGE_BASE}/apis/</span>
+            <span className="text-primary font-bold">{api.slug}</span>
+            <span className="text-on-surface-variant">/</span>
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs font-bold">{"{query}"}</span>
+            <span className="text-on-surface-variant">/</span>
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-xs font-bold">{"{seu-token}"}</span>
+          </code>
+          <CopyButton value={url} />
+        </div>
+        <div className="flex gap-4 text-xs text-on-surface-variant">
+          <span>
+            <span className="inline-block w-2 h-2 rounded-sm bg-primary/20 mr-1" />
+            <code className="font-mono">{"{query}"}</code> — o que você quer consultar
+          </span>
+          <span>
+            <span className="inline-block w-2 h-2 rounded-sm bg-emerald-100 mr-1" />
+            <code className="font-mono">{"{seu-token}"}</code> — sua chave Bridge{" "}
+            <Link href="/dashboard/keys" className="text-primary hover:underline">
+              ver chaves →
+            </Link>
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-surface-container-low rounded-lg p-4 mb-6 flex-1">
+      <div className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">Base URL</div>
+      <div className="flex items-center gap-1">
+        <code className="font-mono text-sm text-tertiary flex-1 overflow-x-auto">{api.base_url}</code>
+        <CopyButton value={api.base_url} />
+      </div>
+    </div>
+  );
+}
 
 export default function CatalogPage() {
   const [catalog, setCatalog] = useState<ApiEntry[]>([]);
@@ -22,7 +102,6 @@ export default function CatalogPage() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      {/* Header */}
       <div className="flex justify-between items-end mb-12">
         <div>
           <h1 className="text-4xl font-headline font-extrabold text-on-surface tracking-tight mb-2">API Catalog</h1>
@@ -84,10 +163,7 @@ export default function CatalogPage() {
                     </div>
                   </div>
 
-                  <div className="bg-surface-container-low rounded-lg p-4 mb-6 flex-1">
-                    <div className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2">Base URL</div>
-                    <code className="font-mono text-sm text-tertiary block overflow-x-auto">{api.base_url}</code>
-                  </div>
+                  <ApiUrlBlock api={api} />
 
                   <div className="flex items-center justify-between border-t border-outline-variant/10 pt-4">
                     <a href="#" className="text-primary text-sm font-medium hover:underline flex items-center gap-1">

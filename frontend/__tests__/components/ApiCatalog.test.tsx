@@ -16,11 +16,28 @@ describe("ApiCatalog", () => {
     });
   });
 
-  it("shows the base URL of each API", async () => {
+  it("shows Bridge URL when API has a slug", async () => {
     render(<ApiCatalog />);
     await waitFor(() => {
-      expect(screen.getByText(/api\.stripe\.com/i)).toBeInTheDocument();
+      expect(screen.getByTestId("bridge-url")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("bridge-url").textContent).toContain("/apis/stripe/");
+  });
+
+  it("shows base_url when API has no slug", async () => {
+    server.use(
+      http.get("http://localhost:8000/catalog", () =>
+        HttpResponse.json({
+          items: [{ id: "a2", name: "Raw API", base_url: "https://raw.example.com", status: "active" }],
+          total: 1,
+        })
+      )
+    );
+    render(<ApiCatalog />);
+    await waitFor(() => {
+      expect(screen.getByText(/raw\.example\.com/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("bridge-url")).not.toBeInTheDocument();
   });
 
   it("shows status badge for each API", async () => {
@@ -38,9 +55,7 @@ describe("ApiCatalog", () => {
     );
     render(<ApiCatalog />);
     await waitFor(() => {
-      expect(
-        screen.getByText(/nenhuma|no api|sem api/i)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/nenhuma|no api|sem api/i)).toBeInTheDocument();
     });
   });
 

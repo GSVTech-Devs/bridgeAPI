@@ -94,7 +94,9 @@ export const handlers = [
         {
           id: "a1",
           name: "Stripe",
+          slug: "stripe",
           base_url: "https://api.stripe.com",
+          url_template: "https://api.stripe.com/v1/{query}",
           status: "active",
         },
       ],

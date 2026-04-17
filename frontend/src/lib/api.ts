@@ -162,9 +162,17 @@ export function revokePermission(clientId: string, apiId: string) {
 // Catalog (client)  →  /catalog
 // ---------------------------------------------------------------------------
 export function getCatalog() {
-  return apiFetch<{ items: { id: string; name: string; base_url: string; status: string }[]; total: number }>(
-    "/catalog"
-  );
+  return apiFetch<{
+    items: {
+      id: string;
+      name: string;
+      slug?: string;
+      base_url: string;
+      url_template?: string;
+      status: string;
+    }[];
+    total: number;
+  }>("/catalog");
 }
 
 // ---------------------------------------------------------------------------
