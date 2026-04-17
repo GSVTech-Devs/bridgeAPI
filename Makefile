@@ -56,6 +56,20 @@ test-all: ## Run unit + integration tests (requires: make up)
 	  TEST_REDIS_URL="redis://:bridge@localhost:6380/1" \
 	  pytest -v
 
+test-migrations: ## Run only the migration lifecycle tests (requires: make up)
+	cd backend && \
+	  TEST_DATABASE_URL="postgresql+asyncpg://bridge:bridge@localhost:5433/bridgeapi_test" \
+	  pytest tests/integration/test_migrations.py -v
+
+test-e2e: ## Run Playwright E2E tests (auto-starts Next.js dev server)
+	cd frontend && npm run test:e2e
+
+test-e2e-headed: ## Run E2E tests in headed (visible) browser
+	cd frontend && npm run test:e2e:headed
+
+test-e2e-ui: ## Open Playwright UI mode
+	cd frontend && npm run test:e2e:ui
+
 # ── Lint ───────────────────────────────────────────────────────────────────
 
 lint: ## Check code style — ruff + black (backend) + eslint (frontend)

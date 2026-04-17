@@ -32,7 +32,9 @@ describe("ApiCatalog", () => {
 
   it("shows empty state when no APIs authorized", async () => {
     server.use(
-      http.get("http://localhost:8000/catalog", () => HttpResponse.json([]))
+      http.get("http://localhost:8000/catalog", () =>
+        HttpResponse.json({ items: [], total: 0 })
+      )
     );
     render(<ApiCatalog />);
     await waitFor(() => {

@@ -89,14 +89,24 @@ export const handlers = [
   // Catalog (client)
   // ---------------------------------------------------------------------------
   http.get(`${BASE}/catalog`, () =>
-    HttpResponse.json([
-      {
-        id: "a1",
-        name: "Stripe",
-        base_url: "https://api.stripe.com",
-        status: "active",
-      },
-    ])
+    HttpResponse.json({
+      items: [
+        {
+          id: "a1",
+          name: "Stripe",
+          base_url: "https://api.stripe.com",
+          status: "active",
+        },
+      ],
+      total: 1,
+    })
+  ),
+
+  // ---------------------------------------------------------------------------
+  // Permissions (admin) — GET list
+  // ---------------------------------------------------------------------------
+  http.get(`${BASE}/permissions`, () =>
+    HttpResponse.json({ items: [], total: 0 })
   ),
 
   // ---------------------------------------------------------------------------
@@ -136,6 +146,20 @@ export const handlers = [
   ),
 
   // ---------------------------------------------------------------------------
+  // Client register / login
+  // ---------------------------------------------------------------------------
+  http.post(`${BASE}/clients/register`, () =>
+    HttpResponse.json(
+      { id: "c3", name: "New Corp", email: "new@corp.com", status: "pending" },
+      { status: 201 }
+    )
+  ),
+
+  http.post(`${BASE}/clients/login`, () =>
+    HttpResponse.json({ access_token: "mock-client-token", token_type: "bearer" })
+  ),
+
+  // ---------------------------------------------------------------------------
   // Metrics dashboard (client)
   // ---------------------------------------------------------------------------
   http.get(`${BASE}/metrics/dashboard`, () =>
@@ -146,6 +170,21 @@ export const handlers = [
       total_cost: 12.5,
       billable_requests: 1100,
       non_billable_requests: 150,
+    })
+  ),
+
+  // ---------------------------------------------------------------------------
+  // Metrics (admin)
+  // ---------------------------------------------------------------------------
+  http.get(`${BASE}/metrics/admin`, () =>
+    HttpResponse.json({
+      total_requests: 8400,
+      // error_rate é fração (0.012 = 1.2%) — AdminMetricsPage multiplica por 100
+      error_rate: 0.012,
+      avg_latency_ms: 64.0,
+      total_cost: 87.5,
+      billable_requests: 7800,
+      non_billable_requests: 600,
     })
   ),
 

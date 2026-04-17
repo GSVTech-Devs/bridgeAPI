@@ -6,6 +6,7 @@ const createJestConfig = nextJest({ dir: "./" });
 const config: Config = {
   coverageProvider: "v8",
   testEnvironment: "<rootDir>/jest.environment.ts",
+  testPathIgnorePatterns: ["/node_modules/", "<rootDir>/e2e/"],
   setupFiles: ["<rootDir>/jest.polyfills.ts"],
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
   // until-async is pure ESM — allow Jest to transform it
