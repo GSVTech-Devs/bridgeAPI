@@ -21,11 +21,17 @@ from app.domains.apis.models import (
 )
 
 
-def make_api(status: APIStatus = APIStatus.ACTIVE) -> ExternalAPI:
+def make_api(
+    status: APIStatus = APIStatus.ACTIVE,
+    slug: str | None = None,
+    url_template: str | None = None,
+) -> ExternalAPI:
     return ExternalAPI(
         id=uuid.uuid4(),
         name="Stripe API",
+        slug=slug,
         base_url="https://api.stripe.com",
+        url_template=url_template,
         master_key_encrypted="encrypted-key",
         auth_type=APIAuthType.API_KEY,
         status=status,
@@ -92,6 +98,109 @@ async def test_duplicate_api_name_returns_409(client: AsyncClient) -> None:
             headers=admin_headers(),
         )
     assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_register_api_with_slug_returns_slug_in_response(
+    client: AsyncClient,
+) -> None:
+    api = make_api(slug="finance")
+    with patch(
+        "app.domains.apis.router.register_api",
+        new=AsyncMock(return_value=api),
+    ):
+        response = await client.post(
+            "/apis",
+            json={
+                "name": "Finance API",
+                "slug": "finance",
+                "base_url": "https://api.example.com",
+                "auth_type": "none",
+            },
+            headers=admin_headers(),
+        )
+    assert response.status_code == 201
+    assert response.json()["slug"] == "finance"
+
+
+@pytest.mark.asyncio
+async def test_duplicate_slug_returns_409(client: AsyncClient) -> None:
+    from app.domains.apis.service import DuplicateSlugError
+
+    with patch(
+        "app.domains.apis.router.register_api",
+        new=AsyncMock(side_effect=DuplicateSlugError),
+    ):
+        response = await client.post(
+            "/apis",
+            json={
+                "name": "Finance API",
+                "slug": "taken",
+                "base_url": "https://api.example.com",
+                "auth_type": "none",
+            },
+            headers=admin_headers(),
+        )
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_register_api_with_url_template_returns_template_in_response(
+    client: AsyncClient,
+) -> None:
+    template = "https://api.example.com/v1/{query}/{token}"
+    api = make_api(url_template=template)
+    with patch(
+        "app.domains.apis.router.register_api",
+        new=AsyncMock(return_value=api),
+    ):
+        response = await client.post(
+            "/apis",
+            json={
+                "name": "Templated API",
+                "base_url": "https://api.example.com",
+                "url_template": template,
+                "auth_type": "api_key",
+                "master_key": "sk-secret",
+            },
+            headers=admin_headers(),
+        )
+    assert response.status_code == 201
+    assert response.json()["url_template"] == template
+
+
+@pytest.mark.asyncio
+async def test_url_template_without_query_placeholder_returns_422(
+    client: AsyncClient,
+) -> None:
+    response = await client.post(
+        "/apis",
+        json={
+            "name": "Bad Template",
+            "base_url": "https://api.example.com",
+            "url_template": "https://api.example.com/v1/{token}",
+            "auth_type": "none",
+        },
+        headers=admin_headers(),
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_slug_with_invalid_characters_returns_422(
+    client: AsyncClient,
+) -> None:
+    response = await client.post(
+        "/apis",
+        json={
+            "name": "Bad Slug",
+            "slug": "slug com espaço!",
+            "base_url": "https://api.example.com",
+            "auth_type": "none",
+        },
+        headers=admin_headers(),
+    )
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

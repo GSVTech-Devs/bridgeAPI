@@ -20,10 +20,12 @@ from app.domains.apis.models import (
 from app.domains.apis.service import (
     APINotFoundError,
     DuplicateAPINameError,
+    DuplicateSlugError,
     add_endpoint,
     disable_api,
     enable_api,
     get_api_by_id,
+    get_api_by_slug,
     list_apis,
     list_endpoints_for_api,
     register_api,
@@ -63,6 +65,21 @@ def make_db(scalar_result=None, scalars_result=None, count_result=0) -> AsyncMoc
     execute_result.scalar_one.return_value = count_result
     execute_result.scalars.return_value.all.return_value = scalars_result or []
     db.execute.return_value = execute_result
+    return db
+
+
+def make_db_seq(*scalar_results) -> AsyncMock:
+    """Constrói um mock que retorna resultados diferentes a cada execute() chamado."""
+    db = AsyncMock()
+    db.add = MagicMock()
+    results = []
+    for r in scalar_results:
+        m = MagicMock()
+        m.scalar_one_or_none.return_value = r
+        m.scalar_one.return_value = 0
+        m.scalars.return_value.all.return_value = []
+        results.append(m)
+    db.execute.side_effect = results
     return db
 
 
@@ -205,6 +222,71 @@ async def test_admin_can_enable_api() -> None:
     await enable_api(db, str(api.id))
     assert api.status == APIStatus.ACTIVE
     db.commit.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# register_api — slug
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_register_api_stores_slug() -> None:
+    # name check → None, slug check → None
+    db = make_db_seq(None, None)
+    await register_api(db, name="Finance API", base_url="https://api.example.com", slug="finance")
+    added_api: ExternalAPI = db.add.call_args[0][0]
+    assert added_api.slug == "finance"
+
+
+@pytest.mark.asyncio
+async def test_register_api_without_slug_stores_none() -> None:
+    db = make_db(scalar_result=None)
+    await register_api(db, name="Finance API", base_url="https://api.example.com")
+    added_api: ExternalAPI = db.add.call_args[0][0]
+    assert added_api.slug is None
+
+
+@pytest.mark.asyncio
+async def test_duplicate_slug_raises_error() -> None:
+    existing = make_api()
+    # name check → None (name free), slug check → existing (slug taken)
+    db = make_db_seq(None, existing)
+    with pytest.raises(DuplicateSlugError):
+        await register_api(
+            db, name="New API", base_url="https://api.example.com", slug="taken-slug"
+        )
+
+
+@pytest.mark.asyncio
+async def test_duplicate_name_checked_before_slug() -> None:
+    existing = make_api()
+    # name check → existing (name taken) — slug check never reached
+    db = make_db_seq(existing)
+    with pytest.raises(DuplicateAPINameError):
+        await register_api(
+            db, name="Stripe API", base_url="https://api.example.com", slug="finance"
+        )
+
+
+# ---------------------------------------------------------------------------
+# get_api_by_slug
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_api_by_slug_returns_api() -> None:
+    api = make_api()
+    api.slug = "finance"
+    db = make_db(scalar_result=api)
+    result = await get_api_by_slug(db, "finance")
+    assert result is api
+
+
+@pytest.mark.asyncio
+async def test_get_api_by_slug_raises_not_found() -> None:
+    db = make_db(scalar_result=None)
+    with pytest.raises(APINotFoundError):
+        await get_api_by_slug(db, "nonexistent")
 
 
 @pytest.mark.asyncio
