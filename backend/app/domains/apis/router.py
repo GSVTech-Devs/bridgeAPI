@@ -41,7 +41,7 @@ async def create_api(
         api = await register_api(
             db,
             name=body.name,
-            base_url=body.base_url,
+            base_url=str(body.base_url),
             master_key=body.master_key,
             auth_type=body.auth_type,
         )
