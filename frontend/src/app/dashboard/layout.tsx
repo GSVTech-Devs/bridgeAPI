@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { clearAuth } from "@/lib/auth";
+import { clearAuth, getToken } from "@/lib/auth";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
@@ -13,6 +14,12 @@ const navItems = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+
+  useEffect(() => {
+    if (!getToken()) {
+      router.push("/login");
+    }
+  }, [router]);
 
   function handleLogout() {
     clearAuth();

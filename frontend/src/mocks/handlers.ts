@@ -6,7 +6,7 @@ const BASE = "http://localhost:8000";
 // Auth
 // ---------------------------------------------------------------------------
 export const handlers = [
-  http.post(`${BASE}/login`, () =>
+  http.post(`${BASE}/auth/login`, () =>
     HttpResponse.json({ access_token: "mock-token", token_type: "bearer" })
   ),
 

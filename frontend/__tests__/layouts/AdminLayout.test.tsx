@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import AdminLayout from "../../src/app/admin/layout";
 
 const mockPush = jest.fn();
@@ -28,12 +28,14 @@ jest.mock("next/link", () => {
 
 jest.mock("@/lib/auth", () => ({
   clearAuth: jest.fn(),
+  getToken: jest.fn().mockReturnValue("valid-token"),
 }));
 
 beforeEach(() => {
   mockPush.mockClear();
-  const { clearAuth } = jest.requireMock("@/lib/auth");
+  const { clearAuth, getToken } = jest.requireMock("@/lib/auth");
   (clearAuth as jest.Mock).mockClear();
+  (getToken as jest.Mock).mockReset().mockReturnValue("valid-token");
 });
 
 describe("AdminLayout", () => {
@@ -83,5 +85,19 @@ describe("AdminLayout", () => {
     // pathname = "/admin", so "Dashboard" link should have active styling
     const dashboardLink = screen.getByRole("link", { name: /dashboard/i });
     expect(dashboardLink).toHaveClass("text-primary");
+  });
+
+  it("redirects to /login on mount when no token is stored", async () => {
+    const { getToken } = jest.requireMock("@/lib/auth");
+    (getToken as jest.Mock).mockReturnValue(null);
+    render(<AdminLayout><div /></AdminLayout>);
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/login");
+    });
+  });
+
+  it("does not redirect when token is present", () => {
+    render(<AdminLayout><div /></AdminLayout>);
+    expect(mockPush).not.toHaveBeenCalledWith("/login");
   });
 });

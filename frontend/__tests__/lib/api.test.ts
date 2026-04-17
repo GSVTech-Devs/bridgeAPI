@@ -1,6 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { server } from "../../src/mocks/server";
 import { apiFetch, login } from "../../src/lib/api";
+import { clearAuth } from "../../src/lib/auth";
 
 const BASE = "http://localhost:8000";
 
@@ -50,6 +51,53 @@ describe("apiFetch", () => {
       apiFetch("/login", { method: "POST", body: JSON.stringify({}) })
     ).rejects.toThrow("Invalid credentials");
   });
+
+  describe("401 with existing token (expired session)", () => {
+    const originalLocation = window.location;
+
+    beforeEach(() => {
+      Object.defineProperty(window, "location", {
+        value: { href: "" },
+        writable: true,
+        configurable: true,
+      });
+    });
+
+    afterEach(() => {
+      server.resetHandlers();
+      Object.defineProperty(window, "location", {
+        value: originalLocation,
+        writable: true,
+        configurable: true,
+      });
+      localStorage.removeItem("bridge_token");
+      localStorage.removeItem("bridge_role");
+    });
+
+    it("clears auth and redirects to /login when 401 with token present", async () => {
+      localStorage.setItem("bridge_token", "expired-token");
+      localStorage.setItem("bridge_role", "admin");
+      server.use(
+        http.get(`${BASE}/protected`, () =>
+          HttpResponse.json({ detail: "Not authenticated" }, { status: 401 })
+        )
+      );
+      await apiFetch("/protected").catch(() => {});
+      expect(localStorage.getItem("bridge_token")).toBeNull();
+      expect(window.location.href).toBe("/login");
+    });
+
+    it("does not redirect to /login on 401 when no token (wrong credentials)", async () => {
+      localStorage.removeItem("bridge_token");
+      server.use(
+        http.post(`${BASE}/auth/login`, () =>
+          HttpResponse.json({ detail: "Invalid credentials" }, { status: 401 })
+        )
+      );
+      await apiFetch("/auth/login", { method: "POST" }).catch(() => {});
+      expect(window.location.href).not.toBe("/login");
+    });
+  });
 });
 
 describe("login", () => {
@@ -60,7 +108,7 @@ describe("login", () => {
 
   it("throws on invalid credentials", async () => {
     server.use(
-      http.post(`${BASE}/login`, () =>
+      http.post(`${BASE}/auth/login`, () =>
         HttpResponse.json({ detail: "Invalid credentials" }, { status: 401 })
       )
     );

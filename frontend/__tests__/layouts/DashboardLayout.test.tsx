@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import DashboardLayout from "../../src/app/dashboard/layout";
 
 const mockPush = jest.fn();
@@ -28,12 +28,14 @@ jest.mock("next/link", () => {
 
 jest.mock("@/lib/auth", () => ({
   clearAuth: jest.fn(),
+  getToken: jest.fn().mockReturnValue("valid-token"),
 }));
 
 beforeEach(() => {
   mockPush.mockClear();
-  const { clearAuth } = jest.requireMock("@/lib/auth");
+  const { clearAuth, getToken } = jest.requireMock("@/lib/auth");
   (clearAuth as jest.Mock).mockClear();
+  (getToken as jest.Mock).mockReset().mockReturnValue("valid-token");
 });
 
 describe("DashboardLayout", () => {
@@ -89,5 +91,19 @@ describe("DashboardLayout", () => {
     expect(
       screen.getByPlaceholderText(/search resources/i)
     ).toBeInTheDocument();
+  });
+
+  it("redirects to /login on mount when no token is stored", async () => {
+    const { getToken } = jest.requireMock("@/lib/auth");
+    (getToken as jest.Mock).mockReturnValue(null);
+    render(<DashboardLayout><div /></DashboardLayout>);
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/login");
+    });
+  });
+
+  it("does not redirect when token is present", () => {
+    render(<DashboardLayout><div /></DashboardLayout>);
+    expect(mockPush).not.toHaveBeenCalledWith("/login");
   });
 });

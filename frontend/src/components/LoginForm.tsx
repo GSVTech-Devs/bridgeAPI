@@ -7,8 +7,10 @@ import { login, clientLogin } from "@/lib/api";
 import { saveAuth } from "@/lib/auth";
 
 function decodeJwtPayload(token: string): { sub: string; role: string } {
-  const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-  return JSON.parse(atob(base64));
+  const base64Url = token.split(".")[1] ?? "";
+  const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+  return JSON.parse(atob(padded));
 }
 
 export default function LoginForm() {
