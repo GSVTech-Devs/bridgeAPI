@@ -182,6 +182,7 @@ export function getKeys() {
   return apiFetch<{
     items: {
       id: string;
+      api_id: string | null;
       name: string;
       key_prefix: string;
       status: string;
@@ -191,9 +192,10 @@ export function getKeys() {
   }>("/keys");
 }
 
-export function createKey(name: string) {
+export function createKey(name: string, apiId: string) {
   return apiFetch<{
     id: string;
+    api_id: string;
     name: string;
     key_prefix: string;
     secret: string;
@@ -201,7 +203,7 @@ export function createKey(name: string) {
     created_at: string;
   }>("/keys", {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, api_id: apiId }),
   });
 }
 

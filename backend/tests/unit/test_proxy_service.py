@@ -36,10 +36,12 @@ from app.domains.proxy.service import (
 def make_api_key(
     status: APIKeyStatus = APIKeyStatus.ACTIVE,
     client_id: uuid.UUID | None = None,
+    api_id: uuid.UUID | None = None,
 ) -> APIKey:
     return APIKey(
         id=uuid.uuid4(),
         client_id=client_id or uuid.uuid4(),
+        api_id=api_id,
         name="Test Key",
         key_prefix="abcd1234",
         key_secret_hash="hashed",
@@ -106,6 +108,53 @@ def make_db(*results: MagicMock) -> AsyncMock:
     db.add = MagicMock()
     db.execute.side_effect = list(results)
     return db
+
+
+# ---------------------------------------------------------------------------
+# validate_request — api_id bound to key
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_key_bound_to_different_api_raises_permission_denied() -> None:
+    bound_api_id = uuid.uuid4()
+    requested_api_id = uuid.uuid4()  # different
+    api_key = make_api_key(api_id=bound_api_id)
+    active_client = make_client()
+    db = make_db(make_execute_result(scalar_result=active_client))
+
+    with patch(
+        "app.domains.proxy.service.authenticate_api_key",
+        new=AsyncMock(return_value=api_key),
+    ):
+        with pytest.raises(PermissionDeniedError):
+            await validate_request(db, "brg_xxx_yyy", str(requested_api_id))
+
+
+@pytest.mark.asyncio
+async def test_key_bound_to_correct_api_passes_api_id_check() -> None:
+    api_id = uuid.uuid4()
+    api_key = make_api_key(api_id=api_id)
+    active_client = make_client()
+    active_api = make_api()
+    active_api.id = api_id
+    permission = make_permission(client_id=active_client.id, api_id=api_id)
+    db = make_db(
+        make_execute_result(scalar_result=active_client),
+        make_execute_result(scalar_result=permission),
+    )
+
+    with patch(
+        "app.domains.proxy.service.authenticate_api_key",
+        new=AsyncMock(return_value=api_key),
+    ):
+        with patch(
+            "app.domains.proxy.service.get_api_by_id",
+            new=AsyncMock(return_value=active_api),
+        ):
+            result_key, _, _ = await validate_request(db, "brg_xxx_yyy", str(api_id))
+
+    assert result_key is api_key
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,8 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
+from typing import Optional
+
 from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,6 +22,9 @@ class APIKey(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id"), index=True)
+    api_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("external_apis.id"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(255))
     key_prefix: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     key_secret_hash: Mapped[str] = mapped_column(String(255))

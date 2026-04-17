@@ -13,10 +13,14 @@ from app.core.security import create_access_token
 from app.domains.keys.models import APIKey, APIKeyStatus
 
 
-def make_api_key(status: APIKeyStatus = APIKeyStatus.ACTIVE) -> APIKey:
+def make_api_key(
+    status: APIKeyStatus = APIKeyStatus.ACTIVE,
+    api_id: uuid.UUID | None = None,
+) -> APIKey:
     return APIKey(
         id=uuid.uuid4(),
         client_id=uuid.uuid4(),
+        api_id=api_id,
         name="Production Key",
         key_prefix="abcd1234",
         key_secret_hash="hashed-secret",
@@ -37,32 +41,49 @@ def admin_headers() -> dict:
 
 @pytest.mark.asyncio
 async def test_client_can_create_api_key(client: AsyncClient) -> None:
-    api_key = make_api_key()
+    api_id = uuid.uuid4()
+    api_key = make_api_key(api_id=api_id)
     with patch(
         "app.domains.keys.router.create_api_key",
         new=AsyncMock(return_value=(api_key, "brg_abcd1234_secret-value")),
     ):
         response = await client.post(
             "/keys",
-            json={"name": "Production Key"},
+            json={"name": "Production Key", "api_id": str(api_id)},
             headers=client_headers(),
         )
     assert response.status_code == 201
     body = response.json()
     assert body["name"] == "Production Key"
     assert body["api_key"] == "brg_abcd1234_secret-value"
+    assert body["api_id"] == str(api_id)
+
+
+@pytest.mark.asyncio
+async def test_create_key_passes_api_id_to_service(client: AsyncClient) -> None:
+    api_id = uuid.uuid4()
+    api_key = make_api_key(api_id=api_id)
+    mock_create = AsyncMock(return_value=(api_key, "brg_abcd1234_secret"))
+    with patch("app.domains.keys.router.create_api_key", new=mock_create):
+        await client.post(
+            "/keys",
+            json={"name": "My Key", "api_id": str(api_id)},
+            headers=client_headers(),
+        )
+    _, call_kwargs = mock_create.call_args
+    assert call_kwargs["api_id"] == api_id
 
 
 @pytest.mark.asyncio
 async def test_api_key_secret_shown_only_at_creation(client: AsyncClient) -> None:
-    api_key = make_api_key()
+    api_key = make_api_key(api_id=uuid.uuid4())
     with patch(
         "app.domains.keys.router.create_api_key",
         new=AsyncMock(return_value=(api_key, "brg_abcd1234_secret-value")),
     ):
         create_response = await client.post(
             "/keys",
-            json={"name": "Production Key"},
+            json={"name": "Production Key", "api_id": str(api_key.api_id)},
             headers=client_headers(),
         )
     with patch(

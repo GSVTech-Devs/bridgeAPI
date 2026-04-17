@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -10,10 +11,12 @@ from app.domains.keys.models import APIKeyStatus
 
 class APIKeyCreateRequest(BaseModel):
     name: str
+    api_id: uuid.UUID
 
 
 class APIKeyResponse(BaseModel):
     id: uuid.UUID
+    api_id: Optional[uuid.UUID]
     name: str
     key_prefix: str
     status: APIKeyStatus

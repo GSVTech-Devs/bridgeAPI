@@ -119,6 +119,7 @@ export const handlers = [
       items: [
         {
           id: "k1",
+          api_id: "a1",
           name: "prod-key",
           key_prefix: "brg_abc",
           status: "active",
@@ -133,6 +134,7 @@ export const handlers = [
     HttpResponse.json(
       {
         id: "k2",
+        api_id: "a1",
         name: "new-key",
         key_prefix: "brg_xyz",
         secret: "brg_xyz_full-secret",

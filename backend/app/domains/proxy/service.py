@@ -53,6 +53,12 @@ async def validate_request(
     if client is None or client.status != ClientStatus.ACTIVE:
         raise InactiveClientError(f"Client is not active: {api_key.client_id}")
 
+    # 2b. Se a chave estiver vinculada a uma API específica, verifica correspondência
+    if api_key.api_id is not None and str(api_key.api_id) != api_id:
+        raise PermissionDeniedError(
+            f"Key is bound to API {api_key.api_id}, not {api_id}"
+        )
+
     # 3. Valida a API upstream
     api = await get_api_by_id(db, api_id)
     if api.status != APIStatus.ACTIVE:

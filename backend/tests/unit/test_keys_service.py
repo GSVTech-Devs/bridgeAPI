@@ -14,6 +14,7 @@ from app.domains.clients.service import ClientNotFoundError
 from app.domains.keys.models import APIKey, APIKeyStatus
 from app.domains.keys.service import (
     APIKeyNotFoundError,
+    UnauthorizedApiError,
     authenticate_api_key,
     create_api_key,
     list_api_keys,
@@ -37,6 +38,7 @@ def make_client(
 
 def make_api_key(
     client_id: uuid.UUID | None = None,
+    api_id: uuid.UUID | None = None,
     status: APIKeyStatus = APIKeyStatus.ACTIVE,
     prefix: str = "abcd1234",
     secret_hash: str = "hashed-secret",
@@ -44,6 +46,7 @@ def make_api_key(
     return APIKey(
         id=uuid.uuid4(),
         client_id=client_id or uuid.uuid4(),
+        api_id=api_id,
         name="Production Key",
         key_prefix=prefix,
         key_secret_hash=secret_hash,
@@ -72,11 +75,24 @@ def make_db(*results: MagicMock) -> AsyncMock:
 @pytest.mark.asyncio
 async def test_client_can_create_api_key() -> None:
     client = make_client()
-    db = make_db(make_execute_result(scalar_result=client))
+    api_id = uuid.uuid4()
+    from app.domains.permissions.models import Permission
+    permission = Permission(
+        id=uuid.uuid4(),
+        client_id=client.id,
+        api_id=api_id,
+        granted_at=datetime.now(timezone.utc),
+        revoked_at=None,
+    )
+    db = make_db(
+        make_execute_result(scalar_result=client),
+        make_execute_result(scalar_result=permission),
+    )
 
-    api_key, plain_secret = await create_api_key(db, client.email, "Production Key")
+    api_key, plain_secret = await create_api_key(db, client.email, "Production Key", api_id=api_id)
 
     assert api_key.client_id == client.id
+    assert api_key.api_id == api_id
     assert api_key.name == "Production Key"
     assert plain_secret.startswith("brg_")
     db.add.assert_called_once()
@@ -85,11 +101,33 @@ async def test_client_can_create_api_key() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_api_key_for_api_without_permission_raises() -> None:
+    client = make_client()
+    api_id = uuid.uuid4()
+    db = make_db(
+        make_execute_result(scalar_result=client),
+        make_execute_result(scalar_result=None),  # no permission
+    )
+
+    with pytest.raises(UnauthorizedApiError):
+        await create_api_key(db, client.email, "Key", api_id=api_id)
+
+
+@pytest.mark.asyncio
 async def test_api_key_secret_is_hashed_in_db() -> None:
     client = make_client()
-    db = make_db(make_execute_result(scalar_result=client))
+    api_id = uuid.uuid4()
+    from app.domains.permissions.models import Permission
+    permission = Permission(
+        id=uuid.uuid4(), client_id=client.id, api_id=api_id,
+        granted_at=datetime.now(timezone.utc), revoked_at=None,
+    )
+    db = make_db(
+        make_execute_result(scalar_result=client),
+        make_execute_result(scalar_result=permission),
+    )
 
-    api_key, plain_secret = await create_api_key(db, client.email, "Production Key")
+    api_key, plain_secret = await create_api_key(db, client.email, "Production Key", api_id=api_id)
 
     assert api_key.key_secret_hash != plain_secret
 
@@ -97,13 +135,21 @@ async def test_api_key_secret_is_hashed_in_db() -> None:
 @pytest.mark.asyncio
 async def test_key_has_unique_prefix_and_secret() -> None:
     client = make_client()
+    api_id = uuid.uuid4()
+    from app.domains.permissions.models import Permission
+    permission = Permission(
+        id=uuid.uuid4(), client_id=client.id, api_id=api_id,
+        granted_at=datetime.now(timezone.utc), revoked_at=None,
+    )
     db = make_db(
         make_execute_result(scalar_result=client),
+        make_execute_result(scalar_result=permission),
         make_execute_result(scalar_result=client),
+        make_execute_result(scalar_result=permission),
     )
 
-    first_key, first_secret = await create_api_key(db, client.email, "Key 1")
-    second_key, second_secret = await create_api_key(db, client.email, "Key 2")
+    first_key, first_secret = await create_api_key(db, client.email, "Key 1", api_id=api_id)
+    second_key, second_secret = await create_api_key(db, client.email, "Key 2", api_id=api_id)
 
     assert first_key.key_prefix != second_key.key_prefix
     assert first_secret != second_secret
@@ -178,7 +224,7 @@ async def test_create_api_key_for_inactive_client_raises() -> None:
     db = make_db(make_execute_result(scalar_result=pending_client))
 
     with pytest.raises(ClientNotFoundError):
-        await create_api_key(db, pending_client.email, "Production Key")
+        await create_api_key(db, pending_client.email, "Production Key", api_id=uuid.uuid4())
 
 
 # ---------------------------------------------------------------------------

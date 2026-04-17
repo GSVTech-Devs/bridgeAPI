@@ -16,6 +16,7 @@ from app.domains.keys.schemas import (
 )
 from app.domains.keys.service import (
     APIKeyNotFoundError,
+    UnauthorizedApiError,
     create_api_key,
     list_api_keys,
     revoke_api_key,
@@ -34,7 +35,15 @@ async def create(
     db: AsyncSession = Depends(get_db),
     current_client: MeResponse = Depends(get_current_client),
 ) -> APIKeyCreateResponse:
-    api_key, plain_secret = await create_api_key(db, current_client.email, body.name)
+    try:
+        api_key, plain_secret = await create_api_key(
+            db, current_client.email, body.name, api_id=body.api_id
+        )
+    except UnauthorizedApiError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No active permission for this API",
+        )
     return APIKeyCreateResponse(
         **APIKeyResponse.model_validate(api_key).model_dump(),
         api_key=plain_secret,
