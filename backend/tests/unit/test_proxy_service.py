@@ -22,6 +22,7 @@ from app.domains.proxy.service import (
     InvalidKeyError,
     PermissionDeniedError,
     RateLimitExceededError,
+    _build_url_from_template,
     build_upstream_headers,
     forward_to_upstream,
     validate_request,
@@ -62,12 +63,14 @@ def make_api(
     status: APIStatus = APIStatus.ACTIVE,
     auth_type: APIAuthType = APIAuthType.API_KEY,
     master_key: str = "sk-secret-123",
+    url_template: str | None = None,
 ) -> ExternalAPI:
     encrypted = encrypt_value(master_key) if master_key else None
     return ExternalAPI(
         id=uuid.uuid4(),
         name="Stripe API",
         base_url="https://api.stripe.com",
+        url_template=url_template,
         master_key_encrypted=encrypted,
         auth_type=auth_type,
         status=status,
@@ -413,6 +416,85 @@ async def test_forward_upstream_sends_correct_method_and_body() -> None:
 
     assert captured["method"] == "POST"
     assert captured["body"] == b'{"amount": 1000}'
+
+
+# ---------------------------------------------------------------------------
+# url_template — substituição de placeholders
+# ---------------------------------------------------------------------------
+
+
+def test_build_url_from_template_substitutes_query_and_token() -> None:
+    api = make_api(master_key="my-token-abc", url_template="https://api.example.com/v1/{query}/{token}")
+    url = _build_url_from_template(api, "search/bitcoin")
+    assert url == "https://api.example.com/v1/search/bitcoin/my-token-abc"
+
+
+def test_build_url_from_template_strips_leading_slash_from_query() -> None:
+    api = make_api(master_key="tok", url_template="https://api.example.com/v1/{query}")
+    url = _build_url_from_template(api, "/some/path")
+    assert url == "https://api.example.com/v1/some/path"
+
+
+def test_build_url_from_template_token_before_query() -> None:
+    api = make_api(master_key="KEY123", url_template="https://api.example.com/{token}/v1/{query}")
+    url = _build_url_from_template(api, "data")
+    assert url == "https://api.example.com/KEY123/v1/data"
+
+
+def test_build_upstream_headers_skips_header_injection_when_token_in_template() -> None:
+    api = make_api(
+        auth_type=APIAuthType.API_KEY,
+        master_key="sk-secret",
+        url_template="https://api.example.com/v1/{query}/{token}",
+    )
+    headers = build_upstream_headers(api, {"accept": "application/json"})
+    assert "x-api-key" not in headers
+    assert "authorization" not in headers
+    assert headers["accept"] == "application/json"
+
+
+def test_build_upstream_headers_injects_header_when_no_token_in_template() -> None:
+    api = make_api(
+        auth_type=APIAuthType.API_KEY,
+        master_key="sk-secret",
+        url_template="https://api.example.com/v1/{query}",
+    )
+    headers = build_upstream_headers(api, {})
+    assert headers["x-api-key"] == "sk-secret"
+
+
+@pytest.mark.asyncio
+async def test_forward_upstream_uses_template_when_set() -> None:
+    api = make_api(
+        master_key="mytoken",
+        url_template="https://custom.api.com/{query}/{token}",
+    )
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, text="ok")
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    await forward_to_upstream(http_client, api, "search/bitcoin", "GET", {}, {}, None)
+
+    assert captured["url"] == "https://custom.api.com/search/bitcoin/mytoken"
+
+
+@pytest.mark.asyncio
+async def test_forward_upstream_uses_base_url_when_no_template() -> None:
+    api = make_api()
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, text="ok")
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    await forward_to_upstream(http_client, api, "v1/charges", "GET", {}, {}, None)
+
+    assert "api.stripe.com" in captured["url"]
+    assert "v1/charges" in captured["url"]
 
 
 @pytest.mark.asyncio

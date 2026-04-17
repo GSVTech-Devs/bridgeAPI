@@ -44,6 +44,7 @@ async def create_api(
             base_url=str(body.base_url),
             master_key=body.master_key,
             auth_type=body.auth_type,
+            url_template=body.url_template,
         )
     except DuplicateAPINameError:
         raise HTTPException(

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import AnyHttpUrl, BaseModel, Field, field_validator
+from pydantic import AnyHttpUrl, BaseModel, Field, field_validator, model_validator
 
 from app.domains.apis.models import APIAuthType, HTTPMethod
 
@@ -12,14 +12,25 @@ from app.domains.apis.models import APIAuthType, HTTPMethod
 class APICreateRequest(BaseModel):
     name: str
     base_url: AnyHttpUrl
+    url_template: Optional[str] = None
     master_key: Optional[str] = None
     auth_type: APIAuthType = APIAuthType.NONE
+
+    @model_validator(mode="after")
+    def validate_url_template(self) -> "APICreateRequest":
+        if self.url_template is not None:
+            if "{query}" not in self.url_template:
+                raise ValueError("url_template must contain the {query} placeholder")
+            if not self.url_template.startswith(("http://", "https://")):
+                raise ValueError("url_template must be a full URL starting with http:// or https://")
+        return self
 
 
 class APIResponse(BaseModel):
     id: uuid.UUID
     name: str
     base_url: str
+    url_template: Optional[str] = None
     auth_type: str
     status: str
     created_at: datetime
@@ -56,6 +67,7 @@ class APIDetailResponse(BaseModel):
     id: uuid.UUID
     name: str
     base_url: str
+    url_template: Optional[str] = None
     auth_type: str
     status: str
     created_at: datetime

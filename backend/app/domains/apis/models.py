@@ -42,6 +42,7 @@ class ExternalAPI(Base):
     master_key_encrypted: Mapped[Optional[str]] = mapped_column(
         String(2048), nullable=True
     )
+    url_template: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
     auth_type: Mapped[str] = mapped_column(String(20), default=APIAuthType.NONE)
     status: Mapped[str] = mapped_column(
         String(20), default=APIStatus.ACTIVE, index=True

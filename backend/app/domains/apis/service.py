@@ -27,6 +27,7 @@ async def register_api(
     base_url: str,
     master_key: str | None = None,
     auth_type: APIAuthType = APIAuthType.NONE,
+    url_template: str | None = None,
 ) -> ExternalAPI:
     existing = await db.execute(select(ExternalAPI).where(ExternalAPI.name == name))
     if existing.scalar_one_or_none() is not None:
@@ -36,6 +37,7 @@ async def register_api(
     api = ExternalAPI(
         name=name,
         base_url=base_url,
+        url_template=url_template,
         master_key_encrypted=encrypted,
         auth_type=auth_type,
     )

@@ -1,3 +1,5 @@
+import { clearAuth } from "@/lib/auth";
+
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -20,6 +22,10 @@ export async function apiFetch<T>(
   });
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== "undefined" && token) {
+      clearAuth();
+      window.location.href = "/login";
+    }
     const error = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(error.detail ?? "Request failed");
   }
@@ -95,11 +101,12 @@ export function getApis() {
 export function createApi(data: {
   name: string;
   base_url: string;
+  url_template?: string;
   auth_type: string;
   master_key: string;
   description?: string;
 }) {
-  return apiFetch<{ id: string; name: string; base_url: string; status: string; auth_type: string }>(
+  return apiFetch<{ id: string; name: string; base_url: string; url_template?: string; status: string; auth_type: string }>(
     "/apis",
     { method: "POST", body: JSON.stringify(data) }
   );

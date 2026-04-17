@@ -118,11 +118,18 @@ def build_upstream_headers(
     api: ExternalAPI,
     incoming_headers: dict,
 ) -> dict:
-    """Filtra headers de entrada e injeta credencial da API upstream."""
+    """Filtra headers de entrada e injeta credencial da API upstream.
+
+    Se url_template contém {token}, a credencial já vai na URL — não injeta no header.
+    """
     _STRIP = {"x-bridge-key", "host", "content-length", "transfer-encoding"}
     headers = {k: v for k, v in incoming_headers.items() if k.lower() not in _STRIP}
 
     if api.master_key_encrypted is None:
+        return headers
+
+    # Token já está no URL template — não duplicar no header
+    if api.url_template and "{token}" in api.url_template:
         return headers
 
     master_key = decrypt_value(api.master_key_encrypted)
@@ -137,6 +144,19 @@ def build_upstream_headers(
     return headers
 
 
+def _build_url_from_template(api: ExternalAPI, path: str) -> str:
+    """Substitui {query} e {token} no url_template."""
+    master_key = ""
+    if api.master_key_encrypted:
+        master_key = decrypt_value(api.master_key_encrypted)
+
+    return (
+        api.url_template
+        .replace("{query}", path.lstrip("/"))
+        .replace("{token}", master_key)
+    )
+
+
 async def forward_to_upstream(
     http_client: httpx.AsyncClient,
     api: ExternalAPI,
@@ -146,9 +166,12 @@ async def forward_to_upstream(
     params: dict,
     content: Optional[bytes],
 ) -> httpx.Response:
-    base = str(api.base_url).rstrip("/")
-    clean_path = path.lstrip("/")
-    url = f"{base}/{clean_path}" if clean_path else base
+    if api.url_template:
+        url = _build_url_from_template(api, path)
+    else:
+        base = str(api.base_url).rstrip("/")
+        clean_path = path.lstrip("/")
+        url = f"{base}/{clean_path}" if clean_path else base
 
     response = await http_client.request(
         method=method,

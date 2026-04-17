@@ -1,11 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getApis, createApi, enableApi, disableApi } from "@/lib/api";
 
-type Api = { id: string; name: string; base_url: string; status: string; auth_type: string };
+type Api = { id: string; name: string; base_url: string; url_template?: string; status: string; auth_type: string };
 
-const initialForm = { name: "", base_url: "", auth_type: "api_key", master_key: "", description: "" };
+const initialForm = {
+  name: "",
+  base_url: "",
+  url_template: "",
+  auth_type: "api_key",
+  master_key: "",
+  description: "",
+};
 
 function Spinner() {
   return (
@@ -15,6 +22,133 @@ function Spinner() {
         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
       </svg>
       Carregando…
+    </div>
+  );
+}
+
+/** Renders a url_template string with {query} and {token} as colored badges. */
+function TemplatePreview({ template }: { template: string }) {
+  if (!template) return null;
+
+  const parts = template.split(/(\{query\}|\{token\})/g);
+  return (
+    <span className="font-mono text-xs break-all">
+      {parts.map((part, i) => {
+        if (part === "{query}") {
+          return (
+            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-primary/15 text-primary font-bold">
+              QUERY
+            </span>
+          );
+        }
+        if (part === "{token}") {
+          return (
+            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-bold">
+              TOKEN
+            </span>
+          );
+        }
+        return <span key={i} className="text-on-surface-variant">{part}</span>;
+      })}
+    </span>
+  );
+}
+
+function UrlTemplateBuilder({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function insertPlaceholder(placeholder: string) {
+    const el = inputRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? value.length;
+    const end = el.selectionEnd ?? value.length;
+    const next = value.slice(0, start) + placeholder + value.slice(end);
+    onChange(next);
+    // Restore cursor after placeholder
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(start + placeholder.length, start + placeholder.length);
+    });
+  }
+
+  const hasQuery = value.includes("{query}");
+  const hasToken = value.includes("{token}");
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <input
+          ref={inputRef}
+          className="flex-1 bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none font-mono text-sm"
+          placeholder="https://api.example.com/v1/{query}/{token}"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-on-surface-variant font-medium">Inserir:</span>
+        <button
+          type="button"
+          onClick={() => insertPlaceholder("{query}")}
+          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+            hasQuery
+              ? "bg-primary/10 text-primary cursor-default"
+              : "bg-primary/10 text-primary hover:bg-primary/20"
+          }`}
+        >
+          <span className="material-symbols-outlined text-[14px]">search</span>
+          {"{query}"}
+          {hasQuery && <span className="material-symbols-outlined text-[14px]">check</span>}
+        </button>
+        <button
+          type="button"
+          onClick={() => insertPlaceholder("{token}")}
+          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+            hasToken
+              ? "bg-amber-100 text-amber-700 cursor-default"
+              : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+          }`}
+        >
+          <span className="material-symbols-outlined text-[14px]">vpn_key</span>
+          {"{token}"}
+          {hasToken && <span className="material-symbols-outlined text-[14px]">check</span>}
+        </button>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="ml-auto text-xs text-on-surface-variant hover:text-error transition-colors"
+          >
+            Limpar template
+          </button>
+        )}
+      </div>
+
+      {value && (
+        <div className="bg-surface-container-low rounded-xl px-4 py-3 flex items-start gap-2">
+          <span className="material-symbols-outlined text-[16px] text-on-surface-variant mt-0.5 shrink-0">link</span>
+          <TemplatePreview template={value} />
+        </div>
+      )}
+
+      {value && !hasQuery && (
+        <p className="text-xs text-error">
+          O template deve conter o placeholder <code className="font-bold">{"{query}"}</code>.
+        </p>
+      )}
+
+      {hasToken && (
+        <p className="text-xs text-on-surface-variant">
+          O token será inserido diretamente na URL — não será enviado como header de autenticação.
+        </p>
+      )}
     </div>
   );
 }
@@ -65,7 +199,11 @@ export default function ApisPage() {
     setFormLoading(true);
     setFormError(null);
     try {
-      const api = await createApi(form);
+      const payload = {
+        ...form,
+        url_template: form.url_template || undefined,
+      };
+      const api = await createApi(payload);
       setApis((prev) => [...prev, api]);
       setForm(initialForm);
       setShowForm(false);
@@ -121,55 +259,81 @@ export default function ApisPage() {
               </div>
             )}
 
-            <form onSubmit={handleCreate} className="grid grid-cols-2 gap-x-10 gap-y-6">
-              <div className="space-y-2">
-                <label className="block text-sm font-bold text-on-surface-variant">API Name</label>
-                <input
-                  className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
-                  placeholder="e.g. Real-Time Finance Connector"
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-bold text-on-surface-variant">Endpoint URL</label>
-                <input
-                  className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
-                  placeholder="https://api.provider.com/v1"
-                  value={form.base_url}
-                  onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-bold text-on-surface-variant">Auth Type</label>
-                <select
-                  className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
-                  value={form.auth_type}
-                  onChange={(e) => setForm((f) => ({ ...f, auth_type: e.target.value }))}
-                >
-                  <option value="api_key">API Key</option>
-                  <option value="bearer">Bearer Token</option>
-                  <option value="basic">Basic Auth</option>
-                  <option value="none">Sem autenticação</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-bold text-on-surface-variant">Master Key / Token</label>
-                <div className="relative">
-                  <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">vpn_key</span>
+            <form onSubmit={handleCreate} className="space-y-6">
+              {/* Row 1: name + base_url */}
+              <div className="grid grid-cols-2 gap-x-10">
+                <div className="space-y-2">
+                  <label className="block text-sm font-bold text-on-surface-variant">API Name</label>
                   <input
-                    className="w-full bg-surface-container-low border-none rounded-xl py-4 pl-12 pr-5 text-on-surface focus:ring-2 focus:ring-primary-container transition-all outline-none font-mono text-sm"
-                    type="password"
-                    placeholder="••••••••••••••••"
-                    value={form.master_key}
-                    onChange={(e) => setForm((f) => ({ ...f, master_key: e.target.value }))}
+                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
+                    placeholder="e.g. Real-Time Finance Connector"
+                    value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-bold text-on-surface-variant">Base URL</label>
+                  <input
+                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
+                    placeholder="https://api.provider.com/v1"
+                    value={form.base_url}
+                    onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
                     required
                   />
                 </div>
               </div>
-              <div className="col-span-2 space-y-2">
+
+              {/* Row 2: auth type + master key */}
+              <div className="grid grid-cols-2 gap-x-10">
+                <div className="space-y-2">
+                  <label className="block text-sm font-bold text-on-surface-variant">Auth Type</label>
+                  <select
+                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
+                    value={form.auth_type}
+                    onChange={(e) => setForm((f) => ({ ...f, auth_type: e.target.value }))}
+                  >
+                    <option value="api_key">API Key</option>
+                    <option value="bearer">Bearer Token</option>
+                    <option value="basic">Basic Auth</option>
+                    <option value="none">Sem autenticação</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-bold text-on-surface-variant">Master Key / Token</label>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">vpn_key</span>
+                    <input
+                      className="w-full bg-surface-container-low border-none rounded-xl py-4 pl-12 pr-5 text-on-surface focus:ring-2 focus:ring-primary-container transition-all outline-none font-mono text-sm"
+                      type="password"
+                      placeholder="••••••••••••••••"
+                      value={form.master_key}
+                      onChange={(e) => setForm((f) => ({ ...f, master_key: e.target.value }))}
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* URL Template builder */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <label className="block text-sm font-bold text-on-surface-variant">URL Template</label>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">opcional</span>
+                </div>
+                <p className="text-xs text-on-surface-variant">
+                  Configure onde <code className="text-primary font-bold">{"{query}"}</code> (caminho da requisição) e{" "}
+                  <code className="text-amber-600 font-bold">{"{token}"}</code> (chave da API) aparecem na URL.
+                  Se não informado, o caminho é concatenado à Base URL e o token vai no header.
+                </p>
+                <UrlTemplateBuilder
+                  value={form.url_template}
+                  onChange={(v) => setForm((f) => ({ ...f, url_template: v }))}
+                />
+              </div>
+
+              {/* Description */}
+              <div className="space-y-2">
                 <label className="block text-sm font-bold text-on-surface-variant">Description (optional)</label>
                 <input
                   className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
@@ -178,7 +342,8 @@ export default function ApisPage() {
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                 />
               </div>
-              <div className="col-span-2 flex justify-end gap-4 pt-2">
+
+              <div className="flex justify-end gap-4 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}
@@ -215,7 +380,7 @@ export default function ApisPage() {
             {/* Header row */}
             <div className="grid grid-cols-4 px-4 py-3 text-xs font-bold uppercase tracking-wider text-on-surface-variant/60">
               <div>API Service</div>
-              <div>Base URL</div>
+              <div>URL</div>
               <div>Status</div>
               <div className="text-right">Actions</div>
             </div>
@@ -238,7 +403,13 @@ export default function ApisPage() {
                     <p className="text-xs text-on-surface-variant">{api.auth_type}</p>
                   </div>
                 </div>
-                <div className="font-mono text-xs text-on-surface-variant truncate pr-4">{api.base_url}</div>
+                <div className="pr-4 overflow-hidden">
+                  {api.url_template ? (
+                    <TemplatePreview template={api.url_template} />
+                  ) : (
+                    <span className="font-mono text-xs text-on-surface-variant truncate block">{api.base_url}</span>
+                  )}
+                </div>
                 <div>
                   <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${
                     api.status === "active" ? "bg-green-100 text-green-700" : "bg-surface-variant text-on-surface-variant"
