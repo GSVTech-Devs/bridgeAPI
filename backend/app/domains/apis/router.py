@@ -17,6 +17,7 @@ from app.domains.apis.schemas import (
 from app.domains.apis.service import (
     APINotFoundError,
     DuplicateAPINameError,
+    DuplicateSlugError,
     add_endpoint,
     disable_api,
     enable_api,
@@ -41,6 +42,7 @@ async def create_api(
         api = await register_api(
             db,
             name=body.name,
+            slug=body.slug,
             base_url=str(body.base_url),
             master_key=body.master_key,
             auth_type=body.auth_type,
@@ -50,6 +52,11 @@ async def create_api(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="API name already registered",
+        )
+    except DuplicateSlugError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Slug already in use",
         )
     return APIResponse.model_validate(api)
 

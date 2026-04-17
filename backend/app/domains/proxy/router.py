@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.mongo_client import get_mongo_db
 from app.core.redis_client import get_redis
+from app.domains.apis.service import APINotFoundError, get_api_by_slug
 from app.domains.logs.service import generate_correlation_id, write_request_log
 from app.domains.metrics.service import record_metric
 from app.domains.proxy.service import (
@@ -28,34 +29,30 @@ router = APIRouter(tags=["proxy"])
 
 
 async def get_http_client() -> httpx.AsyncClient:
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    client = httpx.AsyncClient(timeout=30.0)
+    try:
         yield client
+    finally:
+        await client.aclose()
 
 
-@router.api_route(
-    "/proxy/{api_id}/{path:path}",
-    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
-)
-async def proxy(
-    api_id: uuid.UUID,
+async def _dispatch(
+    *,
+    api_id: str,
     path: str,
+    presented_key: str,
     request: Request,
-    db: AsyncSession = Depends(get_db),
-    http_client: httpx.AsyncClient = Depends(get_http_client),
-    redis=Depends(get_redis),
-    mongo_db=Depends(get_mongo_db),
+    db: AsyncSession,
+    http_client: httpx.AsyncClient,
+    redis,
+    mongo_db,
 ) -> Response:
+    """Common dispatch logic shared by both proxy routes."""
     correlation_id = generate_correlation_id()
-    presented_key: Optional[str] = request.headers.get("x-bridge-key")
-    if not presented_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing X-Bridge-Key header",
-        )
 
     try:
         api_key_obj, client, api = await validate_request(
-            db, presented_key, str(api_id), redis
+            db, presented_key, api_id, redis
         )
     except InvalidKeyError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
@@ -98,7 +95,6 @@ async def proxy(
     latency_ms = (time.monotonic() - start) * 1000
     is_error = upstream_response.status_code >= 500
     return_status = 502 if is_error else upstream_response.status_code
-    cost = None if is_error else None  # cost_rule logic in future iteration
 
     await record_metric(
         db=db,
@@ -109,11 +105,10 @@ async def proxy(
         method=request.method,
         status_code=upstream_response.status_code,
         latency_ms=latency_ms,
-        cost=cost,
+        cost=None,
     )
 
     if mongo_db is not None:
-        incoming_headers = {k.lower(): v for k, v in request.headers.items()}
         await write_request_log(
             mongo_db,
             {
@@ -132,14 +127,81 @@ async def proxy(
             },
         )
 
+    _STRIP_RESPONSE = {"transfer-encoding", "content-encoding", "content-length"}
     response_headers = {
         k: v
         for k, v in upstream_response.headers.items()
-        if k.lower() not in {"transfer-encoding", "content-encoding"}
+        if k.lower() not in _STRIP_RESPONSE
     }
     response_headers["x-correlation-id"] = correlation_id
     return Response(
         content=upstream_response.content,
         status_code=return_status,
         headers=response_headers,
+    )
+
+
+@router.api_route(
+    "/apis/{slug}/{query}/{bridge_token}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+)
+async def proxy_by_slug(
+    slug: str,
+    query: str,
+    bridge_token: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    http_client: httpx.AsyncClient = Depends(get_http_client),
+    redis=Depends(get_redis),
+    mongo_db=Depends(get_mongo_db),
+) -> Response:
+    try:
+        api = await get_api_by_slug(db, slug)
+    except APINotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"API '{slug}' not found",
+        )
+
+    return await _dispatch(
+        api_id=str(api.id),
+        path=query,
+        presented_key=bridge_token,
+        request=request,
+        db=db,
+        http_client=http_client,
+        redis=redis,
+        mongo_db=mongo_db,
+    )
+
+
+@router.api_route(
+    "/proxy/{api_id}/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+)
+async def proxy(
+    api_id: uuid.UUID,
+    path: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    http_client: httpx.AsyncClient = Depends(get_http_client),
+    redis=Depends(get_redis),
+    mongo_db=Depends(get_mongo_db),
+) -> Response:
+    presented_key: Optional[str] = request.headers.get("x-bridge-key")
+    if not presented_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-Bridge-Key header",
+        )
+
+    return await _dispatch(
+        api_id=str(api_id),
+        path=path,
+        presented_key=presented_key,
+        request=request,
+        db=db,
+        http_client=http_client,
+        redis=redis,
+        mongo_db=mongo_db,
     )

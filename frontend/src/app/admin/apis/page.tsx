@@ -3,10 +3,24 @@
 import { useEffect, useRef, useState } from "react";
 import { getApis, createApi, enableApi, disableApi } from "@/lib/api";
 
-type Api = { id: string; name: string; base_url: string; url_template?: string; status: string; auth_type: string };
+const BRIDGE_BASE =
+  process.env.NEXT_PUBLIC_BRIDGE_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://localhost:8000";
+
+type Api = {
+  id: string;
+  name: string;
+  slug?: string;
+  base_url: string;
+  url_template?: string;
+  status: string;
+  auth_type: string;
+};
 
 const initialForm = {
   name: "",
+  slug: "",
   base_url: "",
   url_template: "",
   auth_type: "api_key",
@@ -26,31 +40,40 @@ function Spinner() {
   );
 }
 
-/** Renders a url_template string with {query} and {token} as colored badges. */
+/** Renders a url_template with {query} and {token} as coloured badges. */
 function TemplatePreview({ template }: { template: string }) {
   if (!template) return null;
-
   const parts = template.split(/(\{query\}|\{token\})/g);
   return (
     <span className="font-mono text-xs break-all">
       {parts.map((part, i) => {
-        if (part === "{query}") {
-          return (
-            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-primary/15 text-primary font-bold">
-              QUERY
-            </span>
-          );
-        }
-        if (part === "{token}") {
-          return (
-            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-bold">
-              TOKEN
-            </span>
-          );
-        }
+        if (part === "{query}") return (
+          <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-primary/15 text-primary font-bold">QUERY</span>
+        );
+        if (part === "{token}") return (
+          <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-bold">TOKEN</span>
+        );
         return <span key={i} className="text-on-surface-variant">{part}</span>;
       })}
     </span>
+  );
+}
+
+/** Shows the public Bridge URL the client will use. */
+function BridgeUrlPreview({ slug }: { slug: string }) {
+  if (!slug) return null;
+  return (
+    <div className="bg-surface-container-low rounded-xl px-4 py-3 flex items-start gap-2">
+      <span className="material-symbols-outlined text-[16px] text-primary mt-0.5 shrink-0">link</span>
+      <span className="font-mono text-xs break-all">
+        <span className="text-on-surface-variant">{BRIDGE_BASE}/apis/</span>
+        <span className="text-primary font-bold">{slug}</span>
+        <span className="text-on-surface-variant">/</span>
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-primary/15 text-primary font-bold">QUERY</span>
+        <span className="text-on-surface-variant">/</span>
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-bold">TOKEN</span>
+      </span>
+    </div>
   );
 }
 
@@ -70,7 +93,6 @@ function UrlTemplateBuilder({
     const end = el.selectionEnd ?? value.length;
     const next = value.slice(0, start) + placeholder + value.slice(end);
     onChange(next);
-    // Restore cursor after placeholder
     requestAnimationFrame(() => {
       el.focus();
       el.setSelectionRange(start + placeholder.length, start + placeholder.length);
@@ -91,63 +113,34 @@ function UrlTemplateBuilder({
           onChange={(e) => onChange(e.target.value)}
         />
       </div>
-
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs text-on-surface-variant font-medium">Inserir:</span>
-        <button
-          type="button"
-          onClick={() => insertPlaceholder("{query}")}
-          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-            hasQuery
-              ? "bg-primary/10 text-primary cursor-default"
-              : "bg-primary/10 text-primary hover:bg-primary/20"
-          }`}
-        >
+        <button type="button" onClick={() => insertPlaceholder("{query}")}
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
           <span className="material-symbols-outlined text-[14px]">search</span>
-          {"{query}"}
-          {hasQuery && <span className="material-symbols-outlined text-[14px]">check</span>}
+          {"{query}"}{hasQuery && <span className="material-symbols-outlined text-[14px]">check</span>}
         </button>
-        <button
-          type="button"
-          onClick={() => insertPlaceholder("{token}")}
-          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-            hasToken
-              ? "bg-amber-100 text-amber-700 cursor-default"
-              : "bg-amber-100 text-amber-700 hover:bg-amber-200"
-          }`}
-        >
+        <button type="button" onClick={() => insertPlaceholder("{token}")}
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors">
           <span className="material-symbols-outlined text-[14px]">vpn_key</span>
-          {"{token}"}
-          {hasToken && <span className="material-symbols-outlined text-[14px]">check</span>}
+          {"{token}"}{hasToken && <span className="material-symbols-outlined text-[14px]">check</span>}
         </button>
         {value && (
-          <button
-            type="button"
-            onClick={() => onChange("")}
-            className="ml-auto text-xs text-on-surface-variant hover:text-error transition-colors"
-          >
-            Limpar template
+          <button type="button" onClick={() => onChange("")}
+            className="ml-auto text-xs text-on-surface-variant hover:text-error transition-colors">
+            Limpar
           </button>
         )}
       </div>
-
-      {value && (
-        <div className="bg-surface-container-low rounded-xl px-4 py-3 flex items-start gap-2">
-          <span className="material-symbols-outlined text-[16px] text-on-surface-variant mt-0.5 shrink-0">link</span>
-          <TemplatePreview template={value} />
-        </div>
-      )}
-
+      {value && <div className="bg-surface-container-low rounded-xl px-4 py-3 flex items-start gap-2">
+        <span className="material-symbols-outlined text-[16px] text-on-surface-variant mt-0.5 shrink-0">link</span>
+        <TemplatePreview template={value} />
+      </div>}
       {value && !hasQuery && (
-        <p className="text-xs text-error">
-          O template deve conter o placeholder <code className="font-bold">{"{query}"}</code>.
-        </p>
+        <p className="text-xs text-error">O template deve conter <code className="font-bold">{"{query}"}</code>.</p>
       )}
-
       {hasToken && (
-        <p className="text-xs text-on-surface-variant">
-          O token será inserido diretamente na URL — não será enviado como header de autenticação.
-        </p>
+        <p className="text-xs text-on-surface-variant">O token será inserido na URL — não será enviado como header.</p>
       )}
     </div>
   );
@@ -201,6 +194,7 @@ export default function ApisPage() {
     try {
       const payload = {
         ...form,
+        slug: form.slug || undefined,
         url_template: form.url_template || undefined,
       };
       const api = await createApi(payload);
@@ -260,7 +254,7 @@ export default function ApisPage() {
             )}
 
             <form onSubmit={handleCreate} className="space-y-6">
-              {/* Row 1: name + base_url */}
+              {/* Row 1: name + slug */}
               <div className="grid grid-cols-2 gap-x-10">
                 <div className="space-y-2">
                   <label className="block text-sm font-bold text-on-surface-variant">API Name</label>
@@ -273,7 +267,32 @@ export default function ApisPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-sm font-bold text-on-surface-variant">Base URL</label>
+                  <div className="flex items-center gap-2">
+                    <label className="block text-sm font-bold text-on-surface-variant">Slug público</label>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">opcional</span>
+                  </div>
+                  <input
+                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none font-mono text-sm"
+                    placeholder="consulta"
+                    value={form.slug}
+                    onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") }))}
+                  />
+                  <p className="text-xs text-on-surface-variant">Letras, números, hífens e underscores.</p>
+                </div>
+              </div>
+
+              {/* Bridge URL preview */}
+              {form.slug && (
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-on-surface-variant">URL pública no Bridge</p>
+                  <BridgeUrlPreview slug={form.slug} />
+                </div>
+              )}
+
+              {/* Row 2: base_url + auth type */}
+              <div className="grid grid-cols-2 gap-x-10">
+                <div className="space-y-2">
+                  <label className="block text-sm font-bold text-on-surface-variant">Base URL da API original</label>
                   <input
                     className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
                     placeholder="https://api.provider.com/v1"
@@ -282,10 +301,6 @@ export default function ApisPage() {
                     required
                   />
                 </div>
-              </div>
-
-              {/* Row 2: auth type + master key */}
-              <div className="grid grid-cols-2 gap-x-10">
                 <div className="space-y-2">
                   <label className="block text-sm font-bold text-on-surface-variant">Auth Type</label>
                   <select
@@ -299,32 +314,33 @@ export default function ApisPage() {
                     <option value="none">Sem autenticação</option>
                   </select>
                 </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-bold text-on-surface-variant">Master Key / Token</label>
-                  <div className="relative">
-                    <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">vpn_key</span>
-                    <input
-                      className="w-full bg-surface-container-low border-none rounded-xl py-4 pl-12 pr-5 text-on-surface focus:ring-2 focus:ring-primary-container transition-all outline-none font-mono text-sm"
-                      type="password"
-                      placeholder="••••••••••••••••"
-                      value={form.master_key}
-                      onChange={(e) => setForm((f) => ({ ...f, master_key: e.target.value }))}
-                      required
-                    />
-                  </div>
+              </div>
+
+              {/* Master key */}
+              <div className="space-y-2">
+                <label className="block text-sm font-bold text-on-surface-variant">Master Key / Token da API original</label>
+                <div className="relative">
+                  <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">vpn_key</span>
+                  <input
+                    className="w-full bg-surface-container-low border-none rounded-xl py-4 pl-12 pr-5 text-on-surface focus:ring-2 focus:ring-primary-container transition-all outline-none font-mono text-sm"
+                    type="password"
+                    placeholder="••••••••••••••••"
+                    value={form.master_key}
+                    onChange={(e) => setForm((f) => ({ ...f, master_key: e.target.value }))}
+                    required
+                  />
                 </div>
               </div>
 
               {/* URL Template builder */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <label className="block text-sm font-bold text-on-surface-variant">URL Template</label>
+                  <label className="block text-sm font-bold text-on-surface-variant">URL Template da API original</label>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">opcional</span>
                 </div>
                 <p className="text-xs text-on-surface-variant">
-                  Configure onde <code className="text-primary font-bold">{"{query}"}</code> (caminho da requisição) e{" "}
-                  <code className="text-amber-600 font-bold">{"{token}"}</code> (chave da API) aparecem na URL.
-                  Se não informado, o caminho é concatenado à Base URL e o token vai no header.
+                  Se a API original exige o token ou a query em posições específicas na URL. Deixe vazio para usar{" "}
+                  <code className="font-mono">Base URL + query</code> com auth no header.
                 </p>
                 <UrlTemplateBuilder
                   value={form.url_template}
@@ -344,18 +360,12 @@ export default function ApisPage() {
               </div>
 
               <div className="flex justify-end gap-4 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="px-8 py-4 rounded-xl font-bold text-on-surface-variant hover:bg-surface-container-high transition-colors"
-                >
+                <button type="button" onClick={() => setShowForm(false)}
+                  className="px-8 py-4 rounded-xl font-bold text-on-surface-variant hover:bg-surface-container-high transition-colors">
                   Discard
                 </button>
-                <button
-                  type="submit"
-                  disabled={formLoading}
-                  className="primary-gradient text-white px-12 py-4 rounded-xl font-extrabold shadow-xl shadow-primary/30 hover:scale-[1.03] transition-transform disabled:opacity-70"
-                >
+                <button type="submit" disabled={formLoading}
+                  className="primary-gradient text-white px-12 py-4 rounded-xl font-extrabold shadow-xl shadow-primary/30 hover:scale-[1.03] transition-transform disabled:opacity-70">
                   {formLoading ? "Cadastrando…" : "Deploy API Bridge"}
                 </button>
               </div>
@@ -377,10 +387,9 @@ export default function ApisPage() {
 
         {!loading && !error && (
           <div className="space-y-2 px-4 pb-4">
-            {/* Header row */}
             <div className="grid grid-cols-4 px-4 py-3 text-xs font-bold uppercase tracking-wider text-on-surface-variant/60">
               <div>API Service</div>
-              <div>URL</div>
+              <div>Bridge URL / Upstream</div>
               <div>Status</div>
               <div className="text-right">Actions</div>
             </div>
@@ -390,10 +399,8 @@ export default function ApisPage() {
             )}
 
             {apis.map((api) => (
-              <div
-                key={api.id}
-                className="grid grid-cols-4 items-center px-4 py-5 bg-surface-container-low rounded-xl hover:bg-surface-container-high transition-colors group"
-              >
+              <div key={api.id}
+                className="grid grid-cols-4 items-center px-4 py-5 bg-surface-container-low rounded-xl hover:bg-surface-container-high transition-colors group">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
                     <span className="material-symbols-outlined text-[20px]">dataset</span>
@@ -403,8 +410,18 @@ export default function ApisPage() {
                     <p className="text-xs text-on-surface-variant">{api.auth_type}</p>
                   </div>
                 </div>
-                <div className="pr-4 overflow-hidden">
-                  {api.url_template ? (
+                <div className="pr-4 overflow-hidden space-y-1">
+                  {api.slug ? (
+                    <div className="font-mono text-xs flex items-center gap-1 flex-wrap">
+                      <span className="text-on-surface-variant/60 text-[10px]">bridge:</span>
+                      <span className="text-on-surface-variant">/apis/</span>
+                      <span className="text-primary font-bold">{api.slug}</span>
+                      <span className="text-on-surface-variant">/</span>
+                      <span className="px-1 rounded bg-primary/10 text-primary text-[10px] font-bold">QUERY</span>
+                      <span className="text-on-surface-variant">/</span>
+                      <span className="px-1 rounded bg-green-100 text-green-700 text-[10px] font-bold">TOKEN</span>
+                    </div>
+                  ) : api.url_template ? (
                     <TemplatePreview template={api.url_template} />
                   ) : (
                     <span className="font-mono text-xs text-on-surface-variant truncate block">{api.base_url}</span>
@@ -418,15 +435,10 @@ export default function ApisPage() {
                   </span>
                 </div>
                 <div className="text-right opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => handleToggle(api)}
-                    disabled={actionLoading === api.id}
+                  <button onClick={() => handleToggle(api)} disabled={actionLoading === api.id}
                     className={`p-2 rounded-lg text-sm font-bold transition-colors ${
-                      api.status === "active"
-                        ? "hover:bg-error-container text-error"
-                        : "hover:bg-green-100 text-green-700"
-                    }`}
-                  >
+                      api.status === "active" ? "hover:bg-error-container text-error" : "hover:bg-green-100 text-green-700"
+                    }`}>
                     <span className="material-symbols-outlined text-sm">
                       {actionLoading === api.id ? "hourglass_empty" : api.status === "active" ? "toggle_off" : "toggle_on"}
                     </span>

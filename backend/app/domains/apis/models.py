@@ -38,6 +38,7 @@ class ExternalAPI(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    slug: Mapped[Optional[str]] = mapped_column(String(200), unique=True, index=True, nullable=True)
     base_url: Mapped[str] = mapped_column(String(2048))
     master_key_encrypted: Mapped[Optional[str]] = mapped_column(
         String(2048), nullable=True

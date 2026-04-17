@@ -100,13 +100,14 @@ export function getApis() {
 
 export function createApi(data: {
   name: string;
+  slug?: string;
   base_url: string;
   url_template?: string;
   auth_type: string;
   master_key: string;
   description?: string;
 }) {
-  return apiFetch<{ id: string; name: string; base_url: string; url_template?: string; status: string; auth_type: string }>(
+  return apiFetch<{ id: string; name: string; slug?: string; base_url: string; url_template?: string; status: string; auth_type: string }>(
     "/apis",
     { method: "POST", body: JSON.stringify(data) }
   );

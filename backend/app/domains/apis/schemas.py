@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -8,13 +9,26 @@ from pydantic import AnyHttpUrl, BaseModel, Field, field_validator, model_valida
 
 from app.domains.apis.models import APIAuthType, HTTPMethod
 
+_SLUG_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
 
 class APICreateRequest(BaseModel):
     name: str
+    slug: Optional[str] = None
     base_url: AnyHttpUrl
     url_template: Optional[str] = None
     master_key: Optional[str] = None
     auth_type: APIAuthType = APIAuthType.NONE
+
+    @field_validator("slug")
+    @classmethod
+    def validate_slug(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            if not _SLUG_RE.match(v):
+                raise ValueError(
+                    "slug must contain only letters, numbers, hyphens and underscores"
+                )
+        return v
 
     @model_validator(mode="after")
     def validate_url_template(self) -> "APICreateRequest":
@@ -22,13 +36,16 @@ class APICreateRequest(BaseModel):
             if "{query}" not in self.url_template:
                 raise ValueError("url_template must contain the {query} placeholder")
             if not self.url_template.startswith(("http://", "https://")):
-                raise ValueError("url_template must be a full URL starting with http:// or https://")
+                raise ValueError(
+                    "url_template must be a full URL starting with http:// or https://"
+                )
         return self
 
 
 class APIResponse(BaseModel):
     id: uuid.UUID
     name: str
+    slug: Optional[str] = None
     base_url: str
     url_template: Optional[str] = None
     auth_type: str
@@ -66,6 +83,7 @@ class EndpointResponse(BaseModel):
 class APIDetailResponse(BaseModel):
     id: uuid.UUID
     name: str
+    slug: Optional[str] = None
     base_url: str
     url_template: Optional[str] = None
     auth_type: str

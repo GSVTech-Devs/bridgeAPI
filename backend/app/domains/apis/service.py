@@ -21,6 +21,10 @@ class APINotFoundError(Exception):
     pass
 
 
+class DuplicateSlugError(Exception):
+    pass
+
+
 async def register_api(
     db: AsyncSession,
     name: str,
@@ -28,14 +32,23 @@ async def register_api(
     master_key: str | None = None,
     auth_type: APIAuthType = APIAuthType.NONE,
     url_template: str | None = None,
+    slug: str | None = None,
 ) -> ExternalAPI:
     existing = await db.execute(select(ExternalAPI).where(ExternalAPI.name == name))
     if existing.scalar_one_or_none() is not None:
         raise DuplicateAPINameError(f"API name already registered: {name}")
 
+    if slug is not None:
+        slug_conflict = await db.execute(
+            select(ExternalAPI).where(ExternalAPI.slug == slug)
+        )
+        if slug_conflict.scalar_one_or_none() is not None:
+            raise DuplicateSlugError(f"Slug already in use: {slug}")
+
     encrypted = encrypt_value(master_key) if master_key is not None else None
     api = ExternalAPI(
         name=name,
+        slug=slug,
         base_url=base_url,
         url_template=url_template,
         master_key_encrypted=encrypted,
@@ -64,6 +77,14 @@ async def get_api_by_id(db: AsyncSession, api_id: str) -> ExternalAPI:
     api = result.scalar_one_or_none()
     if api is None:
         raise APINotFoundError(f"API not found: {api_id}")
+    return api
+
+
+async def get_api_by_slug(db: AsyncSession, slug: str) -> ExternalAPI:
+    result = await db.execute(select(ExternalAPI).where(ExternalAPI.slug == slug))
+    api = result.scalar_one_or_none()
+    if api is None:
+        raise APINotFoundError(f"API not found: {slug}")
     return api
 
 

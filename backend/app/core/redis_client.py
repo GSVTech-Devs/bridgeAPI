@@ -24,6 +24,7 @@ async def get_redis() -> AsyncGenerator[Optional[redis_asyncio.Redis], None]:
     downstream trate redis=None como "rate limiting desabilitado".
     """
     try:
-        yield _get_client()
+        client = _get_client()
     except Exception:
-        yield None
+        client = None
+    yield client
