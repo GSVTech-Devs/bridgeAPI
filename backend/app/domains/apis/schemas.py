@@ -19,6 +19,7 @@ class APICreateRequest(BaseModel):
     url_template: Optional[str] = None
     master_key: Optional[str] = None
     auth_type: APIAuthType = APIAuthType.NONE
+    cost_per_query: Optional[float] = None
 
     @field_validator("slug")
     @classmethod
@@ -50,6 +51,7 @@ class APIResponse(BaseModel):
     url_template: Optional[str] = None
     auth_type: str
     status: str
+    cost_per_query: Optional[float] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -88,6 +90,7 @@ class APIDetailResponse(BaseModel):
     url_template: Optional[str] = None
     auth_type: str
     status: str
+    cost_per_query: Optional[float] = None
     created_at: datetime
     endpoints: list[EndpointResponse] = Field(default_factory=list)
 

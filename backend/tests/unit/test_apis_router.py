@@ -25,6 +25,7 @@ def make_api(
     status: APIStatus = APIStatus.ACTIVE,
     slug: str | None = None,
     url_template: str | None = None,
+    cost_per_query: float | None = None,
 ) -> ExternalAPI:
     return ExternalAPI(
         id=uuid.uuid4(),
@@ -35,6 +36,7 @@ def make_api(
         master_key_encrypted="encrypted-key",
         auth_type=APIAuthType.API_KEY,
         status=status,
+        cost_per_query=cost_per_query,
         created_at=datetime.now(timezone.utc),
     )
 
@@ -436,3 +438,64 @@ async def test_enable_missing_api_returns_404(client: AsyncClient) -> None:
             f"/apis/{uuid.uuid4()}/enable", headers=admin_headers()
         )
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /apis — cost_per_query
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_register_api_with_cost_per_query(client: AsyncClient) -> None:
+    api = make_api(cost_per_query=0.05)
+    with patch(
+        "app.domains.apis.router.register_api",
+        new=AsyncMock(return_value=api),
+    ):
+        response = await client.post(
+            "/apis",
+            json={
+                "name": "Finance API",
+                "base_url": "https://api.example.com",
+                "cost_per_query": 0.05,
+            },
+            headers=admin_headers(),
+        )
+    assert response.status_code == 201
+    assert response.json()["cost_per_query"] == 0.05
+
+
+# ---------------------------------------------------------------------------
+# DELETE /apis/{id}  (admin)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_admin_can_delete_api(client: AsyncClient) -> None:
+    api = make_api()
+    with patch(
+        "app.domains.apis.router.delete_api",
+        new=AsyncMock(return_value=None),
+    ):
+        response = await client.delete(f"/apis/{api.id}", headers=admin_headers())
+    assert response.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_delete_missing_api_returns_404(client: AsyncClient) -> None:
+    from app.domains.apis.service import APINotFoundError
+
+    with patch(
+        "app.domains.apis.router.delete_api",
+        new=AsyncMock(side_effect=APINotFoundError),
+    ):
+        response = await client.delete(
+            f"/apis/{uuid.uuid4()}", headers=admin_headers()
+        )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_api_requires_auth(client: AsyncClient) -> None:
+    response = await client.delete(f"/apis/{uuid.uuid4()}")
+    assert response.status_code == 401

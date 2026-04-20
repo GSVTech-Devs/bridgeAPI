@@ -7,6 +7,7 @@ from typing import Any, Optional
 from sqlalchemy import Integer, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.apis.models import ExternalAPI
 from app.domains.metrics.models import RequestMetric
 
 
@@ -100,3 +101,36 @@ async def get_admin_global_metrics(
     result = await db.execute(stmt)
     row = result.fetchone()
     return _row_to_dict(row)
+
+
+async def get_metrics_by_api(
+    db: AsyncSession,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+) -> list[dict[str, Any]]:
+    """Retorna métricas por API para breakdown no painel admin."""
+    stmt = (
+        select(
+            ExternalAPI.id.label("api_id"),
+            ExternalAPI.name.label("api_name"),
+            func.count(RequestMetric.id).label("total"),
+            func.sum(func.cast(RequestMetric.status_code >= 500, Integer)).label("errors"),
+        )
+        .join(ExternalAPI, RequestMetric.api_id == ExternalAPI.id)
+        .group_by(ExternalAPI.id, ExternalAPI.name)
+    )
+    if since is not None:
+        stmt = stmt.where(RequestMetric.created_at >= since)
+    if until is not None:
+        stmt = stmt.where(RequestMetric.created_at <= until)
+    result = await db.execute(stmt)
+    rows = result.fetchall()
+    return [
+        {
+            "api_id": str(row.api_id),
+            "api_name": row.api_name,
+            "total_requests": row.total or 0,
+            "error_rate": round((row.errors or 0) / (row.total or 1) * 100, 2),
+        }
+        for row in rows
+    ]

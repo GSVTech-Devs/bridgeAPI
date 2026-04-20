@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAdminMetrics } from "@/lib/api";
+import { getAdminMetrics, getAdminMetricsBreakdown } from "@/lib/api";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -16,21 +16,25 @@ type Metrics = {
   non_billable_requests: number;
 };
 
-const healthData = [
-  { name: "Search API", value: 99.9, color: "#2b5ab5" },
-  { name: "Auth Service", value: 99.7, color: "#2b5ab5" },
-  { name: "Data Bridge", value: 92.4, color: "#ba1a1a" },
-  { name: "Webhook Portal", value: 100, color: "#2b5ab5" },
-];
+type ApiBreakdownItem = {
+  api_id: string;
+  api_name: string;
+  total_requests: number;
+  error_rate: number;
+};
 
 export default function AdminMetricsPage() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [breakdown, setBreakdown] = useState<ApiBreakdownItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getAdminMetrics()
-      .then(setMetrics)
+    Promise.all([getAdminMetrics(), getAdminMetricsBreakdown()])
+      .then(([m, b]) => {
+        setMetrics(m);
+        setBreakdown(b.items);
+      })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Erro ao carregar"))
       .finally(() => setLoading(false));
   }, []);
@@ -50,7 +54,7 @@ export default function AdminMetricsPage() {
   if (error) return <div role="alert" className="p-6 text-error bg-error-container rounded-xl">{error}</div>;
   if (!metrics) return null;
 
-  const errorRate = metrics.error_rate * 100;
+  const errorRate = metrics.error_rate;
   const successRate = Math.max(0, 100 - errorRate);
 
   const barData = [
@@ -73,14 +77,6 @@ export default function AdminMetricsPage() {
             Métricas de Performance
           </h2>
           <p className="text-on-surface-variant font-medium">Real-time API usage and system health analysis.</p>
-        </div>
-        <div className="flex gap-3">
-          <button className="px-5 py-2.5 bg-surface-container-high text-on-surface font-semibold rounded-lg flex items-center gap-2 hover:brightness-95 transition-all">
-            <span className="material-symbols-outlined text-lg">calendar_today</span> Last 24 Hours
-          </button>
-          <button className="px-5 py-2.5 primary-gradient text-white font-bold rounded-lg shadow-sm hover:brightness-110 transition-all flex items-center gap-2">
-            <span className="material-symbols-outlined text-lg">download</span> Export Report
-          </button>
         </div>
       </div>
 
@@ -109,15 +105,16 @@ export default function AdminMetricsPage() {
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/10 shadow-sm">
           <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2">Avg. Latency</p>
           <h3 className="text-3xl font-black text-on-surface font-headline">{Math.round(metrics.avg_latency_ms)}ms</h3>
-          <p className="text-xs text-on-surface-variant mt-2 font-medium">Global benchmark: 50ms</p>
         </div>
         <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/10 shadow-sm">
           <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-2">Success Rate</p>
           <h3 className="text-3xl font-black text-on-surface font-headline">{successRate.toFixed(2)}%</h3>
-          <div className="flex items-center gap-1 mt-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-[10px] text-green-600 font-bold">ALL SYSTEMS NOMINAL</span>
-          </div>
+          {successRate >= 99 && (
+            <div className="flex items-center gap-1 mt-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-[10px] text-green-600 font-bold">ALL SYSTEMS NOMINAL</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -139,25 +136,34 @@ export default function AdminMetricsPage() {
           </ResponsiveContainer>
         </div>
 
-        {/* Health distribution */}
+        {/* Per-API health breakdown */}
         <div className="bg-surface-container-lowest p-8 rounded-xl border border-outline-variant/10">
-          <h4 className="text-xl font-bold tracking-tight mb-8 font-headline">Health Distribution</h4>
-          <div className="space-y-6">
-            {healthData.map((item) => (
-              <div key={item.name} className="space-y-2">
-                <div className="flex justify-between text-xs font-bold">
-                  <span>{item.name}</span>
-                  <span style={{ color: item.color }}>{item.value}%</span>
-                </div>
-                <div className="h-1.5 w-full bg-surface-container-low rounded-full">
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: `${item.value}%`, backgroundColor: item.color }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+          <h4 className="text-xl font-bold tracking-tight mb-8 font-headline">Health by API</h4>
+          {breakdown.length === 0 ? (
+            <p className="text-sm text-on-surface-variant">No requests recorded yet.</p>
+          ) : (
+            <div className="space-y-6">
+              {breakdown.map((item) => {
+                const apiSuccessRate = Math.max(0, 100 - item.error_rate);
+                const color = apiSuccessRate >= 95 ? "#2b5ab5" : apiSuccessRate >= 80 ? "#f59e0b" : "#ba1a1a";
+                return (
+                  <div key={item.api_id} className="space-y-2">
+                    <div className="flex justify-between text-xs font-bold">
+                      <span className="truncate max-w-[140px]" title={item.api_name}>{item.api_name}</span>
+                      <span style={{ color }}>{apiSuccessRate.toFixed(1)}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-surface-container-low rounded-full">
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${apiSuccessRate}%`, backgroundColor: color }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-on-surface-variant">{item.total_requests.toLocaleString()} requests</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="mt-8 pt-8 border-t border-outline-variant/10">
             <div className="flex items-center gap-4">
               <div className="flex-1">
@@ -172,7 +178,7 @@ export default function AdminMetricsPage() {
         </div>
       </div>
 
-      {/* Logs table */}
+      {/* Success vs Errors pie */}
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <h4 className="text-xl font-bold tracking-tight font-headline">Success vs Errors</h4>

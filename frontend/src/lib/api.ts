@@ -30,6 +30,10 @@ export async function apiFetch<T>(
     throw new Error(error.detail ?? "Request failed");
   }
 
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
   return res.json() as Promise<T>;
 }
 
@@ -105,9 +109,10 @@ export function createApi(data: {
   url_template?: string;
   auth_type: string;
   master_key: string;
+  cost_per_query?: number;
   description?: string;
 }) {
-  return apiFetch<{ id: string; name: string; slug?: string; base_url: string; url_template?: string; status: string; auth_type: string }>(
+  return apiFetch<{ id: string; name: string; slug?: string; base_url: string; url_template?: string; status: string; auth_type: string; cost_per_query?: number }>(
     "/apis",
     { method: "POST", body: JSON.stringify(data) }
   );
@@ -119,6 +124,10 @@ export function enableApi(id: string) {
 
 export function disableApi(id: string) {
   return apiFetch(`/apis/${id}/disable`, { method: "PATCH" });
+}
+
+export function deleteApi(id: string) {
+  return apiFetch(`/apis/${id}`, { method: "DELETE" });
 }
 
 export function getPermissions() {
@@ -140,6 +149,31 @@ export function getAdminMetrics(params?: { since?: string; until?: string }) {
     billable_requests: number;
     non_billable_requests: number;
   }>(`/metrics/admin${qs}`);
+}
+
+export function getAdminMetricsBreakdown(params?: { since?: string; until?: string }) {
+  const qs = params
+    ? "?" + new URLSearchParams(params as Record<string, string>).toString()
+    : "";
+  return apiFetch<{
+    items: { api_id: string; api_name: string; total_requests: number; error_rate: number }[];
+  }>(`/metrics/admin/breakdown${qs}`);
+}
+
+export function getAdminLogs(skip = 0, limit = 10) {
+  return apiFetch<{
+    items: {
+      correlation_id: string;
+      client_id: string;
+      api_id: string;
+      path: string;
+      method: string;
+      status_code: number;
+      latency_ms: number;
+      created_at: string | null;
+    }[];
+    total: number;
+  }>(`/logs/admin?skip=${skip}&limit=${limit}`);
 }
 
 // ---------------------------------------------------------------------------

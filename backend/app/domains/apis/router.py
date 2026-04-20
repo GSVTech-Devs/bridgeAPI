@@ -19,6 +19,7 @@ from app.domains.apis.service import (
     DuplicateAPINameError,
     DuplicateSlugError,
     add_endpoint,
+    delete_api,
     disable_api,
     enable_api,
     get_api_by_id,
@@ -47,6 +48,7 @@ async def create_api(
             master_key=body.master_key,
             auth_type=body.auth_type,
             url_template=body.url_template,
+            cost_per_query=body.cost_per_query,
         )
     except DuplicateAPINameError:
         raise HTTPException(
@@ -123,6 +125,20 @@ async def create_endpoint(
             status_code=status.HTTP_404_NOT_FOUND, detail="API not found"
         )
     return EndpointResponse.model_validate(endpoint)
+
+
+@router.delete("/{api_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete(
+    api_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: MeResponse = Depends(get_current_user),
+) -> None:
+    try:
+        await delete_api(db, str(api_id))
+    except APINotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="API not found"
+        )
 
 
 @router.patch("/{api_id}/disable", response_model=APIResponse)

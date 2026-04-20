@@ -10,8 +10,8 @@ from app.core.database import get_db
 from app.domains.auth.router import get_current_client, get_current_user
 from app.domains.auth.schemas import MeResponse
 from app.domains.clients.service import get_client_by_email
-from app.domains.metrics.schemas import DashboardResponse
-from app.domains.metrics.service import get_admin_global_metrics, get_client_dashboard
+from app.domains.metrics.schemas import ApiBreakdownResponse, DashboardResponse
+from app.domains.metrics.service import get_admin_global_metrics, get_client_dashboard, get_metrics_by_api
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
@@ -42,3 +42,14 @@ async def admin_metrics(
 ) -> DashboardResponse:
     data = await get_admin_global_metrics(db, since=since, until=until)
     return DashboardResponse(**data)
+
+
+@router.get("/admin/breakdown", response_model=ApiBreakdownResponse)
+async def admin_metrics_breakdown(
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    _: MeResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ApiBreakdownResponse:
+    items = await get_metrics_by_api(db, since=since, until=until)
+    return ApiBreakdownResponse(items=items)

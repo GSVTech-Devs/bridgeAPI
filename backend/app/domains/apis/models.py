@@ -44,6 +44,7 @@ class ExternalAPI(Base):
         String(2048), nullable=True
     )
     url_template: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
+    cost_per_query: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     auth_type: Mapped[str] = mapped_column(String(20), default=APIAuthType.NONE)
     status: Mapped[str] = mapped_column(
         String(20), default=APIStatus.ACTIVE, index=True

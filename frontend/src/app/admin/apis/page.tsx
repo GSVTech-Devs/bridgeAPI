@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getApis, createApi, enableApi, disableApi } from "@/lib/api";
+import { getApis, createApi, enableApi, disableApi, deleteApi } from "@/lib/api";
 
 const BRIDGE_BASE =
   process.env.NEXT_PUBLIC_BRIDGE_URL ??
@@ -16,6 +16,7 @@ type Api = {
   url_template?: string;
   status: string;
   auth_type: string;
+  cost_per_query?: number;
 };
 
 const initialForm = {
@@ -25,6 +26,7 @@ const initialForm = {
   url_template: "",
   auth_type: "api_key",
   master_key: "",
+  cost_per_query: "",
   description: "",
 };
 
@@ -156,6 +158,7 @@ export default function ApisPage() {
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   async function load() {
     try {
@@ -187,15 +190,30 @@ export default function ApisPage() {
     }
   }
 
+  async function handleDelete(id: string) {
+    setActionLoading(id);
+    try {
+      await deleteApi(id);
+      setApis((prev) => prev.filter((a) => a.id !== id));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao excluir");
+    } finally {
+      setActionLoading(null);
+      setDeleteConfirm(null);
+    }
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setFormLoading(true);
     setFormError(null);
     try {
+      const costValue = form.cost_per_query ? parseFloat(form.cost_per_query) : undefined;
       const payload = {
         ...form,
         slug: form.slug || undefined,
         url_template: form.url_template || undefined,
+        cost_per_query: costValue && !isNaN(costValue) ? costValue : undefined,
       };
       const api = await createApi(payload);
       setApis((prev) => [...prev, api]);
@@ -348,15 +366,36 @@ export default function ApisPage() {
                 />
               </div>
 
-              {/* Description */}
-              <div className="space-y-2">
-                <label className="block text-sm font-bold text-on-surface-variant">Description (optional)</label>
-                <input
-                  className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
-                  placeholder="Breve descrição da API"
-                  value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                />
+              {/* Row: cost_per_query + description */}
+              <div className="grid grid-cols-2 gap-x-10">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="block text-sm font-bold text-on-surface-variant">Valor por consulta (R$)</label>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">opcional</span>
+                  </div>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">payments</span>
+                    <input
+                      className="w-full bg-surface-container-low border-none rounded-xl py-4 pl-12 pr-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      placeholder="0.050"
+                      value={form.cost_per_query}
+                      onChange={(e) => setForm((f) => ({ ...f, cost_per_query: e.target.value }))}
+                    />
+                  </div>
+                  <p className="text-xs text-on-surface-variant">Cobrado por requisição bem-sucedida.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-bold text-on-surface-variant">Description (optional)</label>
+                  <input
+                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
+                    placeholder="Breve descrição da API"
+                    value={form.description}
+                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end gap-4 pt-2">
@@ -434,15 +473,44 @@ export default function ApisPage() {
                     {api.status === "active" ? "Active" : "Inactive"}
                   </span>
                 </div>
-                <div className="text-right opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => handleToggle(api)} disabled={actionLoading === api.id}
-                    className={`p-2 rounded-lg text-sm font-bold transition-colors ${
-                      api.status === "active" ? "hover:bg-error-container text-error" : "hover:bg-green-100 text-green-700"
-                    }`}>
-                    <span className="material-symbols-outlined text-sm">
-                      {actionLoading === api.id ? "hourglass_empty" : api.status === "active" ? "toggle_off" : "toggle_on"}
-                    </span>
-                  </button>
+                <div className="text-right flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {deleteConfirm === api.id ? (
+                    <>
+                      <span className="text-xs text-on-surface-variant mr-1">Confirmar exclusão?</span>
+                      <button
+                        onClick={() => handleDelete(api.id)}
+                        disabled={actionLoading === api.id}
+                        aria-label="Confirmar exclusão"
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-error text-on-error hover:opacity-90 transition-opacity disabled:opacity-50"
+                      >
+                        {actionLoading === api.id ? "…" : "Excluir"}
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirm(null)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold text-on-surface-variant hover:bg-surface-container-high transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => handleToggle(api)} disabled={actionLoading === api.id}
+                        className={`p-2 rounded-lg text-sm font-bold transition-colors ${
+                          api.status === "active" ? "hover:bg-error-container text-error" : "hover:bg-green-100 text-green-700"
+                        }`}>
+                        <span className="material-symbols-outlined text-sm">
+                          {actionLoading === api.id ? "hourglass_empty" : api.status === "active" ? "toggle_off" : "toggle_on"}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirm(api.id)}
+                        aria-label="Excluir API"
+                        className="p-2 rounded-lg text-sm font-bold text-on-surface-variant hover:bg-error-container hover:text-error transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-sm">delete</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}

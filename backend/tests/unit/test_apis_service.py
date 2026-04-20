@@ -22,6 +22,7 @@ from app.domains.apis.service import (
     DuplicateAPINameError,
     DuplicateSlugError,
     add_endpoint,
+    delete_api,
     disable_api,
     enable_api,
     get_api_by_id,
@@ -295,3 +296,50 @@ async def test_disabled_api_still_retrievable() -> None:
     db = make_db(scalar_result=api)
     result = await get_api_by_id(db, str(api.id))
     assert result.status == APIStatus.INACTIVE
+
+
+# ---------------------------------------------------------------------------
+# register_api — cost_per_query
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_register_api_stores_cost_per_query() -> None:
+    db = make_db(scalar_result=None)
+    await register_api(
+        db,
+        name="Finance API",
+        base_url="https://api.example.com",
+        cost_per_query=0.05,
+    )
+    added_api: ExternalAPI = db.add.call_args[0][0]
+    assert added_api.cost_per_query == 0.05
+
+
+@pytest.mark.asyncio
+async def test_register_api_without_cost_stores_none() -> None:
+    db = make_db(scalar_result=None)
+    await register_api(db, name="Free API", base_url="https://api.example.com")
+    added_api: ExternalAPI = db.add.call_args[0][0]
+    assert added_api.cost_per_query is None
+
+
+# ---------------------------------------------------------------------------
+# delete_api
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_api_removes_from_db() -> None:
+    api = make_api()
+    db = make_db(scalar_result=api)
+    await delete_api(db, str(api.id))
+    db.delete.assert_called_once_with(api)
+    db.commit.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_api_raises_not_found() -> None:
+    db = make_db(scalar_result=None)
+    with pytest.raises(APINotFoundError):
+        await delete_api(db, str(uuid.uuid4()))

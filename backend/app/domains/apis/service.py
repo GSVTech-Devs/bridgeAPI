@@ -33,6 +33,7 @@ async def register_api(
     auth_type: APIAuthType = APIAuthType.NONE,
     url_template: str | None = None,
     slug: str | None = None,
+    cost_per_query: float | None = None,
 ) -> ExternalAPI:
     existing = await db.execute(select(ExternalAPI).where(ExternalAPI.name == name))
     if existing.scalar_one_or_none() is not None:
@@ -53,6 +54,7 @@ async def register_api(
         url_template=url_template,
         master_key_encrypted=encrypted,
         auth_type=auth_type,
+        cost_per_query=cost_per_query,
     )
     db.add(api)
     await db.commit()
@@ -122,6 +124,12 @@ async def enable_api(db: AsyncSession, api_id: str) -> ExternalAPI:
     await db.commit()
     await db.refresh(api)
     return api
+
+
+async def delete_api(db: AsyncSession, api_id: str) -> None:
+    api = await get_api_by_id(db, api_id)
+    await db.delete(api)
+    await db.commit()
 
 
 async def list_endpoints_for_api(db: AsyncSession, api_id: object) -> list[Endpoint]:

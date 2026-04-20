@@ -198,8 +198,35 @@ test.describe("Admin — lista de APIs", () => {
     // Hover over the Stripe row to reveal the button, then click it.
     const stripeRow = page.locator("div.group").filter({ hasText: "Stripe" });
     await stripeRow.hover();
-    await stripeRow.getByRole("button").click({ force: true });
+    await stripeRow.getByRole("button", { name: /toggle_off|toggle_on/ }).click({ force: true });
 
     await expect.poll(() => disabledId).toBe("a1");
+  });
+
+  test("exclusão de API envia DELETE e remove da lista", async ({ page }) => {
+    await mockApis(page);
+
+    let deletedMethod = "";
+    await page.route(`${API}/apis/a1`, (route) => {
+      deletedMethod = route.request().method();
+      // Resposta real de DELETE: 204 sem corpo — sem body para garantir que
+      // apiFetch trata 204 corretamente (não tenta res.json())
+      return route.fulfill({ status: 204 });
+    });
+
+    await adminGoTo(page, "/admin/apis");
+
+    // A ação "Excluir API" fica dentro de um div opacity-0 revelado no hover
+    const stripeRow = page.locator("div.group").filter({ hasText: "Stripe" });
+    await stripeRow.hover();
+    await stripeRow.getByRole("button", { name: "Excluir API" }).click({ force: true });
+
+    // Aparece confirmação inline — clicar "Confirmar exclusão" executa o DELETE
+    await stripeRow.getByRole("button", { name: "Confirmar exclusão" }).click({ force: true });
+
+    // Verifica que o método correto foi enviado
+    await expect.poll(() => deletedMethod).toBe("DELETE");
+    // A linha da API deve desaparecer da lista (sem erro de rede)
+    await expect(page.getByText("Stripe", { exact: true })).not.toBeVisible();
   });
 });
