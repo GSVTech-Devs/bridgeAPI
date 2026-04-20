@@ -16,6 +16,8 @@ class LogEntryResponse(BaseModel):
     latency_ms: float
     request_headers: dict[str, str]
     response_headers: dict[str, str]
+    request_body: Optional[str] = None
+    response_body: Optional[str] = None
     created_at: Optional[Any] = None
     expires_at: Optional[Any] = None
 

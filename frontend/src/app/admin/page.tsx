@@ -51,6 +51,13 @@ const actionCards = [
     desc: "Metricas Detalhadas",
     gradient: false,
   },
+  {
+    href: "/admin/logs",
+    icon: "error",
+    title: "Logs de Erro",
+    desc: "Monitore falhas nas APIs",
+    gradient: false,
+  },
 ];
 
 function statusIcon(statusCode: number) {

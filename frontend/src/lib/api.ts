@@ -201,6 +201,32 @@ export function getAdminLogs(skip = 0, limit = 10) {
   }>(`/logs/admin?skip=${skip}&limit=${limit}`);
 }
 
+export function getAdminErrorLogs(params?: { api_id?: string; skip?: number; limit?: number }) {
+  const qs = params
+    ? "?" + new URLSearchParams(
+        Object.fromEntries(
+          Object.entries({ skip: "0", limit: "100", ...params }).filter(([, v]) => v !== undefined)
+        ) as Record<string, string>
+      ).toString()
+    : "";
+  return apiFetch<{
+    items: {
+      correlation_id: string;
+      client_id: string;
+      api_id: string;
+      key_id: string;
+      path: string;
+      method: string;
+      status_code: number;
+      latency_ms: number;
+      request_body: string | null;
+      response_body: string | null;
+      created_at: string | null;
+    }[];
+    total: number;
+  }>(`/logs/admin/errors${qs}`);
+}
+
 // ---------------------------------------------------------------------------
 // Permissions (admin)  →  /permissions/*
 // ---------------------------------------------------------------------------

@@ -79,3 +79,17 @@ async def get_admin_logs(
     """Retorna logs paginados de todos os clientes (acesso admin)."""
     cursor = mongo_db[COLLECTION].find({}).sort("created_at", -1)
     return await cursor.skip(skip).limit(limit).to_list(length=limit)
+
+
+async def get_admin_error_logs(
+    mongo_db: Any,
+    api_id: str | None = None,
+    skip: int = 0,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Retorna apenas logs de erro (status != 200), opcionalmente filtrados por api_id."""
+    query: dict[str, Any] = {"status_code": {"$ne": 200}}
+    if api_id is not None:
+        query["api_id"] = api_id
+    cursor = mongo_db[COLLECTION].find(query).sort("created_at", -1)
+    return await cursor.skip(skip).limit(limit).to_list(length=limit)
