@@ -86,6 +86,14 @@ export function rejectClient(id: string) {
   return apiFetch(`/clients/${id}/reject`, { method: "PATCH" });
 }
 
+export function blockClient(id: string) {
+  return apiFetch(`/clients/${id}/block`, { method: "PATCH" });
+}
+
+export function unblockClient(id: string) {
+  return apiFetch(`/clients/${id}/unblock`, { method: "PATCH" });
+}
+
 // ---------------------------------------------------------------------------
 // APIs (admin)  →  /apis/*
 // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getClients, approveClient, rejectClient } from "@/lib/api";
+import { getClients, approveClient, rejectClient, blockClient, unblockClient } from "@/lib/api";
 
 type Client = { id: string; name: string; email: string; status: string };
 
@@ -9,6 +9,7 @@ const statusConfig: Record<string, { dot: string; label: string }> = {
   active:   { dot: "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]", label: "Active" },
   pending:  { dot: "bg-amber-500 animate-pulse", label: "Pending Approval" },
   rejected: { dot: "bg-error shadow-[0_0_8px_rgba(186,26,26,0.4)]", label: "Rejected" },
+  blocked:  { dot: "bg-slate-400", label: "Blocked" },
 };
 
 function Spinner() {
@@ -55,6 +56,22 @@ export default function ClientsPage() {
     try {
       await rejectClient(id);
       setClients((prev) => prev.map((c) => c.id === id ? { ...c, status: "rejected" } : c));
+    } finally { setActionLoading(null); }
+  }
+
+  async function handleBlock(id: string) {
+    setActionLoading(id + "-block");
+    try {
+      await blockClient(id);
+      setClients((prev) => prev.map((c) => c.id === id ? { ...c, status: "blocked" } : c));
+    } finally { setActionLoading(null); }
+  }
+
+  async function handleUnblock(id: string) {
+    setActionLoading(id + "-unblock");
+    try {
+      await unblockClient(id);
+      setClients((prev) => prev.map((c) => c.id === id ? { ...c, status: "active" } : c));
     } finally { setActionLoading(null); }
   }
 
@@ -150,28 +167,41 @@ export default function ClientsPage() {
                           </div>
                         </td>
                         <td className="px-6 py-5">
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {(c.status === "pending" || c.status === "rejected") && (
+                              <button
+                                onClick={() => handleApprove(c.id)}
+                                disabled={actionLoading === c.id + "-approve"}
+                                className="px-3 py-1 bg-tertiary text-white rounded-md text-xs font-bold shadow-sm hover:brightness-110 transition-all disabled:opacity-50"
+                              >
+                                {actionLoading === c.id + "-approve" ? "…" : "Approve"}
+                              </button>
+                            )}
                             {c.status === "pending" && (
-                              <>
-                                <button
-                                  onClick={() => handleApprove(c.id)}
-                                  disabled={actionLoading === c.id + "-approve"}
-                                  className="px-3 py-1 bg-tertiary text-white rounded-md text-xs font-bold shadow-sm hover:brightness-110 transition-all disabled:opacity-50"
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  onClick={() => handleReject(c.id)}
-                                  disabled={actionLoading === c.id + "-reject"}
-                                  className="px-3 py-1 bg-error-container text-on-error-container rounded-md text-xs font-bold hover:brightness-95 transition-all disabled:opacity-50"
-                                >
-                                  Reject
-                                </button>
-                              </>
+                              <button
+                                onClick={() => handleReject(c.id)}
+                                disabled={actionLoading === c.id + "-reject"}
+                                className="px-3 py-1 bg-error-container text-on-error-container rounded-md text-xs font-bold hover:brightness-95 transition-all disabled:opacity-50"
+                              >
+                                {actionLoading === c.id + "-reject" ? "…" : "Reject"}
+                              </button>
                             )}
                             {c.status === "active" && (
-                              <button className="p-2 hover:bg-error-container/20 rounded-md text-error transition-colors opacity-0 group-hover:opacity-100">
-                                <span className="material-symbols-outlined text-sm">block</span>
+                              <button
+                                onClick={() => handleBlock(c.id)}
+                                disabled={actionLoading === c.id + "-block"}
+                                className="px-3 py-1 bg-error-container text-on-error-container rounded-md text-xs font-bold hover:brightness-95 transition-all disabled:opacity-50"
+                              >
+                                {actionLoading === c.id + "-block" ? "…" : "Block"}
+                              </button>
+                            )}
+                            {c.status === "blocked" && (
+                              <button
+                                onClick={() => handleUnblock(c.id)}
+                                disabled={actionLoading === c.id + "-unblock"}
+                                className="px-3 py-1 bg-tertiary text-white rounded-md text-xs font-bold shadow-sm hover:brightness-110 transition-all disabled:opacity-50"
+                              >
+                                {actionLoading === c.id + "-unblock" ? "…" : "Unblock"}
                               </button>
                             )}
                           </div>

@@ -63,7 +63,7 @@ async def get_client_by_email(db: AsyncSession, email: str) -> Client:
 
 async def approve_client(db: AsyncSession, client_id: str) -> Client:
     client = await get_client_by_id(db, client_id)
-    if client.status != ClientStatus.PENDING:
+    if client.status not in (ClientStatus.PENDING, ClientStatus.REJECTED):
         raise InvalidStatusTransitionError(
             f"Cannot approve client with status: {client.status}"
         )
@@ -78,6 +78,30 @@ async def reject_client(db: AsyncSession, client_id: str) -> Client:
     if client.status == ClientStatus.REJECTED:
         raise InvalidStatusTransitionError("Client is already rejected")
     client.status = ClientStatus.REJECTED
+    await db.commit()
+    await db.refresh(client)
+    return client
+
+
+async def block_client(db: AsyncSession, client_id: str) -> Client:
+    client = await get_client_by_id(db, client_id)
+    if client.status == ClientStatus.BLOCKED:
+        raise InvalidStatusTransitionError("Client is already blocked")
+    if client.status == ClientStatus.PENDING:
+        raise InvalidStatusTransitionError("Cannot block a pending client — reject instead")
+    client.status = ClientStatus.BLOCKED
+    await db.commit()
+    await db.refresh(client)
+    return client
+
+
+async def unblock_client(db: AsyncSession, client_id: str) -> Client:
+    client = await get_client_by_id(db, client_id)
+    if client.status != ClientStatus.BLOCKED:
+        raise InvalidStatusTransitionError(
+            f"Cannot unblock client with status: {client.status}"
+        )
+    client.status = ClientStatus.ACTIVE
     await db.commit()
     await db.refresh(client)
     return client

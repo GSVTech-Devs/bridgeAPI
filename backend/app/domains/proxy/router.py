@@ -96,6 +96,7 @@ async def _dispatch(
     is_error = upstream_response.status_code >= 500
     return_status = 502 if is_error else upstream_response.status_code
 
+    cost = api.cost_per_query if upstream_response.status_code < 400 else None
     await record_metric(
         db=db,
         client_id=client.id,
@@ -105,7 +106,7 @@ async def _dispatch(
         method=request.method,
         status_code=upstream_response.status_code,
         latency_ms=latency_ms,
-        cost=None,
+        cost=cost,
     )
 
     if mongo_db is not None:

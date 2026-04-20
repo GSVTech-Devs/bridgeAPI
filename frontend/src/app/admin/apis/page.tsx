@@ -30,6 +30,43 @@ const initialForm = {
   description: "",
 };
 
+type FormErrors = Partial<Record<keyof typeof initialForm, string>>;
+
+function validateForm(form: typeof initialForm): FormErrors {
+  const errors: FormErrors = {};
+
+  if (!form.name.trim()) {
+    errors.name = "API Name is required.";
+  }
+
+  if (!form.base_url.trim()) {
+    errors.base_url = "Base URL is required.";
+  } else if (!/^https?:\/\/.+/.test(form.base_url.trim())) {
+    errors.base_url = "Must be a valid URL starting with http:// or https://.";
+  }
+
+  if (form.auth_type !== "none" && !form.master_key.trim()) {
+    errors.master_key = "Master key is required for this auth type.";
+  }
+
+  if (form.url_template.trim()) {
+    if (!/^https?:\/\//.test(form.url_template.trim())) {
+      errors.url_template = "URL Template must start with http:// or https://.";
+    } else if (!form.url_template.includes("{query}")) {
+      errors.url_template = "URL Template must contain the {query} placeholder.";
+    }
+  }
+
+  if (form.cost_per_query.trim()) {
+    const v = parseFloat(form.cost_per_query);
+    if (isNaN(v) || v < 0) {
+      errors.cost_per_query = "Cost must be a positive number.";
+    }
+  }
+
+  return errors;
+}
+
 function Spinner() {
   return (
     <div className="flex items-center justify-center py-20 text-on-surface-variant gap-2">
@@ -155,6 +192,7 @@ export default function ApisPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(initialForm);
+  const [fieldErrors, setFieldErrors] = useState<FormErrors>({});
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState(false);
@@ -205,6 +243,12 @@ export default function ApisPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    const errors = validateForm(form);
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+    setFieldErrors({});
     setFormLoading(true);
     setFormError(null);
     try {
@@ -218,6 +262,7 @@ export default function ApisPage() {
       const api = await createApi(payload);
       setApis((prev) => [...prev, api]);
       setForm(initialForm);
+      setFieldErrors({});
       setShowForm(false);
       setFormSuccess(true);
       setTimeout(() => setFormSuccess(false), 3000);
@@ -237,7 +282,7 @@ export default function ApisPage() {
           <p className="text-on-surface-variant mt-2 text-lg">Manage, monitor and connect your technical assets through Bridge.</p>
         </div>
         <button
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => { setShowForm((v) => !v); setFieldErrors({}); setFormError(null); }}
           className="primary-gradient text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:scale-[1.02] transition-transform shadow-lg shadow-primary/20"
         >
           <span className="material-symbols-outlined">add_circle</span>
@@ -277,12 +322,12 @@ export default function ApisPage() {
                 <div className="space-y-2">
                   <label className="block text-sm font-bold text-on-surface-variant">API Name</label>
                   <input
-                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
+                    className={`w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 transition-all outline-none text-sm ${fieldErrors.name ? "ring-2 ring-error" : "focus:ring-primary-container"}`}
                     placeholder="e.g. Real-Time Finance Connector"
                     value={form.name}
-                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                    required
+                    onChange={(e) => { setForm((f) => ({ ...f, name: e.target.value })); setFieldErrors((fe) => ({ ...fe, name: undefined })); }}
                   />
+                  {fieldErrors.name && <p className="text-xs text-error">{fieldErrors.name}</p>}
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
@@ -312,12 +357,12 @@ export default function ApisPage() {
                 <div className="space-y-2">
                   <label className="block text-sm font-bold text-on-surface-variant">Base URL da API original</label>
                   <input
-                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
+                    className={`w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 transition-all outline-none text-sm ${fieldErrors.base_url ? "ring-2 ring-error" : "focus:ring-primary-container"}`}
                     placeholder="https://api.provider.com/v1"
                     value={form.base_url}
-                    onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
-                    required
+                    onChange={(e) => { setForm((f) => ({ ...f, base_url: e.target.value })); setFieldErrors((fe) => ({ ...fe, base_url: undefined })); }}
                   />
+                  {fieldErrors.base_url && <p className="text-xs text-error">{fieldErrors.base_url}</p>}
                 </div>
                 <div className="space-y-2">
                   <label className="block text-sm font-bold text-on-surface-variant">Auth Type</label>
@@ -336,18 +381,23 @@ export default function ApisPage() {
 
               {/* Master key */}
               <div className="space-y-2">
-                <label className="block text-sm font-bold text-on-surface-variant">Master Key / Token da API original</label>
+                <div className="flex items-center gap-2">
+                  <label className="block text-sm font-bold text-on-surface-variant">Master Key / Token da API original</label>
+                  {form.auth_type === "none" && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">opcional</span>
+                  )}
+                </div>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">vpn_key</span>
                   <input
-                    className="w-full bg-surface-container-low border-none rounded-xl py-4 pl-12 pr-5 text-on-surface focus:ring-2 focus:ring-primary-container transition-all outline-none font-mono text-sm"
+                    className={`w-full bg-surface-container-low border-none rounded-xl py-4 pl-12 pr-5 text-on-surface focus:ring-2 transition-all outline-none font-mono text-sm ${fieldErrors.master_key ? "ring-2 ring-error" : "focus:ring-primary-container"}`}
                     type="password"
                     placeholder="••••••••••••••••"
                     value={form.master_key}
-                    onChange={(e) => setForm((f) => ({ ...f, master_key: e.target.value }))}
-                    required
+                    onChange={(e) => { setForm((f) => ({ ...f, master_key: e.target.value })); setFieldErrors((fe) => ({ ...fe, master_key: undefined })); }}
                   />
                 </div>
+                {fieldErrors.master_key && <p className="text-xs text-error">{fieldErrors.master_key}</p>}
               </div>
 
               {/* URL Template builder */}
@@ -362,8 +412,9 @@ export default function ApisPage() {
                 </p>
                 <UrlTemplateBuilder
                   value={form.url_template}
-                  onChange={(v) => setForm((f) => ({ ...f, url_template: v }))}
+                  onChange={(v) => { setForm((f) => ({ ...f, url_template: v })); setFieldErrors((fe) => ({ ...fe, url_template: undefined })); }}
                 />
+                {fieldErrors.url_template && <p className="text-xs text-error">{fieldErrors.url_template}</p>}
               </div>
 
               {/* Row: cost_per_query + description */}
@@ -376,16 +427,19 @@ export default function ApisPage() {
                   <div className="relative">
                     <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">payments</span>
                     <input
-                      className="w-full bg-surface-container-low border-none rounded-xl py-4 pl-12 pr-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
+                      className={`w-full bg-surface-container-low border-none rounded-xl py-4 pl-12 pr-5 text-on-surface placeholder:text-outline-variant focus:ring-2 transition-all outline-none text-sm ${fieldErrors.cost_per_query ? "ring-2 ring-error" : "focus:ring-primary-container"}`}
                       type="number"
                       min="0"
                       step="0.001"
                       placeholder="0.050"
                       value={form.cost_per_query}
-                      onChange={(e) => setForm((f) => ({ ...f, cost_per_query: e.target.value }))}
+                      onChange={(e) => { setForm((f) => ({ ...f, cost_per_query: e.target.value })); setFieldErrors((fe) => ({ ...fe, cost_per_query: undefined })); }}
                     />
                   </div>
-                  <p className="text-xs text-on-surface-variant">Cobrado por requisição bem-sucedida.</p>
+                  {fieldErrors.cost_per_query
+                    ? <p className="text-xs text-error">{fieldErrors.cost_per_query}</p>
+                    : <p className="text-xs text-on-surface-variant">Cobrado por requisição bem-sucedida.</p>
+                  }
                 </div>
                 <div className="space-y-2">
                   <label className="block text-sm font-bold text-on-surface-variant">Description (optional)</label>
@@ -399,7 +453,7 @@ export default function ApisPage() {
               </div>
 
               <div className="flex justify-end gap-4 pt-2">
-                <button type="button" onClick={() => setShowForm(false)}
+                <button type="button" onClick={() => { setShowForm(false); setFieldErrors({}); setFormError(null); }}
                   className="px-8 py-4 rounded-xl font-bold text-on-surface-variant hover:bg-surface-container-high transition-colors">
                   Discard
                 </button>

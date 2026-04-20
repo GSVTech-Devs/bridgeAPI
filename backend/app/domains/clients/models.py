@@ -14,6 +14,7 @@ class ClientStatus(str, Enum):
     PENDING = "pending"
     ACTIVE = "active"
     REJECTED = "rejected"
+    BLOCKED = "blocked"
 
 
 class Client(Base):

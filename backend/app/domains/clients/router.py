@@ -22,9 +22,11 @@ from app.domains.clients.service import (
     InvalidStatusTransitionError,
     approve_client,
     authenticate_client,
+    block_client,
     list_clients,
     register_client,
     reject_client,
+    unblock_client,
 )
 
 router = APIRouter(prefix="/clients", tags=["clients"])
@@ -108,6 +110,40 @@ async def reject(
 ) -> ClientResponse:
     try:
         client = await reject_client(db, str(client_id))
+    except ClientNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Client not found"
+        )
+    except InvalidStatusTransitionError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    return ClientResponse.model_validate(client)
+
+
+@router.patch("/{client_id}/block", response_model=ClientResponse)
+async def block(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: MeResponse = Depends(get_current_user),
+) -> ClientResponse:
+    try:
+        client = await block_client(db, str(client_id))
+    except ClientNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Client not found"
+        )
+    except InvalidStatusTransitionError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    return ClientResponse.model_validate(client)
+
+
+@router.patch("/{client_id}/unblock", response_model=ClientResponse)
+async def unblock(
+    client_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: MeResponse = Depends(get_current_user),
+) -> ClientResponse:
+    try:
+        client = await unblock_client(db, str(client_id))
     except ClientNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Client not found"
