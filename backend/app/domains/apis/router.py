@@ -11,6 +11,7 @@ from app.domains.apis.schemas import (
     APIDetailResponse,
     APIListResponse,
     APIResponse,
+    APIUpdateRequest,
     EndpointCreateRequest,
     EndpointResponse,
 )
@@ -26,6 +27,7 @@ from app.domains.apis.service import (
     list_apis,
     list_endpoints_for_api,
     register_api,
+    update_api,
 )
 from app.domains.auth.router import get_current_user
 from app.domains.auth.schemas import MeResponse
@@ -125,6 +127,34 @@ async def create_endpoint(
             status_code=status.HTTP_404_NOT_FOUND, detail="API not found"
         )
     return EndpointResponse.model_validate(endpoint)
+
+
+@router.patch("/{api_id}", response_model=APIResponse)
+async def update(
+    api_id: uuid.UUID,
+    body: APIUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _: MeResponse = Depends(get_current_user),
+) -> APIResponse:
+    try:
+        api = await update_api(
+            db,
+            str(api_id),
+            name=body.name,
+            slug=body.slug,
+            base_url=str(body.base_url) if body.base_url else None,
+            url_template=body.url_template,
+            master_key=body.master_key,
+            auth_type=body.auth_type,
+            cost_per_query=body.cost_per_query,
+        )
+    except APINotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API not found")
+    except DuplicateAPINameError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="API name already registered")
+    except DuplicateSlugError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Slug already in use")
+    return APIResponse.model_validate(api)
 
 
 @router.delete("/{api_id}", status_code=status.HTTP_204_NO_CONTENT)

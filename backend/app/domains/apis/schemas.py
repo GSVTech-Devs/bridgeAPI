@@ -43,6 +43,32 @@ class APICreateRequest(BaseModel):
         return self
 
 
+class APIUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    slug: Optional[str] = None
+    base_url: Optional[AnyHttpUrl] = None
+    url_template: Optional[str] = None
+    master_key: Optional[str] = None
+    auth_type: Optional[APIAuthType] = None
+    cost_per_query: Optional[float] = None
+
+    @field_validator("slug")
+    @classmethod
+    def validate_slug(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not _SLUG_RE.match(v):
+            raise ValueError("slug must contain only letters, numbers, hyphens and underscores")
+        return v
+
+    @model_validator(mode="after")
+    def validate_url_template(self) -> "APIUpdateRequest":
+        if self.url_template is not None:
+            if "{query}" not in self.url_template:
+                raise ValueError("url_template must contain the {query} placeholder")
+            if not self.url_template.startswith(("http://", "https://")):
+                raise ValueError("url_template must be a full URL starting with http:// or https://")
+        return self
+
+
 class APIResponse(BaseModel):
     id: uuid.UUID
     name: str

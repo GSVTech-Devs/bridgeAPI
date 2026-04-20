@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getApis, createApi, enableApi, disableApi, deleteApi } from "@/lib/api";
+import { getApis, createApi, updateApi, enableApi, disableApi, deleteApi } from "@/lib/api";
 
 const BRIDGE_BASE =
   process.env.NEXT_PUBLIC_BRIDGE_URL ??
@@ -191,6 +191,7 @@ export default function ApisPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(initialForm);
   const [fieldErrors, setFieldErrors] = useState<FormErrors>({});
   const [formLoading, setFormLoading] = useState(false);
@@ -241,8 +242,34 @@ export default function ApisPage() {
     }
   }
 
+  function openEdit(api: Api) {
+    setEditingId(api.id);
+    setForm({
+      name: api.name,
+      slug: api.slug ?? "",
+      base_url: api.base_url,
+      url_template: api.url_template ?? "",
+      auth_type: api.auth_type,
+      master_key: "",
+      cost_per_query: api.cost_per_query != null ? String(api.cost_per_query) : "",
+      description: "",
+    });
+    setFieldErrors({});
+    setFormError(null);
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(initialForm);
+    setFieldErrors({});
+    setFormError(null);
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (editingId) { await handleUpdate(e); return; }
     const errors = validateForm(form);
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -273,6 +300,38 @@ export default function ApisPage() {
     }
   }
 
+  async function handleUpdate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingId) return;
+    const errors = validateForm({ ...form, master_key: form.master_key || "placeholder" });
+    delete errors.master_key;
+    if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
+    setFieldErrors({});
+    setFormLoading(true);
+    setFormError(null);
+    try {
+      const costValue = form.cost_per_query ? parseFloat(form.cost_per_query) : undefined;
+      const payload: Parameters<typeof updateApi>[1] = {
+        name: form.name || undefined,
+        slug: form.slug || undefined,
+        base_url: form.base_url || undefined,
+        url_template: form.url_template || undefined,
+        auth_type: form.auth_type || undefined,
+        cost_per_query: costValue && !isNaN(costValue) ? costValue : undefined,
+      };
+      if (form.master_key) payload.master_key = form.master_key;
+      const updated = await updateApi(editingId, payload);
+      setApis((prev) => prev.map((a) => a.id === editingId ? { ...a, ...updated } : a));
+      closeForm();
+      setFormSuccess(true);
+      setTimeout(() => setFormSuccess(false), 3000);
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : "Erro ao atualizar");
+    } finally {
+      setFormLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       {/* Page header */}
@@ -282,7 +341,7 @@ export default function ApisPage() {
           <p className="text-on-surface-variant mt-2 text-lg">Manage, monitor and connect your technical assets through Bridge.</p>
         </div>
         <button
-          onClick={() => { setShowForm((v) => !v); setFieldErrors({}); setFormError(null); }}
+          onClick={() => { if (showForm) { closeForm(); } else { setShowForm(true); } }}
           className="primary-gradient text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:scale-[1.02] transition-transform shadow-lg shadow-primary/20"
         >
           <span className="material-symbols-outlined">add_circle</span>
@@ -305,8 +364,12 @@ export default function ApisPage() {
                 <span className="material-symbols-outlined text-2xl">add_link</span>
               </div>
               <div>
-                <h3 className="text-2xl font-extrabold font-headline text-on-surface">Register New API</h3>
-                <p className="text-on-surface-variant">Configure your endpoint transformation and pricing structure.</p>
+                <h3 className="text-2xl font-extrabold font-headline text-on-surface">
+                  {editingId ? "Edit API" : "Register New API"}
+                </h3>
+                <p className="text-on-surface-variant">
+                  {editingId ? "Update the API configuration below." : "Configure your endpoint transformation and pricing structure."}
+                </p>
               </div>
             </div>
 
@@ -383,8 +446,10 @@ export default function ApisPage() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <label className="block text-sm font-bold text-on-surface-variant">Master Key / Token da API original</label>
-                  {form.auth_type === "none" && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">opcional</span>
+                  {(form.auth_type === "none" || editingId) && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">
+                      {editingId ? "deixe vazio para manter" : "opcional"}
+                    </span>
                   )}
                 </div>
                 <div className="relative">
@@ -453,13 +518,15 @@ export default function ApisPage() {
               </div>
 
               <div className="flex justify-end gap-4 pt-2">
-                <button type="button" onClick={() => { setShowForm(false); setFieldErrors({}); setFormError(null); }}
+                <button type="button" onClick={closeForm}
                   className="px-8 py-4 rounded-xl font-bold text-on-surface-variant hover:bg-surface-container-high transition-colors">
-                  Discard
+                  Cancelar
                 </button>
                 <button type="submit" disabled={formLoading}
                   className="primary-gradient text-white px-12 py-4 rounded-xl font-extrabold shadow-xl shadow-primary/30 hover:scale-[1.03] transition-transform disabled:opacity-70">
-                  {formLoading ? "Cadastrando…" : "Deploy API Bridge"}
+                  {formLoading
+                    ? (editingId ? "Salvando…" : "Cadastrando…")
+                    : (editingId ? "Salvar Alterações" : "Deploy API Bridge")}
                 </button>
               </div>
             </form>
@@ -548,6 +615,13 @@ export default function ApisPage() {
                     </>
                   ) : (
                     <>
+                      <button
+                        onClick={() => openEdit(api)}
+                        aria-label="Editar API"
+                        className="p-2 rounded-lg text-sm font-bold text-on-surface-variant hover:bg-primary/10 hover:text-primary transition-colors"
+                      >
+                        <span className="material-symbols-outlined text-sm">edit</span>
+                      </button>
                       <button onClick={() => handleToggle(api)} disabled={actionLoading === api.id}
                         className={`p-2 rounded-lg text-sm font-bold transition-colors ${
                           api.status === "active" ? "hover:bg-error-container text-error" : "hover:bg-green-100 text-green-700"
