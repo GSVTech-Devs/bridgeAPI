@@ -11,6 +11,7 @@ const navItems = [
   { href: "/admin/apis", label: "APIs", icon: "api" },
   { href: "/admin/permissions", label: "Permissões", icon: "vpn_key" },
   { href: "/admin/metrics", label: "Métricas", icon: "analytics" },
+  { href: "/admin/usage", label: "Uso por Cliente", icon: "account_balance_wallet" },
   { href: "/admin/logs", label: "Logs de Erro", icon: "error" },
 ];
 

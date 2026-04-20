@@ -52,6 +52,13 @@ const actionCards = [
     gradient: false,
   },
   {
+    href: "/admin/usage",
+    icon: "account_balance_wallet",
+    title: "Uso por Cliente",
+    desc: "Gastos e consumo por usuário",
+    gradient: false,
+  },
+  {
     href: "/admin/logs",
     icon: "error",
     title: "Logs de Erro",

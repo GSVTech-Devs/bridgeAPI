@@ -126,6 +126,21 @@ export function createApi(data: {
   );
 }
 
+export function updateApi(id: string, data: {
+  name?: string;
+  slug?: string;
+  base_url?: string;
+  url_template?: string;
+  auth_type?: string;
+  master_key?: string;
+  cost_per_query?: number;
+}) {
+  return apiFetch<{ id: string; name: string; slug?: string; base_url: string; url_template?: string; status: string; auth_type: string; cost_per_query?: number }>(
+    `/apis/${id}`,
+    { method: "PATCH", body: JSON.stringify(data) }
+  );
+}
+
 export function enableApi(id: string) {
   return apiFetch(`/apis/${id}/enable`, { method: "PATCH" });
 }
@@ -157,6 +172,42 @@ export function getAdminMetrics(params?: { since?: string; until?: string }) {
     billable_requests: number;
     non_billable_requests: number;
   }>(`/metrics/admin${qs}`);
+}
+
+export function getAdminClientsSummary(params?: { since?: string; until?: string }) {
+  const qs = params
+    ? "?" + new URLSearchParams(params as Record<string, string>).toString()
+    : "";
+  return apiFetch<{
+    items: {
+      client_id: string;
+      client_name: string;
+      client_email: string;
+      total_requests: number;
+      error_count: number;
+      success_count: number;
+      total_cost: number;
+    }[];
+  }>(`/metrics/admin/clients/summary${qs}`);
+}
+
+export function getAdminClientDetail(clientId: string, params?: { since?: string; until?: string }) {
+  const qs = params
+    ? "?" + new URLSearchParams(params as Record<string, string>).toString()
+    : "";
+  return apiFetch<{
+    client_id: string;
+    total_cost: number;
+    total_requests: number;
+    items: {
+      api_id: string;
+      api_name: string;
+      total_requests: number;
+      error_count: number;
+      success_count: number;
+      total_cost: number;
+    }[];
+  }>(`/metrics/admin/clients/${clientId}${qs}`);
 }
 
 export function getAdminUsage(params?: { since?: string; until?: string }) {
