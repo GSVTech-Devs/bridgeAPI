@@ -26,29 +26,29 @@ const actionCards = [
   {
     href: "/admin/clients",
     icon: "group",
-    title: "Manage Clientes",
-    desc: "View and edit partner access",
+    title: "Gerencie Clientes",
+    desc: "Monitoramento e controle de acesso",
     gradient: true,
   },
   {
     href: "/admin/apis",
     icon: "api",
-    title: "Explore APIs",
-    desc: "Configure bridge endpoints",
+    title: "Configure APIs",
+    desc: "Confiuração de APIs e integrações",
     gradient: false,
   },
   {
     href: "/admin/permissions",
     icon: "vpn_key",
-    title: "Permissions",
-    desc: "Security & authentication",
+    title: "Acesso as APIs",
+    desc: "Gerencie o acesso às APIs",
     gradient: false,
   },
   {
     href: "/admin/metrics",
     icon: "analytics",
-    title: "Analytics",
-    desc: "Deep usage insights",
+    title: "Metricas",
+    desc: "Metricas Detalhadas",
     gradient: false,
   },
 ];
@@ -101,26 +101,26 @@ export default function AdminPage() {
 
   const metricCards = data
     ? [
-        { label: "Total Clients", value: data.totalClients.toLocaleString() },
-        { label: "API Calls Today", value: data.totalRequests.toLocaleString() },
-        { label: "Success Rate", value: `${data.successRate.toFixed(2)}%`, dot: true },
-        { label: "Active APIs", value: String(data.activeApis), tag: "Live" },
+        { label: "Total de Clientes", value: data.totalClients.toLocaleString() },
+        { label: "Total de Requisições API", value: data.totalRequests.toLocaleString() },
+        { label: "Taxa de Sucesso", value: `${data.successRate.toFixed(2)}%`, dot: true },
+        { label: "APIs Ativas", value: String(data.activeApis), tag: "Live" },
       ]
     : [
-        { label: "Total Clients", value: "—" },
-        { label: "API Calls Today", value: "—" },
-        { label: "Success Rate", value: "—", dot: false },
-        { label: "Active APIs", value: "—", tag: "Live" },
+        { label: "Total de Clientes", value: "—" },
+        { label: "Total de Requisições API", value: "—" },
+        { label: "Taxa de Sucesso", value: "—", dot: false },
+        { label: "APIs Ativas", value: "—", tag: "Live" },
       ];
 
   return (
     <div>
       <div className="mb-10">
         <h1 className="text-4xl font-extrabold font-headline tracking-tight text-on-surface mb-2">
-          Welcome back, Architect.
+          Bem-vindo ao Painel de Administração
         </h1>
         <p className="text-on-surface-variant max-w-2xl">
-          Monitor your bridge performance and system health across all integrated endpoints in real-time.
+          Monitore o desempenho, gerencie clientes e configure suas APIs.
         </p>
       </div>
 
@@ -177,16 +177,16 @@ export default function AdminPage() {
 
       <div>
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-bold font-headline">Recent Activity</h3>
+          <h3 className="text-xl font-bold font-headline">Atividade Recente</h3>
           <Link href="/admin/metrics" className="text-sm font-bold text-primary flex items-center gap-1">
-            View All <span className="material-symbols-outlined text-sm">arrow_forward</span>
+            Ver Tudo <span className="material-symbols-outlined text-sm">arrow_forward</span>
           </Link>
         </div>
         <div className="space-y-1">
           {loading ? (
-            <div className="p-4 text-on-surface-variant text-sm animate-pulse">Loading activity…</div>
+            <div className="p-4 text-on-surface-variant text-sm animate-pulse">Carregando atividade…</div>
           ) : logs.length === 0 ? (
-            <div className="p-4 text-on-surface-variant text-sm">No recent requests.</div>
+            <div className="p-4 text-on-surface-variant text-sm">Nenhuma requisição recente.</div>
           ) : (
             logs.map((log) => {
               const { icon, isError } = statusIcon(log.status_code);
