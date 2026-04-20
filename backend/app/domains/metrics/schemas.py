@@ -35,3 +35,33 @@ class ClientApiUsageItem(BaseModel):
 
 class ClientApiUsageResponse(BaseModel):
     items: list[ClientApiUsageItem]
+
+
+class ClientSummaryItem(BaseModel):
+    client_id: str
+    client_name: str
+    client_email: str
+    total_requests: int
+    error_count: int
+    success_count: int
+    total_cost: float
+
+
+class ClientSummaryResponse(BaseModel):
+    items: list[ClientSummaryItem]
+
+
+class ClientApiDetailItem(BaseModel):
+    api_id: str
+    api_name: str
+    total_requests: int
+    error_count: int
+    success_count: int
+    total_cost: float
+
+
+class ClientApiDetailResponse(BaseModel):
+    items: list[ClientApiDetailItem]
+    client_id: str
+    total_cost: float
+    total_requests: int
