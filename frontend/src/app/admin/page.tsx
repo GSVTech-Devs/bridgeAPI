@@ -55,7 +55,7 @@ const actionCards = [
 
 function statusIcon(statusCode: number) {
   if (statusCode >= 500) return { icon: "report", isError: true };
-  if (statusCode >= 400) return { icon: "warning", isError: true };
+  if (statusCode !== 200) return { icon: "warning", isError: true };
   return { icon: "dns", isError: false };
 }
 

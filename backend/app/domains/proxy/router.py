@@ -95,8 +95,7 @@ async def _dispatch(
     latency_ms = (time.monotonic() - start) * 1000
     is_error = upstream_response.status_code >= 500
     return_status = 502 if is_error else upstream_response.status_code
-
-    cost = api.cost_per_query if upstream_response.status_code < 400 else None
+    cost = api.cost_per_query if upstream_response.status_code == 200 else None
     await record_metric(
         db=db,
         client_id=client.id,

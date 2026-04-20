@@ -21,3 +21,17 @@ class ApiMetricItem(BaseModel):
 
 class ApiBreakdownResponse(BaseModel):
     items: list[ApiMetricItem]
+
+
+class ClientApiUsageItem(BaseModel):
+    client_id: str
+    client_name: str
+    client_email: str
+    api_id: str
+    api_name: str
+    total_requests: int
+    total_cost: float
+
+
+class ClientApiUsageResponse(BaseModel):
+    items: list[ClientApiUsageItem]

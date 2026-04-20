@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAdminMetrics, getAdminMetricsBreakdown } from "@/lib/api";
+import { getAdminMetrics, getAdminMetricsBreakdown, getAdminUsage, getAdminLogs } from "@/lib/api";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -23,17 +23,42 @@ type ApiBreakdownItem = {
   error_rate: number;
 };
 
+type ClientApiUsageItem = {
+  client_id: string;
+  client_name: string;
+  client_email: string;
+  api_id: string;
+  api_name: string;
+  total_requests: number;
+  total_cost: number;
+};
+
+type LogItem = {
+  correlation_id: string;
+  client_id: string;
+  api_id: string;
+  path: string;
+  method: string;
+  status_code: number;
+  latency_ms: number;
+  created_at: string | null;
+};
+
 export default function AdminMetricsPage() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [breakdown, setBreakdown] = useState<ApiBreakdownItem[]>([]);
+  const [usage, setUsage] = useState<ClientApiUsageItem[]>([]);
+  const [logs, setLogs] = useState<LogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([getAdminMetrics(), getAdminMetricsBreakdown()])
-      .then(([m, b]) => {
+    Promise.all([getAdminMetrics(), getAdminMetricsBreakdown(), getAdminUsage(), getAdminLogs(0, 50)])
+      .then(([m, b, u, l]) => {
         setMetrics(m);
         setBreakdown(b.items);
+        setUsage(u.items);
+        setLogs(l.items);
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Erro ao carregar"))
       .finally(() => setLoading(false));
@@ -67,6 +92,13 @@ export default function AdminMetricsPage() {
     { name: "Sucesso", value: successRate },
     { name: "Erros", value: errorRate },
   ];
+
+  const clientNameMap: Record<string, string> = {};
+  const apiNameMap: Record<string, string> = {};
+  for (const u of usage) {
+    clientNameMap[u.client_id] = u.client_name;
+    apiNameMap[u.api_id] = u.api_name;
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
@@ -178,23 +210,110 @@ export default function AdminMetricsPage() {
         </div>
       </div>
 
-      {/* Success vs Errors pie */}
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h4 className="text-xl font-bold tracking-tight font-headline">Success vs Errors</h4>
-        </div>
-        <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/10">
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+      {/* Success vs Errors pie + Recent Consults — side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Pie chart */}
+        <div className="h-[420px] bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/10 flex flex-col">
+          <h4 className="text-xl font-bold tracking-tight font-headline mb-4 shrink-0">Success vs Errors</h4>
+          <div className="flex-1 min-h-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
+              <Pie
+                data={pieData}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                outerRadius={100}
+                label={({ name, value }) =>
+                  `${String(name)}: ${Number(value).toFixed(1)}%`
+                }
+                labelLine
+              >
                 {pieData.map((_, i) => (
                   <Cell key={i} fill={i === 0 ? "#22c55e" : "#ba1a1a"} />
                 ))}
               </Pie>
-              <Legend />
+              <Legend verticalAlign="bottom" height={36} />
               <Tooltip formatter={(v: unknown) => `${(v as number).toFixed(1)}%`} />
             </PieChart>
           </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Recent Consults — scrollable */}
+        <div className="h-[420px] bg-surface-container-lowest rounded-xl border border-outline-variant/10 overflow-hidden flex flex-col">
+          <div className="px-5 py-4 border-b border-outline-variant/10 shrink-0">
+            <h4 className="text-xl font-bold tracking-tight font-headline">Recent Consults</h4>
+          </div>
+          <div className="overflow-y-auto flex-1 divide-y divide-outline-variant/10">
+            {logs.length === 0 ? (
+              <p className="p-6 text-sm text-on-surface-variant">No consults recorded yet.</p>
+            ) : (
+              logs.map((log) => {
+                const isError = log.status_code !== 200;
+                const clientName = clientNameMap[log.client_id] ?? log.client_id.slice(0, 8);
+                const apiName = apiNameMap[log.api_id] ?? log.api_id.slice(0, 8);
+                return (
+                  <div key={log.correlation_id} className="flex items-center gap-3 px-5 py-3 hover:bg-surface-container-low/30 transition-colors">
+                    <span className={`shrink-0 w-12 text-center text-xs font-black rounded-md py-1 ${isError ? "bg-error-container text-error" : "bg-green-100 text-green-700"}`}>
+                      {log.status_code}
+                    </span>
+                    <span className={`shrink-0 w-10 text-xs font-mono font-bold ${isError ? "text-error" : "text-on-surface-variant"}`}>
+                      {log.method}
+                    </span>
+                    <span className="flex-1 font-mono text-xs text-on-surface truncate min-w-0">{log.path}</span>
+                    <div className="shrink-0 text-right hidden sm:block">
+                      <p className="text-xs font-bold text-on-surface">{clientName}</p>
+                      <p className="text-[10px] text-primary font-medium">{apiName}</p>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Per-client per-API usage table */}
+      <div className="space-y-4">
+        <h4 className="text-xl font-bold tracking-tight font-headline">Usage by Client & API</h4>
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 overflow-hidden">
+          {usage.length === 0 ? (
+            <p className="p-6 text-sm text-on-surface-variant">No usage data recorded yet.</p>
+          ) : (
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-surface-container-low/50">
+                  {["Client", "Email", "API", "Requests", "Accumulated Cost"].map((h) => (
+                    <th key={h} className="px-5 py-3 text-xs font-bold uppercase tracking-widest text-on-surface-variant/60">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/10">
+                {usage.map((row) => (
+                  <tr key={`${row.client_id}-${row.api_id}`} className="hover:bg-surface-container-low/30 transition-colors">
+                    <td className="px-5 py-4 text-sm font-bold text-on-surface">{row.client_name}</td>
+                    <td className="px-5 py-4 text-xs text-on-surface-variant font-mono">{row.client_email}</td>
+                    <td className="px-5 py-4">
+                      <span className="px-2 py-1 rounded-lg bg-primary/10 text-primary text-xs font-bold">{row.api_name}</span>
+                    </td>
+                    <td className="px-5 py-4 text-sm font-bold text-on-surface tabular-nums">
+                      {row.total_requests.toLocaleString()}
+                    </td>
+                    <td className="px-5 py-4 text-sm font-bold tabular-nums">
+                      {row.total_cost > 0
+                        ? <span className="text-primary">R$ {row.total_cost.toFixed(4)}</span>
+                        : <span className="text-on-surface-variant text-xs">—</span>
+                      }
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>

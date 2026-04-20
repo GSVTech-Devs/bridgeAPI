@@ -159,6 +159,23 @@ export function getAdminMetrics(params?: { since?: string; until?: string }) {
   }>(`/metrics/admin${qs}`);
 }
 
+export function getAdminUsage(params?: { since?: string; until?: string }) {
+  const qs = params
+    ? "?" + new URLSearchParams(params as Record<string, string>).toString()
+    : "";
+  return apiFetch<{
+    items: {
+      client_id: string;
+      client_name: string;
+      client_email: string;
+      api_id: string;
+      api_name: string;
+      total_requests: number;
+      total_cost: number;
+    }[];
+  }>(`/metrics/admin/usage${qs}`);
+}
+
 export function getAdminMetricsBreakdown(params?: { since?: string; until?: string }) {
   const qs = params
     ? "?" + new URLSearchParams(params as Record<string, string>).toString()

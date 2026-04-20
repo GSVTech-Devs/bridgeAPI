@@ -8,6 +8,7 @@ from sqlalchemy import Integer, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.apis.models import ExternalAPI
+from app.domains.clients.models import Client
 from app.domains.metrics.models import RequestMetric
 
 
@@ -46,7 +47,7 @@ def _build_aggregation_query(
     """Constrói query de agregação com filtros opcionais."""
     stmt = select(
         func.count(RequestMetric.id).label("total"),
-        func.sum(func.cast(RequestMetric.status_code >= 500, Integer)).label("errors"),
+        func.sum(func.cast(RequestMetric.status_code != 200, Integer)).label("errors"),
         func.avg(RequestMetric.latency_ms).label("avg_latency"),
         func.sum(RequestMetric.cost).label("total_cost"),
         func.sum(func.cast(RequestMetric.cost.isnot(None), Integer)).label("billable"),
@@ -103,6 +104,47 @@ async def get_admin_global_metrics(
     return _row_to_dict(row)
 
 
+async def get_usage_by_client_and_api(
+    db: AsyncSession,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+) -> list[dict[str, Any]]:
+    """Retorna total de requisições e custo acumulado por cliente + API."""
+    stmt = (
+        select(
+            Client.id.label("client_id"),
+            Client.name.label("client_name"),
+            Client.email.label("client_email"),
+            ExternalAPI.id.label("api_id"),
+            ExternalAPI.name.label("api_name"),
+            func.count(RequestMetric.id).label("total_requests"),
+            func.sum(RequestMetric.cost).label("total_cost"),
+        )
+        .join(Client, RequestMetric.client_id == Client.id)
+        .join(ExternalAPI, RequestMetric.api_id == ExternalAPI.id)
+        .group_by(Client.id, Client.name, Client.email, ExternalAPI.id, ExternalAPI.name)
+        .order_by(Client.name, ExternalAPI.name)
+    )
+    if since is not None:
+        stmt = stmt.where(RequestMetric.created_at >= since)
+    if until is not None:
+        stmt = stmt.where(RequestMetric.created_at <= until)
+    result = await db.execute(stmt)
+    rows = result.fetchall()
+    return [
+        {
+            "client_id": str(row.client_id),
+            "client_name": row.client_name,
+            "client_email": row.client_email,
+            "api_id": str(row.api_id),
+            "api_name": row.api_name,
+            "total_requests": row.total_requests or 0,
+            "total_cost": float(row.total_cost) if row.total_cost is not None else 0.0,
+        }
+        for row in rows
+    ]
+
+
 async def get_metrics_by_api(
     db: AsyncSession,
     since: Optional[datetime] = None,
@@ -114,7 +156,7 @@ async def get_metrics_by_api(
             ExternalAPI.id.label("api_id"),
             ExternalAPI.name.label("api_name"),
             func.count(RequestMetric.id).label("total"),
-            func.sum(func.cast(RequestMetric.status_code >= 500, Integer)).label("errors"),
+            func.sum(func.cast(RequestMetric.status_code != 200, Integer)).label("errors"),
         )
         .join(ExternalAPI, RequestMetric.api_id == ExternalAPI.id)
         .group_by(ExternalAPI.id, ExternalAPI.name)
