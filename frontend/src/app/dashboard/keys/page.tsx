@@ -111,6 +111,7 @@ export default function KeysPage() {
             const apiKeys = keys.filter((k) => k.api_id === api.id);
             const activeKeys = apiKeys.filter((k) => k.status === "active");
             const revokedKeys = apiKeys.filter((k) => k.status !== "active");
+            const atLimit = activeKeys.length >= 5;
 
             return (
               <section key={api.id} className="bg-surface-container-lowest rounded-2xl border border-outline-variant/15 overflow-hidden">
@@ -129,8 +130,8 @@ export default function KeysPage() {
                       </div>
                     </div>
                   </div>
-                  <span className="text-xs text-on-surface-variant bg-surface-container px-2.5 py-1 rounded-full font-mono">
-                    {activeKeys.length} active key{activeKeys.length !== 1 ? "s" : ""}
+                  <span className={`text-xs px-2.5 py-1 rounded-full font-mono ${atLimit ? "bg-error-container text-on-error-container font-bold" : "bg-surface-container text-on-surface-variant"}`}>
+                    {activeKeys.length}/5 keys
                   </span>
                 </div>
 
@@ -140,23 +141,30 @@ export default function KeysPage() {
                       {createErrors[api.id]}
                     </div>
                   )}
-                  <form onSubmit={(e) => handleCreate(api.id, e)} className="flex gap-3">
-                    <input
-                      className="flex-1 bg-surface-container border border-outline-variant/30 rounded-xl py-3 px-4 text-sm text-on-surface focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
-                      placeholder={`Nome da chave para ${api.name} (ex: Produção)`}
-                      value={newKeyNames[api.id] ?? ""}
-                      onChange={(e) => setNewKeyNames((prev) => ({ ...prev, [api.id]: e.target.value }))}
-                      required
-                    />
-                    <button
-                      type="submit"
-                      disabled={creating === api.id}
-                      className="primary-gradient text-white rounded-xl px-5 py-3 text-sm font-semibold hover:opacity-90 transition-all shadow-[0_4px_14px_0_rgba(43,91,181,0.2)] flex items-center gap-2 disabled:opacity-70"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">add_circle</span>
-                      {creating === api.id ? "Criando…" : "Gerar Chave"}
-                    </button>
-                  </form>
+                  {atLimit ? (
+                    <div className="flex items-center gap-3 p-3 bg-error-container/40 border border-error/20 rounded-xl text-sm text-on-error-container">
+                      <span className="material-symbols-outlined text-[18px]">block</span>
+                      Limite de 5 chaves ativas atingido. Revogue uma chave para criar outra.
+                    </div>
+                  ) : (
+                    <form onSubmit={(e) => handleCreate(api.id, e)} className="flex gap-3">
+                      <input
+                        className="flex-1 bg-surface-container border border-outline-variant/30 rounded-xl py-3 px-4 text-sm text-on-surface focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
+                        placeholder={`Nome da chave para ${api.name} (ex: Produção)`}
+                        value={newKeyNames[api.id] ?? ""}
+                        onChange={(e) => setNewKeyNames((prev) => ({ ...prev, [api.id]: e.target.value }))}
+                        required
+                      />
+                      <button
+                        type="submit"
+                        disabled={creating === api.id}
+                        className="primary-gradient text-white rounded-xl px-5 py-3 text-sm font-semibold hover:opacity-90 transition-all shadow-[0_4px_14px_0_rgba(43,91,181,0.2)] flex items-center gap-2 disabled:opacity-70"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">add_circle</span>
+                        {creating === api.id ? "Criando…" : "Gerar Chave"}
+                      </button>
+                    </form>
+                  )}
 
                   {activeKeys.length > 0 && (
                     <div className="space-y-3">

@@ -3,7 +3,7 @@ from __future__ import annotations
 import secrets
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decrypt_value, encrypt_value, hash_password, verify_password
@@ -13,11 +13,18 @@ from app.domains.keys.models import APIKey, APIKeyStatus
 from app.domains.permissions.models import Permission
 
 
+MAX_KEYS_PER_CLIENT_PER_API = 5
+
+
 class APIKeyNotFoundError(Exception):
     pass
 
 
 class UnauthorizedApiError(Exception):
+    pass
+
+
+class APIKeyLimitExceededError(Exception):
     pass
 
 
@@ -37,6 +44,18 @@ async def create_api_key(
     )
     if perm_result.scalar_one_or_none() is None:
         raise UnauthorizedApiError(f"Client has no active permission for API {api_id}")
+
+    count_result = await db.execute(
+        select(func.count()).select_from(APIKey).where(
+            APIKey.client_id == client.id,
+            APIKey.api_id == api_id,
+            APIKey.status == APIKeyStatus.ACTIVE,
+        )
+    )
+    if count_result.scalar_one() >= MAX_KEYS_PER_CLIENT_PER_API:
+        raise APIKeyLimitExceededError(
+            f"Maximum of {MAX_KEYS_PER_CLIENT_PER_API} active keys per API reached"
+        )
 
     key_prefix = secrets.token_hex(4)
     raw_secret = f"brg_{key_prefix}_{secrets.token_urlsafe(24)}"

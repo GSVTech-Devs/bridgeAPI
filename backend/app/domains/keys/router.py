@@ -15,6 +15,7 @@ from app.domains.keys.schemas import (
     APIKeyResponse,
 )
 from app.domains.keys.service import (
+    APIKeyLimitExceededError,
     APIKeyNotFoundError,
     UnauthorizedApiError,
     create_api_key,
@@ -43,6 +44,11 @@ async def create(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No active permission for this API",
+        )
+    except APIKeyLimitExceededError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Maximum of 5 active keys per API reached. Revoke a key before creating a new one.",
         )
     return APIKeyCreateResponse(
         **APIKeyResponse.model_validate(api_key).model_dump(exclude={"api_key"}),
