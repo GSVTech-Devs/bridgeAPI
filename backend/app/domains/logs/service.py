@@ -65,9 +65,13 @@ async def get_client_logs(
     client_id: str,
     skip: int = 0,
     limit: int = 20,
+    api_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Retorna logs paginados de um cliente específico."""
-    cursor = mongo_db[COLLECTION].find({"client_id": client_id}).sort("created_at", -1)
+    query: dict[str, Any] = {"client_id": client_id}
+    if api_id is not None:
+        query["api_id"] = api_id
+    cursor = mongo_db[COLLECTION].find(query).sort("created_at", -1)
     return await cursor.skip(skip).limit(limit).to_list(length=limit)
 
 

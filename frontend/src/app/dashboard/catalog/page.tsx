@@ -18,8 +18,6 @@ type ApiEntry = {
   status: string;
 };
 
-const apiIcons = ["payments", "person_search", "insights", "cloud_sync", "dataset", "monitoring"];
-
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
   function handleCopy() {
@@ -149,7 +147,7 @@ export default function CatalogPage() {
                         className="material-symbols-outlined text-2xl"
                         style={{ fontVariationSettings: "'FILL' 1" }}
                       >
-                        {apiIcons[i % apiIcons.length]}
+                        api
                       </span>
                     </div>
                     <div>

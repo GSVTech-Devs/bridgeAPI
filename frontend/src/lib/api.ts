@@ -400,15 +400,20 @@ export function getClientDashboard(params?: {
 // ---------------------------------------------------------------------------
 // Logs (client)  →  /logs
 // ---------------------------------------------------------------------------
-export function getLogs(skip = 0, limit = 20) {
+export function getLogs(skip = 0, limit = 20, api_id?: string) {
+  const qs = new URLSearchParams({ skip: String(skip), limit: String(limit) });
+  if (api_id) qs.set("api_id", api_id);
   return apiFetch<{
     items: {
       correlation_id: string;
+      api_id: string;
       path: string;
       method: string;
       status_code: number;
       latency_ms: number;
+      response_body: string | null;
+      created_at: string | null;
     }[];
     total: number;
-  }>(`/logs?skip=${skip}&limit=${limit}`);
+  }>(`/logs?${qs}`);
 }

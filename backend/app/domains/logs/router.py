@@ -20,6 +20,7 @@ router = APIRouter(tags=["logs"])
 async def list_logs(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
+    api_id: Optional[str] = Query(default=None),
     mongo_db=Depends(get_mongo_db),
     current_client: MeResponse = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -32,6 +33,7 @@ async def list_logs(
         client_id=str(client.id),
         skip=skip,
         limit=limit,
+        api_id=api_id,
     )
     items = [LogEntryResponse(**doc) for doc in logs]
     return LogListResponse(items=items, total=len(items))
