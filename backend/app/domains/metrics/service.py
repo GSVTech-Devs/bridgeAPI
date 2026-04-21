@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.apis.models import ExternalAPI
 from app.domains.clients.models import Client
+from app.domains.keys.models import APIKey
 from app.domains.metrics.models import RequestMetric
 
 
@@ -261,6 +262,45 @@ async def get_client_status_codes(
                 "count": row.count,
             })
     return [item for items in api_codes.values() for item in items]
+
+
+async def get_client_requests_by_key(
+    db: AsyncSession,
+    client_id: uuid.UUID,
+    api_id: Optional[uuid.UUID] = None,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+) -> list[dict[str, Any]]:
+    """Requests agrupados por API key para um cliente."""
+    stmt = (
+        select(
+            APIKey.id.label("key_id"),
+            APIKey.name.label("key_name"),
+            APIKey.key_prefix,
+            func.count(RequestMetric.id).label("total_requests"),
+        )
+        .join(APIKey, RequestMetric.key_id == APIKey.id)
+        .where(RequestMetric.client_id == client_id)
+        .group_by(APIKey.id, APIKey.name, APIKey.key_prefix)
+        .order_by(func.count(RequestMetric.id).desc())
+    )
+    if api_id is not None:
+        stmt = stmt.where(RequestMetric.api_id == api_id)
+    if since is not None:
+        stmt = stmt.where(RequestMetric.created_at >= since)
+    if until is not None:
+        stmt = stmt.where(RequestMetric.created_at <= until)
+    result = await db.execute(stmt)
+    rows = result.fetchall()
+    return [
+        {
+            "key_id": str(row.key_id),
+            "key_name": row.key_name,
+            "key_prefix": row.key_prefix,
+            "total_requests": row.total_requests or 0,
+        }
+        for row in rows
+    ]
 
 
 async def get_metrics_by_api(

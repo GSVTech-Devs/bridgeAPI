@@ -351,6 +351,20 @@ export function revokeKey(id: string) {
 // ---------------------------------------------------------------------------
 // Metrics  →  /metrics/*
 // ---------------------------------------------------------------------------
+export function getClientByKey(params?: { api_id?: string; since?: string; until?: string }) {
+  const qs = params
+    ? "?" + new URLSearchParams(params as Record<string, string>).toString()
+    : "";
+  return apiFetch<{
+    items: {
+      key_id: string;
+      key_name: string;
+      key_prefix: string;
+      total_requests: number;
+    }[];
+  }>(`/metrics/client/by-key${qs}`);
+}
+
 export function getClientByApi(params?: { since?: string; until?: string }) {
   const qs = params
     ? "?" + new URLSearchParams(params as Record<string, string>).toString()
@@ -408,6 +422,8 @@ export function getLogs(skip = 0, limit = 20, api_id?: string) {
     items: {
       correlation_id: string;
       api_id: string;
+      key_id: string;
+      key_name: string | null;
       path: string;
       method: string;
       status_code: number;

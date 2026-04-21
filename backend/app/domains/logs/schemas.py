@@ -10,6 +10,7 @@ class LogEntryResponse(BaseModel):
     client_id: str
     api_id: str
     key_id: str
+    key_name: Optional[str] = None
     path: str
     method: str
     status_code: int

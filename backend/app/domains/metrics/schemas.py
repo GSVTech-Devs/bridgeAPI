@@ -89,3 +89,14 @@ class StatusCodeItem(BaseModel):
 
 class ClientStatusCodesResponse(BaseModel):
     items: list[StatusCodeItem]
+
+
+class KeyBreakdownItem(BaseModel):
+    key_id: str
+    key_name: str
+    key_prefix: str
+    total_requests: int
+
+
+class KeyBreakdownResponse(BaseModel):
+    items: list[KeyBreakdownItem]

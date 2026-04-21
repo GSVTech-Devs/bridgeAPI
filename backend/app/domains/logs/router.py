@@ -5,15 +5,27 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select
+
 from app.core.database import get_db
 from app.core.mongo_client import get_mongo_db
 from app.domains.auth.router import get_current_client, get_current_user
 from app.domains.auth.schemas import MeResponse
 from app.domains.clients.service import get_client_by_email
+from app.domains.keys.models import APIKey
 from app.domains.logs.schemas import LogEntryResponse, LogListResponse
 from app.domains.logs.service import get_admin_error_logs, get_admin_logs, get_client_logs
 
 router = APIRouter(tags=["logs"])
+
+
+async def _enrich_with_key_names(db: AsyncSession, docs: list[dict]) -> list[dict]:
+    key_ids = {d["key_id"] for d in docs if d.get("key_id")}
+    if not key_ids:
+        return docs
+    result = await db.execute(select(APIKey.id, APIKey.name).where(APIKey.id.in_(key_ids)))
+    name_map = {str(row.id): row.name for row in result.fetchall()}
+    return [{**d, "key_name": name_map.get(d.get("key_id", ""))} for d in docs]
 
 
 @router.get("/logs", response_model=LogListResponse)
@@ -35,6 +47,7 @@ async def list_logs(
         limit=limit,
         api_id=api_id,
     )
+    logs = await _enrich_with_key_names(db, logs)
     items = [LogEntryResponse(**doc) for doc in logs]
     return LogListResponse(items=items, total=len(items))
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getClientByApi, getLogs } from "@/lib/api";
+import { getClientByApi, getClientByKey, getLogs } from "@/lib/api";
 
 type ApiItem = {
   api_id: string;
@@ -15,12 +15,21 @@ type ApiItem = {
 type LogItem = {
   correlation_id: string;
   api_id: string;
+  key_id: string;
+  key_name: string | null;
   path: string;
   method: string;
   status_code: number;
   latency_ms: number;
   response_body: string | null;
   created_at: string | null;
+};
+
+type KeyItem = {
+  key_id: string;
+  key_name: string;
+  key_prefix: string;
+  total_requests: number;
 };
 
 function statusBadge(code: number) {
@@ -98,6 +107,16 @@ function LogRow({ log }: { log: LogItem }) {
           </span>
         </td>
         <td className="px-6 py-4 text-on-surface-variant">{Math.round(log.latency_ms)}ms</td>
+        <td className="px-6 py-4">
+          {log.key_name ? (
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-surface-container text-on-surface-variant text-xs font-mono">
+              <span className="material-symbols-outlined text-[12px]">vpn_key</span>
+              {log.key_name}
+            </span>
+          ) : (
+            <span className="text-outline text-xs">—</span>
+          )}
+        </td>
         <td className="px-6 py-4 text-right text-outline text-xs">{formatDate(log.created_at)}</td>
         <td className="px-6 py-4 text-right">
           {log.response_body && (
@@ -109,7 +128,7 @@ function LogRow({ log }: { log: LogItem }) {
       </tr>
       {open && log.response_body && (
         <tr>
-          <td colSpan={5} className="px-6 pb-4 bg-surface-container-low/50">
+          <td colSpan={6} className="px-6 pb-4 bg-surface-container-low/50">
             <pre className="text-xs font-mono text-on-surface-variant whitespace-pre-wrap break-all bg-surface-container rounded-lg p-4 max-h-48 overflow-y-auto">
               {(() => {
                 try { return JSON.stringify(JSON.parse(log.response_body!), null, 2); }
@@ -127,6 +146,7 @@ export default function MetricsPage() {
   const [apis, setApis] = useState<ApiItem[]>([]);
   const [selectedApi, setSelectedApi] = useState<ApiItem | null>(null);
   const [logs, setLogs] = useState<LogItem[]>([]);
+  const [keyBreakdown, setKeyBreakdown] = useState<KeyItem[]>([]);
   const [timeFilter, setTimeFilter] = useState("7d");
   const [loading, setLoading] = useState(true);
   const [logsLoading, setLogsLoading] = useState(false);
@@ -145,9 +165,15 @@ export default function MetricsPage() {
   useEffect(() => {
     if (!selectedApi) return;
     setLogsLoading(true);
-    getLogs(0, 50, selectedApi.api_id)
-      .then((data) => setLogs(data.items))
-      .catch(() => setLogs([]))
+    Promise.all([
+      getLogs(0, 50, selectedApi.api_id),
+      getClientByKey({ api_id: selectedApi.api_id }),
+    ])
+      .then(([logsData, keyData]) => {
+        setLogs(logsData.items);
+        setKeyBreakdown(keyData.items);
+      })
+      .catch(() => { setLogs([]); setKeyBreakdown([]); })
       .finally(() => setLogsLoading(false));
   }, [selectedApi]);
 
@@ -311,6 +337,38 @@ export default function MetricsPage() {
                 </div>
               </div>
 
+              {/* Per-key breakdown card */}
+              {keyBreakdown.length > 0 && (
+                <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/15 overflow-hidden mb-6">
+                  <div className="px-6 py-4 border-b border-outline-variant/15 bg-surface/50 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>vpn_key</span>
+                    <h3 className="font-headline font-bold text-base text-on-surface">Requests por Chave</h3>
+                  </div>
+                  <div className="divide-y divide-outline-variant/10">
+                    {keyBreakdown.map((k) => {
+                      const maxReq = keyBreakdown[0]?.total_requests || 1;
+                      const pct = Math.round((k.total_requests / maxReq) * 100);
+                      return (
+                        <div key={k.key_id} className="px-6 py-3 flex items-center gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-semibold text-sm text-on-surface truncate">{k.key_name}</span>
+                              <span className="font-mono text-xs text-outline">{k.key_prefix}…</span>
+                            </div>
+                            <div className="h-1.5 bg-surface-container rounded-full overflow-hidden">
+                              <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                          <span className="font-headline font-bold text-on-surface text-sm flex-shrink-0">
+                            {k.total_requests.toLocaleString()}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Logs Table */}
               <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/15 overflow-hidden">
                 <div className="p-6 border-b border-outline-variant/15 flex justify-between items-center bg-surface/50">
@@ -338,6 +396,7 @@ export default function MetricsPage() {
                           <th className="px-6 py-4">Método & Endpoint</th>
                           <th className="px-6 py-4">Status</th>
                           <th className="px-6 py-4">Duração</th>
+                          <th className="px-6 py-4">Chave</th>
                           <th className="px-6 py-4 text-right">Timestamp</th>
                           <th className="px-6 py-4" />
                         </tr>
