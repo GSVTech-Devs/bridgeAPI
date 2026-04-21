@@ -65,3 +65,27 @@ class ClientApiDetailResponse(BaseModel):
     client_id: str
     total_cost: float
     total_requests: int
+
+
+class ClientApiBreakdownItem(BaseModel):
+    api_id: str
+    api_name: str
+    total_requests: int
+    error_count: int
+    success_count: int
+    total_cost: float
+
+
+class ClientApiBreakdownResponse(BaseModel):
+    items: list[ClientApiBreakdownItem]
+
+
+class StatusCodeItem(BaseModel):
+    api_id: str
+    api_name: str
+    status_code: int
+    count: int
+
+
+class ClientStatusCodesResponse(BaseModel):
+    items: list[StatusCodeItem]

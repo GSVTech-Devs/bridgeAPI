@@ -350,6 +350,36 @@ export function revokeKey(id: string) {
 // ---------------------------------------------------------------------------
 // Metrics  →  /metrics/*
 // ---------------------------------------------------------------------------
+export function getClientByApi(params?: { since?: string; until?: string }) {
+  const qs = params
+    ? "?" + new URLSearchParams(params as Record<string, string>).toString()
+    : "";
+  return apiFetch<{
+    items: {
+      api_id: string;
+      api_name: string;
+      total_requests: number;
+      error_count: number;
+      success_count: number;
+      total_cost: number;
+    }[];
+  }>(`/metrics/client/by-api${qs}`);
+}
+
+export function getClientStatusCodes(params?: { since?: string; until?: string }) {
+  const qs = params
+    ? "?" + new URLSearchParams(params as Record<string, string>).toString()
+    : "";
+  return apiFetch<{
+    items: {
+      api_id: string;
+      api_name: string;
+      status_code: number;
+      count: number;
+    }[];
+  }>(`/metrics/client/status-codes${qs}`);
+}
+
 export function getClientDashboard(params?: {
   since?: string;
   until?: string;

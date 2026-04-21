@@ -224,6 +224,45 @@ async def get_client_api_detail(
     ]
 
 
+async def get_client_status_codes(
+    db: AsyncSession,
+    client_id: uuid.UUID,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    top_n: int = 5,
+) -> list[dict[str, Any]]:
+    from collections import defaultdict
+    stmt = (
+        select(
+            ExternalAPI.id.label("api_id"),
+            ExternalAPI.name.label("api_name"),
+            RequestMetric.status_code,
+            func.count(RequestMetric.id).label("count"),
+        )
+        .join(ExternalAPI, RequestMetric.api_id == ExternalAPI.id)
+        .where(RequestMetric.client_id == client_id)
+        .group_by(ExternalAPI.id, ExternalAPI.name, RequestMetric.status_code)
+        .order_by(ExternalAPI.name, func.count(RequestMetric.id).desc())
+    )
+    if since is not None:
+        stmt = stmt.where(RequestMetric.created_at >= since)
+    if until is not None:
+        stmt = stmt.where(RequestMetric.created_at <= until)
+    result = await db.execute(stmt)
+    rows = result.fetchall()
+    api_codes: dict[str, list] = defaultdict(list)
+    for row in rows:
+        key = str(row.api_id)
+        if len(api_codes[key]) < top_n:
+            api_codes[key].append({
+                "api_id": str(row.api_id),
+                "api_name": row.api_name,
+                "status_code": row.status_code,
+                "count": row.count,
+            })
+    return [item for items in api_codes.values() for item in items]
+
+
 async def get_metrics_by_api(
     db: AsyncSession,
     since: Optional[datetime] = None,

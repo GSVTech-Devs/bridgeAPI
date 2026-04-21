@@ -10,8 +10,8 @@ from app.core.database import get_db
 from app.domains.auth.router import get_current_client, get_current_user
 from app.domains.auth.schemas import MeResponse
 from app.domains.clients.service import get_client_by_email
-from app.domains.metrics.schemas import ApiBreakdownResponse, ClientApiDetailResponse, ClientApiUsageResponse, ClientSummaryResponse, DashboardResponse
-from app.domains.metrics.service import get_admin_global_metrics, get_client_api_detail, get_client_dashboard, get_clients_usage_summary, get_metrics_by_api, get_usage_by_client_and_api
+from app.domains.metrics.schemas import ApiBreakdownResponse, ClientApiBreakdownResponse, ClientApiDetailResponse, ClientApiUsageResponse, ClientStatusCodesResponse, ClientSummaryResponse, DashboardResponse
+from app.domains.metrics.service import get_admin_global_metrics, get_client_api_detail, get_client_dashboard, get_client_status_codes, get_clients_usage_summary, get_metrics_by_api, get_usage_by_client_and_api
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
@@ -31,6 +31,34 @@ async def client_dashboard(
         )
     data = await get_client_dashboard(db, client.id, since=since, until=until)
     return DashboardResponse(**data)
+
+
+@router.get("/client/by-api", response_model=ClientApiBreakdownResponse)
+async def client_by_api(
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    current_client: MeResponse = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> ClientApiBreakdownResponse:
+    client = await get_client_by_email(db, current_client.email)
+    if client is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+    items = await get_client_api_detail(db, str(client.id), since=since, until=until)
+    return ClientApiBreakdownResponse(items=items)
+
+
+@router.get("/client/status-codes", response_model=ClientStatusCodesResponse)
+async def client_status_codes(
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    current_client: MeResponse = Depends(get_current_client),
+    db: AsyncSession = Depends(get_db),
+) -> ClientStatusCodesResponse:
+    client = await get_client_by_email(db, current_client.email)
+    if client is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client not found")
+    items = await get_client_status_codes(db, client.id, since=since, until=until)
+    return ClientStatusCodesResponse(items=items)
 
 
 @router.get("/admin", response_model=DashboardResponse)
