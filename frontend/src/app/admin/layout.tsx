@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { clearAuth, getToken } from "@/lib/auth";
+import { ThemeDropdown } from "@/components/ThemeDropdown";
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: "dashboard" },
@@ -49,7 +50,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 className={
                   active
                     ? "flex items-center gap-3 bg-surface-container-lowest text-primary font-bold rounded-l-full ml-4 shadow-sm px-6 py-3 transition-all"
-                    : "flex items-center gap-3 text-slate-600 hover:text-primary px-6 py-3 hover:bg-surface transition-all"
+                    : "flex items-center gap-3 text-on-surface-variant hover:text-primary px-6 py-3 hover:bg-surface transition-all"
                 }
               >
                 <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
@@ -62,14 +63,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="mt-auto space-y-1 px-2">
           <a
             href="#"
-            className="flex items-center gap-3 text-slate-600 hover:text-primary px-6 py-3 transition-all"
+            className="flex items-center gap-3 text-on-surface-variant hover:text-primary px-6 py-3 transition-all"
           >
             <span className="material-symbols-outlined text-[20px]">help</span>
             <span className="text-sm">Suporte</span>
           </a>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 text-slate-600 hover:text-error px-6 py-3 transition-all w-full text-left"
+            className="flex items-center gap-3 text-on-surface-variant hover:text-error px-6 py-3 transition-all w-full text-left"
           >
             <span className="material-symbols-outlined text-[20px]">logout</span>
             <span className="text-sm">Sair</span>
@@ -84,11 +85,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <span className="text-xl font-black text-primary font-headline tracking-tight">Bridge API</span>
           <div className="flex items-center gap-3">
             <button className="p-2 rounded-full hover:bg-surface-container-low transition-colors">
-              <span className="material-symbols-outlined text-slate-500 text-[20px]">notifications</span>
+              <span className="material-symbols-outlined text-on-surface-variant text-[20px]">notifications</span>
             </button>
-            <button className="p-2 rounded-full hover:bg-surface-container-low transition-colors">
-              <span className="material-symbols-outlined text-slate-500 text-[20px]">settings</span>
-            </button>
+            <ThemeDropdown />
             <div className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-sm ml-1">
               A
             </div>

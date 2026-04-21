@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { clearAuth, getToken } from "@/lib/auth";
+import { ThemeDropdown } from "@/components/ThemeDropdown";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
@@ -46,7 +47,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   className={
                     active
                       ? "flex items-center gap-3 px-4 py-3 rounded-full bg-surface-container-lowest text-primary font-bold border-r-4 border-primary transition-all"
-                      : "flex items-center gap-3 px-4 py-3 rounded-full text-slate-500 hover:bg-surface transition-colors"
+                      : "flex items-center gap-3 px-4 py-3 rounded-full text-on-surface-variant hover:bg-surface transition-colors"
                   }
                 >
                   <span
@@ -65,14 +66,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="mt-auto space-y-2 border-t border-outline-variant/15 pt-4">
           <a
             href="#"
-            className="flex items-center gap-3 px-4 py-2 rounded-full text-slate-500 hover:bg-surface transition-colors"
+            className="flex items-center gap-3 px-4 py-2 rounded-full text-on-surface-variant hover:bg-surface transition-colors"
           >
             <span className="material-symbols-outlined text-[20px]">help_outline</span>
             <span className="text-sm">Help</span>
           </a>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-2 rounded-full text-slate-500 hover:bg-surface transition-colors w-full text-left"
+            className="flex items-center gap-3 px-4 py-2 rounded-full text-on-surface-variant hover:bg-surface transition-colors w-full text-left"
           >
             <span className="material-symbols-outlined text-[20px]">logout</span>
             <span className="text-sm">Sair</span>
@@ -83,7 +84,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Main area */}
       <div className="ml-64 flex-1 flex flex-col min-h-screen">
         {/* Top header */}
-        <header className="fixed top-0 right-0 left-64 z-40 bg-surface/80 backdrop-blur-md flex justify-between items-center px-8 h-16 shadow-[0_4px_20px_0_rgba(7,30,39,0.05)]">
+        <header className="fixed top-0 right-0 left-64 z-40 bg-surface/80 backdrop-blur-md flex justify-between items-center px-8 h-16 shadow-[0_4px_20px_0_rgb(var(--color-on-background)/0.05)]">
           <div className="flex items-center bg-surface-container-low rounded-full px-4 py-2 w-72 border border-outline-variant/15 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-all">
             <span className="material-symbols-outlined text-on-surface-variant text-[18px] mr-2">search</span>
             <input
@@ -92,12 +93,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             />
           </div>
           <div className="flex items-center gap-3">
-            <button className="text-slate-500 hover:bg-surface-container-low rounded-full p-2 transition-colors">
+            <button className="text-on-surface-variant hover:bg-surface-container-low rounded-full p-2 transition-colors">
               <span className="material-symbols-outlined text-[20px]">notifications</span>
             </button>
-            <button className="text-slate-500 hover:bg-surface-container-low rounded-full p-2 transition-colors">
-              <span className="material-symbols-outlined text-[20px]">settings</span>
-            </button>
+            <ThemeDropdown />
             <div className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-sm ml-1">
               U
             </div>
