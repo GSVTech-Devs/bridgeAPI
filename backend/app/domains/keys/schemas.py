@@ -19,6 +19,7 @@ class APIKeyResponse(BaseModel):
     api_id: Optional[uuid.UUID]
     name: str
     key_prefix: str
+    api_key: Optional[str] = None
     status: APIKeyStatus
     created_at: datetime
 

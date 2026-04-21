@@ -28,6 +28,7 @@ class APIKey(Base):
     name: Mapped[str] = mapped_column(String(255))
     key_prefix: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     key_secret_hash: Mapped[str] = mapped_column(String(255))
+    key_secret_encrypted: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), default=APIKeyStatus.ACTIVE, index=True
     )

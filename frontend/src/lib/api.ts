@@ -321,6 +321,7 @@ export function getKeys() {
       api_id: string | null;
       name: string;
       key_prefix: string;
+      api_key: string | null;
       status: string;
       created_at: string;
     }[];

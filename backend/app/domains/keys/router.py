@@ -45,7 +45,7 @@ async def create(
             detail="No active permission for this API",
         )
     return APIKeyCreateResponse(
-        **APIKeyResponse.model_validate(api_key).model_dump(),
+        **APIKeyResponse.model_validate(api_key).model_dump(exclude={"api_key"}),
         api_key=plain_secret,
     )
 
@@ -55,10 +55,13 @@ async def list_all(
     db: AsyncSession = Depends(get_db),
     current_client: MeResponse = Depends(get_current_client),
 ) -> APIKeyListResponse:
-    api_keys = await list_api_keys(db, current_client.email)
-    return APIKeyListResponse(
-        items=[APIKeyResponse.model_validate(api_key) for api_key in api_keys]
-    )
+    pairs = await list_api_keys(db, current_client.email)
+    items = []
+    for api_key, plain_secret in pairs:
+        data = APIKeyResponse.model_validate(api_key).model_dump()
+        data["api_key"] = plain_secret
+        items.append(APIKeyResponse(**data))
+    return APIKeyListResponse(items=items)
 
 
 @router.patch("/{key_id}/revoke", response_model=APIKeyResponse)

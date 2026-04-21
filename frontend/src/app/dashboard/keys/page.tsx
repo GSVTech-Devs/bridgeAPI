@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { getCatalog, getKeys, createKey, revokeKey } from "@/lib/api";
 
 type CatalogEntry = { id: string; name: string; slug?: string; base_url: string; status: string };
-type Key = { id: string; api_id: string | null; name: string; key_prefix: string; status: string; created_at: string };
+type Key = { id: string; api_id: string | null; name: string; key_prefix: string; api_key: string | null; status: string; created_at: string };
 
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
@@ -32,7 +32,6 @@ export default function KeysPage() {
   const [keys, setKeys] = useState<Key[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [fullKeys, setFullKeys] = useState<Record<string, string>>({});
   const [visible, setVisible] = useState<Record<string, boolean>>({});
   const [creating, setCreating] = useState<string | null>(null);
   const [newKeyNames, setNewKeyNames] = useState<Record<string, string>>({});
@@ -57,9 +56,8 @@ export default function KeysPage() {
     setCreateErrors((prev) => ({ ...prev, [apiId]: "" }));
     try {
       const created = await createKey(name, apiId);
-      setFullKeys((prev) => ({ ...prev, [created.id]: created.api_key }));
       setVisible((prev) => ({ ...prev, [created.id]: false }));
-      setKeys((prev) => [created, ...prev]);
+      setKeys((prev) => [{ ...created, api_key: created.api_key }, ...prev]);
       setNewKeyNames((prev) => ({ ...prev, [apiId]: "" }));
     } catch (err: unknown) {
       setCreateErrors((prev) => ({
@@ -163,7 +161,7 @@ export default function KeysPage() {
                   {activeKeys.length > 0 && (
                     <div className="space-y-3">
                       {activeKeys.map((k) => {
-                        const full = fullKeys[k.id];
+                        const full = k.api_key;
                         const isVisible = visible[k.id] ?? false;
                         const displayValue = full
                           ? (isVisible ? full : "●".repeat(32))

@@ -6,7 +6,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import hash_password, verify_password
+from app.core.security import decrypt_value, encrypt_value, hash_password, verify_password
 from app.domains.clients.models import ClientStatus
 from app.domains.clients.service import ClientNotFoundError, get_client_by_email
 from app.domains.keys.models import APIKey, APIKeyStatus
@@ -47,6 +47,7 @@ async def create_api_key(
         name=name,
         key_prefix=key_prefix,
         key_secret_hash=hash_password(raw_secret),
+        key_secret_encrypted=encrypt_value(raw_secret),
     )
     db.add(api_key)
     await db.commit()
@@ -54,10 +55,14 @@ async def create_api_key(
     return api_key, raw_secret
 
 
-async def list_api_keys(db: AsyncSession, client_email: str) -> list[APIKey]:
+async def list_api_keys(db: AsyncSession, client_email: str) -> list[tuple[APIKey, str | None]]:
     client = await get_client_by_email(db, client_email)
     result = await db.execute(select(APIKey).where(APIKey.client_id == client.id))
-    return list(result.scalars().all())
+    keys = list(result.scalars().all())
+    return [
+        (k, decrypt_value(k.key_secret_encrypted) if k.key_secret_encrypted else None)
+        for k in keys
+    ]
 
 
 async def revoke_api_key(db: AsyncSession, client_email: str, key_id: str) -> APIKey:
