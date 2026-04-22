@@ -68,8 +68,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             href="#"
             className="flex items-center gap-3 px-4 py-2 rounded-full text-on-surface-variant hover:bg-surface transition-colors"
           >
-            <span className="material-symbols-outlined text-[20px]">help_outline</span>
-            <span className="text-sm">Help</span>
+            {/* <span className="material-symbols-outlined text-[20px]">help_outline</span> */}
+            {/* <span className="text-sm">Help</span> */}
           </a>
           <button
             onClick={handleLogout}
@@ -93,9 +93,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             />
           </div>
           <div className="flex items-center gap-3">
-            <button className="text-on-surface-variant hover:bg-surface-container-low rounded-full p-2 transition-colors">
+            {/* <button className="text-on-surface-variant hover:bg-surface-container-low rounded-full p-2 transition-colors">
               <span className="material-symbols-outlined text-[20px]">notifications</span>
-            </button>
+            </button> */}
             <ThemeDropdown />
             <div className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-sm ml-1">
               U

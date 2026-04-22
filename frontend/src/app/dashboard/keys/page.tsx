@@ -84,9 +84,9 @@ export default function KeysPage() {
   return (
     <div className="max-w-5xl mx-auto">
       <div className="mb-10">
-        <h1 className="text-4xl font-headline font-extrabold tracking-tight text-on-surface mb-2">My API Keys</h1>
+        <h1 className="text-4xl font-headline font-extrabold tracking-tight text-on-surface mb-2">Minhas Chaves de API</h1>
         <p className="text-on-surface-variant text-base max-w-xl">
-          Generate and manage access keys per API. Each key is tied to one specific API for easier monitoring.
+          Gere e gerencie chaves de acesso por API. Cada chave está vinculada a uma API específica para facilitar o monitoramento.
         </p>
       </div>
 
@@ -231,7 +231,7 @@ export default function KeysPage() {
                     <details className="group">
                       <summary className="cursor-pointer text-xs text-on-surface-variant hover:text-on-surface transition-colors list-none flex items-center gap-1">
                         <span className="material-symbols-outlined text-[14px] group-open:rotate-90 transition-transform">chevron_right</span>
-                        {revokedKeys.length} revoked key{revokedKeys.length !== 1 ? "s" : ""}
+                        {revokedKeys.length} chave{revokedKeys.length !== 1 ? "s" : ""} revogada{revokedKeys.length !== 1 ? "s" : ""}
                       </summary>
                       <div className="space-y-2 mt-3">
                         {revokedKeys.map((k) => (

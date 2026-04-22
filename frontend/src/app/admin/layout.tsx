@@ -65,8 +65,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             href="#"
             className="flex items-center gap-3 text-on-surface-variant hover:text-primary px-6 py-3 transition-all"
           >
-            <span className="material-symbols-outlined text-[20px]">help</span>
-            <span className="text-sm">Suporte</span>
+            {/* <span className="material-symbols-outlined text-[20px]">help</span> */}
+            {/* <span className="text-sm">Suporte</span> */}
           </a>
           <button
             onClick={handleLogout}
@@ -84,9 +84,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <header className="sticky top-0 z-30 flex justify-between items-center px-8 h-16 bg-surface border-b border-outline-variant/10">
           <span className="text-xl font-black text-primary font-headline tracking-tight">Bridge API</span>
           <div className="flex items-center gap-3">
-            <button className="p-2 rounded-full hover:bg-surface-container-low transition-colors">
+            {/* <button className="p-2 rounded-full hover:bg-surface-container-low transition-colors">
               <span className="material-symbols-outlined text-on-surface-variant text-[20px]">notifications</span>
-            </button>
+            </button> */}
             <ThemeDropdown />
             <div className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-sm ml-1">
               A

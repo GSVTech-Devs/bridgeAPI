@@ -102,9 +102,9 @@ export default function CatalogPage() {
     <div className="max-w-6xl mx-auto">
       <div className="flex justify-between items-end mb-12">
         <div>
-          <h1 className="text-4xl font-headline font-extrabold text-on-surface tracking-tight mb-2">API Catalog</h1>
+          <h1 className="text-4xl font-headline font-extrabold text-on-surface tracking-tight mb-2">Catálogo de APIs</h1>
           <p className="text-on-surface-variant text-lg max-w-2xl">
-            Discover and integrate Bridge API services into your applications.
+            Descubra e integre os serviços da Bridge API em suas aplicações.
           </p>
         </div>
         <Link
@@ -163,7 +163,7 @@ export default function CatalogPage() {
 
                   <ApiUrlBlock api={api} />
 
-                  <div className="flex items-center justify-between border-t border-outline-variant/10 pt-4">
+                  {/* <div className="flex items-center justify-between border-t border-outline-variant/10 pt-4">
                     <a href="#" className="text-primary text-sm font-medium hover:underline flex items-center gap-1">
                       View Documentation
                       <span className="material-symbols-outlined text-xs">arrow_forward</span>
@@ -171,7 +171,7 @@ export default function CatalogPage() {
                     <button className="bg-surface-container-high text-on-surface px-4 py-2 rounded-lg text-sm font-medium hover:bg-surface-variant transition-colors">
                       Testar API
                     </button>
-                  </div>
+                  </div> */}
                 </div>
               ))}
             </div>

@@ -166,8 +166,8 @@ export default function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto">
       <div className="mb-10">
-        <h2 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">Overview</h2>
-        <p className="text-on-surface-variant mt-1">Real-time metrics for your API consumption.</p>
+        <h2 className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">Visão Geral</h2>
+        <p className="text-on-surface-variant mt-1">Métricas em tempo real para o consumo da sua API.</p>
       </div>
 
       {error && (
@@ -181,7 +181,7 @@ export default function DashboardPage() {
           {/* Stat cards */}
           <div className="grid grid-cols-4 gap-5">
             {[
-              { label: "Total Requests", value: metrics.total_requests.toLocaleString(), icon: "data_usage", color: "text-primary", bg: "bg-primary/10" },
+              { label: "Total de Solicitações", value: metrics.total_requests.toLocaleString(), icon: "data_usage", color: "text-primary", bg: "bg-primary/10" },
               { label: "Taxa de Sucesso", value: `${(100 - metrics.error_rate).toFixed(1)}%`, icon: "check_circle", color: "text-emerald-600", bg: "bg-emerald-50" },
               { label: "Latência Média", value: `${Math.round(metrics.avg_latency_ms)}ms`, icon: "timer", color: "text-tertiary", bg: "bg-tertiary/10" },
               { label: "Custo Total", value: `$${metrics.total_cost.toFixed(4)}`, icon: "payments", color: "text-primary", bg: "bg-primary/10" },
@@ -201,7 +201,7 @@ export default function DashboardPage() {
           {/* Charts */}
           <div className="grid grid-cols-3 gap-5">
             <div className="col-span-2">
-            <SectionCard icon="bar_chart" title="Requests Overview" subtitle="Total, faturáveis e não faturáveis">
+            <SectionCard icon="bar_chart" title="Visão Geral das Requisições" subtitle="Total, faturáveis e não faturáveis">
               <div className="p-6 h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={barData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
@@ -352,7 +352,7 @@ export default function DashboardPage() {
           <div className="h-[420px] bg-surface-container-lowest rounded-xl border border-outline-variant/10 overflow-hidden flex flex-col">
             <div className="px-5 py-4 border-b border-outline-variant/10 shrink-0 flex items-center justify-between">
               <h4 className="text-xl font-bold tracking-tight font-headline">Consultas Recentes</h4>
-              <Link href="/dashboard/logs" className="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
+              <Link href="/dashboard/metrics" className="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
                 Ver todas
                 <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
               </Link>
