@@ -351,10 +351,16 @@ export function revokeKey(id: string) {
 // ---------------------------------------------------------------------------
 // Metrics  →  /metrics/*
 // ---------------------------------------------------------------------------
+function buildQS(params: Record<string, string | undefined>): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null) qs.set(k, v);
+  }
+  const s = qs.toString();
+  return s ? `?${s}` : "";
+}
+
 export function getClientByKey(params?: { api_id?: string; since?: string; until?: string }) {
-  const qs = params
-    ? "?" + new URLSearchParams(params as Record<string, string>).toString()
-    : "";
   return apiFetch<{
     items: {
       key_id: string;
@@ -362,13 +368,11 @@ export function getClientByKey(params?: { api_id?: string; since?: string; until
       key_prefix: string;
       total_requests: number;
     }[];
-  }>(`/metrics/client/by-key${qs}`);
+  }>(`/metrics/client/by-key${params ? buildQS(params) : ""}`);
 }
 
 export function getClientByApi(params?: { since?: string; until?: string }) {
-  const qs = params
-    ? "?" + new URLSearchParams(params as Record<string, string>).toString()
-    : "";
+  const qs = params ? buildQS(params) : "";
   return apiFetch<{
     items: {
       api_id: string;
@@ -415,9 +419,11 @@ export function getClientDashboard(params?: {
 // ---------------------------------------------------------------------------
 // Logs (client)  →  /logs
 // ---------------------------------------------------------------------------
-export function getLogs(skip = 0, limit = 20, api_id?: string) {
+export function getLogs(skip = 0, limit = 20, api_id?: string, since?: string, until?: string) {
   const qs = new URLSearchParams({ skip: String(skip), limit: String(limit) });
   if (api_id) qs.set("api_id", api_id);
+  if (since) qs.set("since", since);
+  if (until) qs.set("until", until);
   return apiFetch<{
     items: {
       correlation_id: string;

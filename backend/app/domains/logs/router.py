@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -31,8 +32,10 @@ async def _enrich_with_key_names(db: AsyncSession, docs: list[dict]) -> list[dic
 @router.get("/logs", response_model=LogListResponse)
 async def list_logs(
     skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=20, ge=1, le=500),
     api_id: Optional[str] = Query(default=None),
+    since: Optional[datetime] = Query(default=None),
+    until: Optional[datetime] = Query(default=None),
     mongo_db=Depends(get_mongo_db),
     current_client: MeResponse = Depends(get_current_client),
     db: AsyncSession = Depends(get_db),
@@ -46,6 +49,8 @@ async def list_logs(
         skip=skip,
         limit=limit,
         api_id=api_id,
+        since=since,
+        until=until,
     )
     logs = await _enrich_with_key_names(db, logs)
     items = [LogEntryResponse(**doc) for doc in logs]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from typing import Any
 
 from app.core.config import settings
@@ -66,11 +67,20 @@ async def get_client_logs(
     skip: int = 0,
     limit: int = 20,
     api_id: str | None = None,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
 ) -> list[dict[str, Any]]:
     """Retorna logs paginados de um cliente específico."""
     query: dict[str, Any] = {"client_id": client_id}
     if api_id is not None:
         query["api_id"] = api_id
+    if since is not None or until is not None:
+        date_filter: dict[str, datetime] = {}
+        if since is not None:
+            date_filter["$gte"] = since
+        if until is not None:
+            date_filter["$lte"] = until
+        query["created_at"] = date_filter
     cursor = mongo_db[COLLECTION].find(query).sort("created_at", -1)
     return await cursor.skip(skip).limit(limit).to_list(length=limit)
 

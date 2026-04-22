@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { getClientByApi, getClientByKey, getLogs } from "@/lib/api";
+import { useTheme } from "@/contexts/ThemeContext";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
 
 type ApiItem = {
   api_id: string;
@@ -59,6 +63,83 @@ function formatDate(iso: string | null) {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function computeVolumeData(
+  logs: LogItem[],
+  timeFilter: string,
+  dateFrom: string | null,
+  dateTo: string | null,
+) {
+  const now = new Date();
+
+  if (dateFrom || dateTo) {
+    const from = dateFrom ? new Date(`${dateFrom}T00:00:00.000Z`) : new Date(now.getTime() - 30 * 86400000);
+    const to = dateTo ? new Date(`${dateTo}T23:59:59.999Z`) : now;
+    const diffDays = Math.ceil((to.getTime() - from.getTime()) / 86400000);
+
+    if (diffDays <= 1) {
+      const buckets = Array.from({ length: 24 }, (_, i) => ({
+        time: `${i.toString().padStart(2, "0")}h`,
+        count: 0,
+      }));
+      logs.forEach((log) => {
+        if (!log.created_at) return;
+        const d = new Date(log.created_at);
+        if (d < from || d > to) return;
+        buckets[d.getUTCHours()].count++;
+      });
+      return buckets;
+    }
+
+    const days = Math.min(diffDays, 90);
+    const buckets = Array.from({ length: days }, (_, i) => {
+      const d = new Date(from.getTime() + i * 86400000);
+      return { time: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), count: 0 };
+    });
+    logs.forEach((log) => {
+      if (!log.created_at) return;
+      const d = new Date(log.created_at);
+      if (d < from || d > to) return;
+      const idx = Math.floor((d.getTime() - from.getTime()) / 86400000);
+      if (idx >= 0 && idx < days) buckets[idx].count++;
+    });
+    return buckets;
+  }
+
+  if (timeFilter === "24h") {
+    const buckets = Array.from({ length: 24 }, (_, i) => {
+      const d = new Date(now.getTime() - (23 - i) * 3600000);
+      return { time: `${d.getHours().toString().padStart(2, "0")}h`, count: 0 };
+    });
+    logs.forEach((log) => {
+      if (!log.created_at) return;
+      const hoursAgo = (now.getTime() - new Date(log.created_at).getTime()) / 3600000;
+      if (hoursAgo > 24) return;
+      const idx = 23 - Math.floor(hoursAgo);
+      if (idx >= 0 && idx < 24) buckets[idx].count++;
+    });
+    return buckets;
+  }
+
+  const days = timeFilter === "7d" ? 7 : 30;
+  const buckets = Array.from({ length: days }, (_, i) => {
+    const d = new Date(now.getTime() - (days - 1 - i) * 86400000);
+    return { time: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), count: 0 };
+  });
+  logs.forEach((log) => {
+    if (!log.created_at) return;
+    const daysAgo = (now.getTime() - new Date(log.created_at).getTime()) / 86400000;
+    if (daysAgo > days) return;
+    const idx = days - 1 - Math.floor(daysAgo);
+    if (idx >= 0 && idx < days) buckets[idx].count++;
+  });
+  return buckets;
+}
+
+function cssVar(name: string): string {
+  if (typeof window === "undefined") return "#000";
+  return `rgb(${getComputedStyle(document.documentElement).getPropertyValue(`--color-${name}`).trim()})`;
 }
 
 function TimeFilter({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -142,16 +223,58 @@ function LogRow({ log }: { log: LogItem }) {
   );
 }
 
+const TODAY = new Date().toISOString().split("T")[0];
+
+function periodToSince(period: string): string {
+  const hours = period === "24h" ? 24 : period === "7d" ? 7 * 24 : 30 * 24;
+  return new Date(Date.now() - hours * 3_600_000).toISOString();
+}
+
+function getTimeRange(
+  timeFilter: string,
+  dateFrom: string | null,
+  dateTo: string | null,
+): { since: string | undefined; until: string | undefined } {
+  if (dateFrom || dateTo) {
+    return {
+      since: dateFrom ? `${dateFrom}T00:00:00.000Z` : undefined,
+      until: dateTo ? `${dateTo}T23:59:59.999Z` : undefined,
+    };
+  }
+  return { since: periodToSince(timeFilter), until: undefined };
+}
+
 export default function MetricsPage() {
+  const { theme } = useTheme();
   const [apis, setApis] = useState<ApiItem[]>([]);
   const [selectedApi, setSelectedApi] = useState<ApiItem | null>(null);
+  const [filteredMetrics, setFilteredMetrics] = useState<ApiItem | null>(null);
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [keyBreakdown, setKeyBreakdown] = useState<KeyItem[]>([]);
   const [timeFilter, setTimeFilter] = useState("7d");
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [logsLoading, setLogsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const hasDateRange = dateFrom !== null || dateTo !== null;
+
+  // Derived from logs
+  const avgLatency = logs.length > 0
+    ? Math.round(logs.reduce((s, l) => s + l.latency_ms, 0) / logs.length)
+    : null;
+  const maxLatency = logs.length > 0 ? Math.round(Math.max(...logs.map((l) => l.latency_ms))) : null;
+  const volumeData = computeVolumeData(logs, timeFilter, dateFrom, dateTo);
+
+  const latencyColor =
+    avgLatency === null ? "text-on-surface-variant"
+    : avgLatency < 150 ? "text-emerald-500"
+    : avgLatency < 400 ? "text-primary"
+    : avgLatency < 800 ? "text-yellow-500"
+    : "text-error";
+
+  // Initial load — all-time API list (for the top cards)
   useEffect(() => {
     getClientByApi()
       .then((data) => {
@@ -162,12 +285,26 @@ export default function MetricsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Re-fetch filtered summary metrics when API selection or time range changes
+  useEffect(() => {
+    if (!selectedApi) return;
+    const { since, until } = getTimeRange(timeFilter, dateFrom, dateTo);
+    getClientByApi({ since, until })
+      .then((data) => {
+        const match = data.items.find((a) => a.api_id === selectedApi.api_id);
+        setFilteredMetrics(match ?? null);
+      })
+      .catch(() => setFilteredMetrics(null));
+  }, [selectedApi, timeFilter, dateFrom, dateTo]);
+
+  // Re-fetch logs + key breakdown when API selection or time range changes
   useEffect(() => {
     if (!selectedApi) return;
     setLogsLoading(true);
+    const { since, until } = getTimeRange(timeFilter, dateFrom, dateTo);
     Promise.all([
-      getLogs(0, 50, selectedApi.api_id),
-      getClientByKey({ api_id: selectedApi.api_id }),
+      getLogs(0, 200, selectedApi.api_id, since, until),
+      getClientByKey({ api_id: selectedApi.api_id, since, until }),
     ])
       .then(([logsData, keyData]) => {
         setLogs(logsData.items);
@@ -175,7 +312,12 @@ export default function MetricsPage() {
       })
       .catch(() => { setLogs([]); setKeyBreakdown([]); })
       .finally(() => setLogsLoading(false));
-  }, [selectedApi]);
+  }, [selectedApi, timeFilter, dateFrom, dateTo]);
+
+  function clearDates() {
+    setDateFrom(null);
+    setDateTo(null);
+  }
 
   if (loading) {
     return (
@@ -286,54 +428,195 @@ export default function MetricsPage() {
                   </div>
                   <p className="text-sm text-on-surface-variant">Detalhamento de tráfego, uso financeiro e logs recentes.</p>
                 </div>
-                <TimeFilter value={timeFilter} onChange={setTimeFilter} />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className={`transition-opacity ${hasDateRange ? "opacity-40 pointer-events-none" : ""}`}>
+                    <TimeFilter value={timeFilter} onChange={(v) => { setTimeFilter(v); clearDates(); }} />
+                  </div>
+                  <div className={`flex items-center gap-2 bg-surface-container-lowest border rounded-lg px-3 py-1.5 transition-colors ${hasDateRange ? "border-primary ring-1 ring-primary/20" : "border-outline-variant/20"}`}>
+                    <span className="material-symbols-outlined text-on-surface-variant text-[16px]">date_range</span>
+                    <input
+                      type="date"
+                      value={dateFrom ?? ""}
+                      max={dateTo ?? TODAY}
+                      onChange={(e) => setDateFrom(e.target.value || null)}
+                      className="bg-transparent border-none text-sm text-on-surface outline-none w-32 cursor-pointer"
+                      title="Data inicial"
+                    />
+                    <span className="text-on-surface-variant text-xs font-medium">–</span>
+                    <input
+                      type="date"
+                      value={dateTo ?? ""}
+                      min={dateFrom ?? undefined}
+                      max={TODAY}
+                      onChange={(e) => setDateTo(e.target.value || null)}
+                      className="bg-transparent border-none text-sm text-on-surface outline-none w-32 cursor-pointer"
+                      title="Data final"
+                    />
+                    {hasDateRange && (
+                      <button
+                        onClick={clearDates}
+                        className="text-on-surface-variant hover:text-on-surface transition-colors ml-1"
+                        title="Limpar período"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">close</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Metric Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/15 flex flex-col justify-between">
-                  <span className="text-sm text-on-surface-variant font-medium mb-4">Total Requests</span>
-                  <span className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
-                    {selectedApi.total_requests.toLocaleString()}
-                  </span>
-                </div>
+              {(() => {
+                const m = filteredMetrics ?? selectedApi;
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                    <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/15 flex flex-col justify-between">
+                      <span className="text-sm text-on-surface-variant font-medium mb-4">Total Requests</span>
+                      <span className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
+                        {m.total_requests.toLocaleString()}
+                      </span>
+                    </div>
 
-                <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/15 flex flex-col justify-between border-b-4 border-b-emerald-500">
-                  <span className="text-sm text-on-surface-variant font-medium mb-4">Sucesso</span>
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
-                      {selectedApi.success_count.toLocaleString()}
-                    </span>
-                    <span className="text-xs text-on-surface-variant font-medium">
-                      {selectedApi.total_requests > 0
-                        ? `${(selectedApi.success_count / selectedApi.total_requests * 100).toFixed(1)}%`
-                        : "—"}
+                    <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/15 flex flex-col justify-between border-b-4 border-b-emerald-500">
+                      <span className="text-sm text-on-surface-variant font-medium mb-4">Sucesso</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
+                          {m.success_count.toLocaleString()}
+                        </span>
+                        <span className="text-xs text-on-surface-variant font-medium">
+                          {m.total_requests > 0
+                            ? `${(m.success_count / m.total_requests * 100).toFixed(1)}%`
+                            : "—"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/15 flex flex-col justify-between border-b-4 border-b-error">
+                      <span className="text-sm text-on-surface-variant font-medium mb-4">Erros</span>
+                      <div className="flex items-baseline gap-2">
+                        <span className={`font-headline text-3xl font-extrabold tracking-tight ${m.error_count > 0 ? "text-error" : "text-on-surface"}`}>
+                          {m.error_count.toLocaleString()}
+                        </span>
+                        <span className={`text-xs font-medium ${m.error_count > 0 ? "text-error" : "text-on-surface-variant"}`}>
+                          {m.total_requests > 0
+                            ? `${(m.error_count / m.total_requests * 100).toFixed(1)}%`
+                            : "—"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/15 flex flex-col justify-between bg-gradient-to-br from-surface-container-lowest to-surface-variant">
+                      <span className="text-sm text-on-surface-variant font-medium mb-4 flex items-center gap-2">
+                        <span className="material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>account_balance_wallet</span>
+                        Total Gasto
+                      </span>
+                      <span className="font-headline text-3xl font-extrabold text-primary tracking-tight">
+                        ${m.total_cost.toFixed(4)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Volume + Latency Cards */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+                {/* Request Volume Chart */}
+                <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/15 p-6">
+                  <div className="flex items-center gap-2 mb-5">
+                    <span className="material-symbols-outlined text-primary text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>bar_chart</span>
+                    <h3 className="font-headline font-bold text-base text-on-surface">Volume de Requests</h3>
+                    <span className="ml-auto text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold">
+                      {hasDateRange
+                        ? [dateFrom, dateTo].filter(Boolean).join(" – ")
+                        : timeFilter === "24h" ? "por hora" : "por dia"}
                     </span>
                   </div>
+                  {logs.length === 0 ? (
+                    <div className="h-40 flex items-center justify-center text-on-surface-variant text-sm">Sem dados</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={160}>
+                      <BarChart key={`${theme}-${dateFrom}-${dateTo}-${timeFilter}`} data={volumeData} barSize={timeFilter === "24h" ? 6 : 10} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={cssVar("outline-variant")} vertical={false} opacity={0.5} />
+                        <XAxis
+                          dataKey="time"
+                          tick={{ fontSize: 10, fill: cssVar("on-surface-variant") }}
+                          tickLine={false}
+                          axisLine={false}
+                          interval={timeFilter === "24h" ? 3 : timeFilter === "7d" ? 0 : 4}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 10, fill: cssVar("on-surface-variant") }}
+                          tickLine={false}
+                          axisLine={false}
+                          allowDecimals={false}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: cssVar("surface-container-high"),
+                            border: "none",
+                            borderRadius: "8px",
+                            fontSize: "12px",
+                            color: cssVar("on-surface"),
+                          }}
+                          cursor={{ fill: cssVar("surface-container"), radius: 4 }}
+                        />
+                        <Bar dataKey="count" fill={cssVar("primary")} radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
 
-                <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/15 flex flex-col justify-between border-b-4 border-b-error">
-                  <span className="text-sm text-on-surface-variant font-medium mb-4">Erros</span>
-                  <div className="flex items-baseline gap-2">
-                    <span className={`font-headline text-3xl font-extrabold tracking-tight ${selectedApi.error_count > 0 ? "text-error" : "text-on-surface"}`}>
-                      {selectedApi.error_count.toLocaleString()}
-                    </span>
-                    <span className={`text-xs font-medium ${selectedApi.error_count > 0 ? "text-error" : "text-on-surface-variant"}`}>
-                      {selectedApi.total_requests > 0
-                        ? `${(selectedApi.error_count / selectedApi.total_requests * 100).toFixed(1)}%`
-                        : "—"}
-                    </span>
+                {/* Average Latency Card */}
+                <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/15 p-6 flex flex-col">
+                  <div className="flex items-center gap-2 mb-5">
+                    <span className="material-symbols-outlined text-primary text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>timer</span>
+                    <h3 className="font-headline font-bold text-base text-on-surface">Latência Média</h3>
                   </div>
-                </div>
 
-                <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/15 flex flex-col justify-between bg-gradient-to-br from-surface-container-lowest to-surface-variant">
-                  <span className="text-sm text-on-surface-variant font-medium mb-4 flex items-center gap-2">
-                    <span className="material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>account_balance_wallet</span>
-                    Total Gasto
-                  </span>
-                  <span className="font-headline text-3xl font-extrabold text-primary tracking-tight">
-                    ${selectedApi.total_cost.toFixed(4)}
-                  </span>
+                  {avgLatency === null ? (
+                    <div className="flex-1 flex items-center justify-center text-on-surface-variant text-sm">Sem dados</div>
+                  ) : (
+                    <div className="flex-1 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-baseline gap-2 mb-1">
+                          <span className={`font-headline font-extrabold text-5xl tracking-tight ${latencyColor}`}>
+                            {avgLatency}
+                          </span>
+                          <span className="text-on-surface-variant font-medium text-lg">ms</span>
+                        </div>
+                        <span className={`text-xs font-bold uppercase tracking-wider ${latencyColor}`}>
+                          {avgLatency < 150 ? "Excelente" : avgLatency < 400 ? "Bom" : avgLatency < 800 ? "Moderado" : "Lento"}
+                        </span>
+                      </div>
+
+                      <div className="mt-6 space-y-3">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-on-surface-variant">Máxima registrada</span>
+                          <span className="font-mono font-bold text-on-surface">{maxLatency}ms</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-on-surface-variant">Baseado em</span>
+                          <span className="font-mono font-bold text-on-surface">{logs.length} requests</span>
+                        </div>
+                        <div className="h-2 bg-surface-container rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              avgLatency < 150 ? "bg-emerald-500"
+                              : avgLatency < 400 ? "bg-primary"
+                              : avgLatency < 800 ? "bg-yellow-500"
+                              : "bg-error"
+                            }`}
+                            style={{ width: `${Math.min(100, (avgLatency / 1000) * 100)}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-on-surface-variant">
+                          <span>0ms</span>
+                          <span>500ms</span>
+                          <span>1000ms</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
