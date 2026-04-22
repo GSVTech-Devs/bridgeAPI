@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getClientByApi, getClientByKey, getLogs } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
 import {
@@ -62,7 +62,12 @@ function methodColor(method: string) {
 function formatDate(iso: string | null) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return d.toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function formatShortDate(dateStr: string) {
+  const [y, m, d] = dateStr.split("-");
+  return `${d}/${m}/${y.slice(2)}`;
 }
 
 function computeVolumeData(
@@ -225,6 +230,207 @@ function LogRow({ log }: { log: LogItem }) {
 
 const TODAY = new Date().toISOString().split("T")[0];
 
+const MONTH_NAMES = [
+  "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+  "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
+];
+const WEEK_DAYS = ["D","S","T","Q","Q","S","S"];
+
+function DateRangePicker({
+  dateFrom,
+  dateTo,
+  onChange,
+  onClear,
+}: {
+  dateFrom: string | null;
+  dateTo: string | null;
+  onChange: (from: string | null, to: string | null) => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [picking, setPicking] = useState<"start" | "end">("start");
+  const [hoverDate, setHoverDate] = useState<string | null>(null);
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onMouseDown(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [open]);
+
+  const todayStr = today.toISOString().split("T")[0];
+  const isAtMaxMonth = viewYear === today.getFullYear() && viewMonth === today.getMonth();
+
+  function openPicker() {
+    setPicking(dateFrom && !dateTo ? "end" : "start");
+    setHoverDate(null);
+    setOpen(true);
+  }
+
+  function prevMonth() {
+    if (viewMonth === 0) { setViewYear((y) => y - 1); setViewMonth(11); }
+    else setViewMonth((m) => m - 1);
+  }
+
+  function nextMonth() {
+    if (isAtMaxMonth) return;
+    if (viewMonth === 11) { setViewYear((y) => y + 1); setViewMonth(0); }
+    else setViewMonth((m) => m + 1);
+  }
+
+  function handleDayClick(dateStr: string) {
+    if (picking === "start") {
+      onChange(dateStr, null);
+      setPicking("end");
+    } else {
+      if (!dateFrom || dateStr === dateFrom) {
+        onChange(dateStr, dateStr);
+      } else if (dateStr < dateFrom) {
+        onChange(dateStr, dateFrom);
+      } else {
+        onChange(dateFrom, dateStr);
+      }
+      setOpen(false);
+      setPicking("start");
+    }
+  }
+
+  function getEffectiveRange(): { rangeStart: string | null; rangeEnd: string | null } {
+    const end = picking === "end" && open ? (hoverDate ?? dateTo) : dateTo;
+    if (!dateFrom) return { rangeStart: null, rangeEnd: null };
+    if (!end) return { rangeStart: dateFrom, rangeEnd: null };
+    return dateFrom <= end
+      ? { rangeStart: dateFrom, rangeEnd: end }
+      : { rangeStart: end, rangeEnd: dateFrom };
+  }
+
+  const hasRange = dateFrom !== null || dateTo !== null;
+
+  let triggerLabel = "Selecionar período";
+  if (dateFrom && dateTo) {
+    triggerLabel = dateFrom === dateTo
+      ? formatShortDate(dateFrom)
+      : `${formatShortDate(dateFrom)} – ${formatShortDate(dateTo)}`;
+  } else if (dateFrom) {
+    triggerLabel = `${formatShortDate(dateFrom)} – ...`;
+  }
+
+  const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const { rangeStart, rangeEnd } = getEffectiveRange();
+
+  return (
+    <div className="relative" ref={wrapperRef}>
+      <button
+        onClick={openPicker}
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+          hasRange
+            ? "border-primary bg-primary/5 text-on-surface ring-1 ring-primary/20"
+            : "border-outline-variant/20 bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
+        }`}
+      >
+        <span className="material-symbols-outlined text-[16px] text-on-surface-variant">date_range</span>
+        <span className={`font-medium ${hasRange ? "text-on-surface" : "text-on-surface-variant"}`}>
+          {triggerLabel}
+        </span>
+        {hasRange && (
+          <span
+            role="button"
+            onClick={(e) => { e.stopPropagation(); onClear(); setPicking("start"); }}
+            className="ml-1 text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-[14px]">close</span>
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 z-50 bg-surface-container-low rounded-2xl shadow-2xl border border-outline-variant/15 p-5 w-[280px] select-none">
+          {/* Month nav */}
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={prevMonth}
+              className="p-1.5 rounded-full hover:bg-surface-container transition-colors text-on-surface-variant"
+            >
+              <span className="material-symbols-outlined text-[18px]">chevron_left</span>
+            </button>
+            <span className="font-headline font-bold text-sm text-on-surface">
+              {MONTH_NAMES[viewMonth]} {viewYear}
+            </span>
+            <button
+              onClick={nextMonth}
+              disabled={isAtMaxMonth}
+              className="p-1.5 rounded-full hover:bg-surface-container transition-colors text-on-surface-variant disabled:opacity-25 disabled:cursor-not-allowed"
+            >
+              <span className="material-symbols-outlined text-[18px]">chevron_right</span>
+            </button>
+          </div>
+
+          <p className="text-[10px] text-center text-on-surface-variant uppercase tracking-wider font-semibold mb-3">
+            {picking === "start" ? "Selecione a data inicial" : "Selecione a data final"}
+          </p>
+
+          <div className="grid grid-cols-7 mb-1">
+            {WEEK_DAYS.map((d, i) => (
+              <div key={i} className="text-center text-[10px] font-bold text-on-surface-variant/60 py-1">{d}</div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7">
+            {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`b${i}`} />)}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+              const isFuture = dateStr > todayStr;
+              const isToday = dateStr === todayStr;
+              const isSingle = rangeStart !== null && rangeStart === rangeEnd && dateStr === rangeStart;
+              const isStart = !isSingle && dateStr === rangeStart;
+              const isEnd = !isSingle && dateStr === rangeEnd;
+              const inRange = !!(rangeStart && rangeEnd && dateStr > rangeStart && dateStr < rangeEnd);
+              const isSelected = isSingle || isStart || isEnd;
+
+              return (
+                <div key={day} className="relative h-8 flex items-center justify-center">
+                  {inRange && <div className="absolute inset-y-1 left-0 right-0 bg-primary/15" />}
+                  {isStart && <div className="absolute inset-y-1 left-1/2 right-0 bg-primary/15" />}
+                  {isEnd && <div className="absolute inset-y-1 left-0 right-1/2 bg-primary/15" />}
+                  <button
+                    disabled={isFuture}
+                    onClick={() => handleDayClick(dateStr)}
+                    onMouseEnter={() => picking === "end" && !isFuture && setHoverDate(dateStr)}
+                    onMouseLeave={() => picking === "end" && setHoverDate(null)}
+                    className={`relative z-10 w-7 h-7 rounded-full text-xs transition-all flex items-center justify-center
+                      ${isSelected
+                        ? "bg-primary text-white font-bold"
+                        : isToday && !inRange
+                        ? "border-2 border-primary text-primary font-bold hover:bg-primary/10"
+                        : isFuture
+                        ? "text-on-surface-variant/25 cursor-not-allowed"
+                        : inRange
+                        ? "text-on-surface hover:bg-primary/20"
+                        : "text-on-surface hover:bg-primary/10 cursor-pointer font-medium"
+                      }`}
+                  >
+                    {day}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function periodToSince(period: string): string {
   const hours = period === "24h" ? 24 : period === "7d" ? 7 * 24 : 30 * 24;
   return new Date(Date.now() - hours * 3_600_000).toISOString();
@@ -256,6 +462,7 @@ export default function MetricsPage() {
   const [dateTo, setDateTo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [metricsLoading, setMetricsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const hasDateRange = dateFrom !== null || dateTo !== null;
@@ -288,13 +495,15 @@ export default function MetricsPage() {
   // Re-fetch filtered summary metrics when API selection or time range changes
   useEffect(() => {
     if (!selectedApi) return;
+    setMetricsLoading(true);
     const { since, until } = getTimeRange(timeFilter, dateFrom, dateTo);
     getClientByApi({ since, until })
       .then((data) => {
         const match = data.items.find((a) => a.api_id === selectedApi.api_id);
         setFilteredMetrics(match ?? null);
       })
-      .catch(() => setFilteredMetrics(null));
+      .catch(() => setFilteredMetrics(null))
+      .finally(() => setMetricsLoading(false));
   }, [selectedApi, timeFilter, dateFrom, dateTo]);
 
   // Re-fetch logs + key breakdown when API selection or time range changes
@@ -432,44 +641,21 @@ export default function MetricsPage() {
                   <div className={`transition-opacity ${hasDateRange ? "opacity-40 pointer-events-none" : ""}`}>
                     <TimeFilter value={timeFilter} onChange={(v) => { setTimeFilter(v); clearDates(); }} />
                   </div>
-                  <div className={`flex items-center gap-2 bg-surface-container-lowest border rounded-lg px-3 py-1.5 transition-colors ${hasDateRange ? "border-primary ring-1 ring-primary/20" : "border-outline-variant/20"}`}>
-                    <span className="material-symbols-outlined text-on-surface-variant text-[16px]">date_range</span>
-                    <input
-                      type="date"
-                      value={dateFrom ?? ""}
-                      max={dateTo ?? TODAY}
-                      onChange={(e) => setDateFrom(e.target.value || null)}
-                      className="bg-transparent border-none text-sm text-on-surface outline-none w-32 cursor-pointer"
-                      title="Data inicial"
-                    />
-                    <span className="text-on-surface-variant text-xs font-medium">–</span>
-                    <input
-                      type="date"
-                      value={dateTo ?? ""}
-                      min={dateFrom ?? undefined}
-                      max={TODAY}
-                      onChange={(e) => setDateTo(e.target.value || null)}
-                      className="bg-transparent border-none text-sm text-on-surface outline-none w-32 cursor-pointer"
-                      title="Data final"
-                    />
-                    {hasDateRange && (
-                      <button
-                        onClick={clearDates}
-                        className="text-on-surface-variant hover:text-on-surface transition-colors ml-1"
-                        title="Limpar período"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">close</span>
-                      </button>
-                    )}
-                  </div>
+                  <DateRangePicker
+                    dateFrom={dateFrom}
+                    dateTo={dateTo}
+                    onChange={(from, to) => { setDateFrom(from); setDateTo(to); }}
+                    onClear={clearDates}
+                  />
                 </div>
               </div>
 
               {/* Metric Cards */}
               {(() => {
-                const m = filteredMetrics ?? selectedApi;
+                const zeroMetrics: ApiItem = { ...selectedApi, total_requests: 0, error_count: 0, success_count: 0, total_cost: 0 };
+                const m = filteredMetrics ?? zeroMetrics;
                 return (
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                  <div className={`grid grid-cols-1 md:grid-cols-4 gap-4 mb-8 transition-opacity duration-150 ${metricsLoading ? "opacity-40 pointer-events-none" : ""}`}>
                     <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/15 flex flex-col justify-between">
                       <span className="text-sm text-on-surface-variant font-medium mb-4">Total Requests</span>
                       <span className="font-headline text-3xl font-extrabold text-on-surface tracking-tight">
@@ -527,7 +713,7 @@ export default function MetricsPage() {
                     <h3 className="font-headline font-bold text-base text-on-surface">Volume de Requests</h3>
                     <span className="ml-auto text-[10px] text-on-surface-variant uppercase tracking-wider font-semibold">
                       {hasDateRange
-                        ? [dateFrom, dateTo].filter(Boolean).join(" – ")
+                        ? [dateFrom, dateTo].filter(Boolean).map((d) => formatShortDate(d!)).join(" – ")
                         : timeFilter === "24h" ? "por hora" : "por dia"}
                     </span>
                   </div>
