@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { clearAuth, getToken } from "@/lib/auth";
+import { getMe } from "@/lib/api";
 import { ThemeDropdown } from "@/components/ThemeDropdown";
 
 const navItems = [
@@ -16,12 +17,19 @@ const navItems = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [email, setEmail] = useState("");
 
   useEffect(() => {
     if (!getToken()) {
       router.push("/login");
+      return;
     }
+    getMe()
+      .then((me) => setEmail(me.email))
+      .catch(() => {});
   }, [router]);
+
+  const initial = email.trim().charAt(0).toUpperCase() || "?";
 
   function handleLogout() {
     clearAuth();
@@ -97,8 +105,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <span className="material-symbols-outlined text-[20px]">notifications</span>
             </button> */}
             <ThemeDropdown passwordHref="/dashboard/settings" />
-            <div className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-sm ml-1">
-              U
+            <div
+              title={email}
+              className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-sm ml-1"
+            >
+              {initial}
             </div>
           </div>
         </header>

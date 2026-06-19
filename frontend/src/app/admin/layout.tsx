@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { clearAuth, getToken } from "@/lib/auth";
+import { getMe } from "@/lib/api";
 import { ThemeDropdown } from "@/components/ThemeDropdown";
 
 const navItems = [
@@ -20,12 +21,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
   const isLoginPage = pathname === "/admin/login";
+  const [email, setEmail] = useState("");
 
   useEffect(() => {
-    if (!isLoginPage && !getToken()) {
+    if (isLoginPage) return;
+    if (!getToken()) {
       router.push("/admin/login");
+      return;
     }
+    getMe()
+      .then((me) => setEmail(me.email))
+      .catch(() => {});
   }, [router, isLoginPage]);
+
+  const initial = email.trim().charAt(0).toUpperCase() || "?";
 
   function handleLogout() {
     clearAuth();
@@ -94,8 +103,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <span className="material-symbols-outlined text-on-surface-variant text-[20px]">notifications</span>
             </button> */}
             <ThemeDropdown />
-            <div className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-sm ml-1">
-              A
+            <div
+              title={email}
+              className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-sm ml-1"
+            >
+              {initial}
             </div>
           </div>
         </header>
