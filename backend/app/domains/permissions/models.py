@@ -13,11 +13,11 @@ from app.core.database import Base
 class Permission(Base):
     __tablename__ = "permissions"
     __table_args__ = (
-        UniqueConstraint("client_id", "api_id", name="uq_permission_client_api"),
+        UniqueConstraint("account_id", "api_id", name="uq_permission_account_api"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id"), index=True)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id"), index=True)
     api_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("external_apis.id"), index=True
     )

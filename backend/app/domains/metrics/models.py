@@ -14,7 +14,7 @@ class RequestMetric(Base):
     __tablename__ = "request_metrics"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id"), index=True)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id"), index=True)
     api_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("external_apis.id"), index=True
     )

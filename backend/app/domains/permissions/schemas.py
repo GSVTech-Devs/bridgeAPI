@@ -8,13 +8,13 @@ from pydantic import BaseModel
 
 
 class PermissionCreateRequest(BaseModel):
-    client_id: uuid.UUID
+    account_id: uuid.UUID
     api_id: uuid.UUID
 
 
 class PermissionResponse(BaseModel):
     id: uuid.UUID
-    client_id: uuid.UUID
+    account_id: uuid.UUID
     api_id: uuid.UUID
     granted_at: datetime
     revoked_at: Optional[datetime]
@@ -23,9 +23,9 @@ class PermissionResponse(BaseModel):
 
 
 class PermissionListItem(BaseModel):
-    client_id: str
+    account_id: str
     api_id: str
-    client_name: str
+    account_name: str
     api_name: str
     status: str
 

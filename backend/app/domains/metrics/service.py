@@ -4,18 +4,22 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import Integer, func, select
+from sqlalchemy import Integer, and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.accounts.models import Account
 from app.domains.apis.models import ExternalAPI
-from app.domains.clients.models import Client
+from app.domains.auth.models import User, UserRole
 from app.domains.keys.models import APIKey
 from app.domains.metrics.models import RequestMetric
+
+# E-mail exibido nos relatórios admin = e-mail do responsável (owner) da account.
+_OWNER_JOIN = and_(User.account_id == Account.id, User.role == UserRole.OWNER.value)
 
 
 async def record_metric(
     db: AsyncSession,
-    client_id: uuid.UUID,
+    account_id: uuid.UUID,
     api_id: uuid.UUID,
     key_id: uuid.UUID,
     path: str,
@@ -25,7 +29,7 @@ async def record_metric(
     cost: Optional[float],
 ) -> RequestMetric:
     metric = RequestMetric(
-        client_id=client_id,
+        account_id=account_id,
         api_id=api_id,
         key_id=key_id,
         path=path,
@@ -41,7 +45,7 @@ async def record_metric(
 
 
 def _build_aggregation_query(
-    client_id: Optional[uuid.UUID] = None,
+    account_id: Optional[uuid.UUID] = None,
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
 ) -> Any:
@@ -53,8 +57,8 @@ def _build_aggregation_query(
         func.sum(RequestMetric.cost).label("total_cost"),
         func.sum(func.cast(RequestMetric.cost.isnot(None), Integer)).label("billable"),
     )
-    if client_id is not None:
-        stmt = stmt.where(RequestMetric.client_id == client_id)
+    if account_id is not None:
+        stmt = stmt.where(RequestMetric.account_id == account_id)
     if since is not None:
         stmt = stmt.where(RequestMetric.created_at >= since)
     if until is not None:
@@ -82,12 +86,12 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 
 async def get_client_dashboard(
     db: AsyncSession,
-    client_id: uuid.UUID,
+    account_id: uuid.UUID,
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
 ) -> dict[str, Any]:
-    """Retorna métricas agregadas para um cliente específico."""
-    stmt = _build_aggregation_query(client_id=client_id, since=since, until=until)
+    """Retorna métricas agregadas para uma account específica."""
+    stmt = _build_aggregation_query(account_id=account_id, since=since, until=until)
     result = await db.execute(stmt)
     row = result.fetchone()
     return _row_to_dict(row)
@@ -110,21 +114,24 @@ async def get_usage_by_client_and_api(
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
 ) -> list[dict[str, Any]]:
-    """Retorna total de requisições e custo acumulado por cliente + API."""
+    """Retorna total de requisições e custo acumulado por account + API."""
     stmt = (
         select(
-            Client.id.label("client_id"),
-            Client.name.label("client_name"),
-            Client.email.label("client_email"),
+            Account.id.label("client_id"),
+            Account.name.label("client_name"),
+            func.coalesce(User.email, "").label("client_email"),
             ExternalAPI.id.label("api_id"),
             ExternalAPI.name.label("api_name"),
             func.count(RequestMetric.id).label("total_requests"),
             func.sum(RequestMetric.cost).label("total_cost"),
         )
-        .join(Client, RequestMetric.client_id == Client.id)
+        .join(Account, RequestMetric.account_id == Account.id)
         .join(ExternalAPI, RequestMetric.api_id == ExternalAPI.id)
-        .group_by(Client.id, Client.name, Client.email, ExternalAPI.id, ExternalAPI.name)
-        .order_by(Client.name, ExternalAPI.name)
+        .outerjoin(User, _OWNER_JOIN)
+        .group_by(
+            Account.id, Account.name, User.email, ExternalAPI.id, ExternalAPI.name
+        )
+        .order_by(Account.name, ExternalAPI.name)
     )
     if since is not None:
         stmt = stmt.where(RequestMetric.created_at >= since)
@@ -151,18 +158,21 @@ async def get_clients_usage_summary(
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
 ) -> list[dict[str, Any]]:
-    """Total de requisições, erros e custo por cliente (visão resumida)."""
+    """Total de requisições, erros e custo por account (visão resumida)."""
     stmt = (
         select(
-            Client.id.label("client_id"),
-            Client.name.label("client_name"),
-            Client.email.label("client_email"),
+            Account.id.label("client_id"),
+            Account.name.label("client_name"),
+            func.coalesce(User.email, "").label("client_email"),
             func.count(RequestMetric.id).label("total_requests"),
-            func.sum(func.cast(RequestMetric.status_code != 200, Integer)).label("error_count"),
+            func.sum(func.cast(RequestMetric.status_code != 200, Integer)).label(
+                "error_count"
+            ),
             func.sum(RequestMetric.cost).label("total_cost"),
         )
-        .join(Client, RequestMetric.client_id == Client.id)
-        .group_by(Client.id, Client.name, Client.email)
+        .join(Account, RequestMetric.account_id == Account.id)
+        .outerjoin(User, _OWNER_JOIN)
+        .group_by(Account.id, Account.name, User.email)
         .order_by(func.sum(RequestMetric.cost).desc().nulls_last())
     )
     if since is not None:
@@ -187,22 +197,26 @@ async def get_clients_usage_summary(
 
 async def get_client_api_detail(
     db: AsyncSession,
-    client_id: str,
+    account_id: str,
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
 ) -> list[dict[str, Any]]:
-    """Detalhe de uso por API para um cliente: requests, erros, custo."""
+    """Detalhe de uso por API para uma account: requests, erros, custo."""
     stmt = (
         select(
             ExternalAPI.id.label("api_id"),
             ExternalAPI.name.label("api_name"),
             func.count(RequestMetric.id).label("total_requests"),
-            func.sum(func.cast(RequestMetric.status_code != 200, Integer)).label("error_count"),
-            func.sum(func.cast(RequestMetric.status_code == 200, Integer)).label("success_count"),
+            func.sum(func.cast(RequestMetric.status_code != 200, Integer)).label(
+                "error_count"
+            ),
+            func.sum(func.cast(RequestMetric.status_code == 200, Integer)).label(
+                "success_count"
+            ),
             func.sum(RequestMetric.cost).label("total_cost"),
         )
         .join(ExternalAPI, RequestMetric.api_id == ExternalAPI.id)
-        .where(RequestMetric.client_id == client_id)
+        .where(RequestMetric.account_id == account_id)
         .group_by(ExternalAPI.id, ExternalAPI.name)
         .order_by(ExternalAPI.name)
     )
@@ -227,12 +241,13 @@ async def get_client_api_detail(
 
 async def get_client_status_codes(
     db: AsyncSession,
-    client_id: uuid.UUID,
+    account_id: uuid.UUID,
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
     top_n: int = 5,
 ) -> list[dict[str, Any]]:
     from collections import defaultdict
+
     stmt = (
         select(
             ExternalAPI.id.label("api_id"),
@@ -241,7 +256,7 @@ async def get_client_status_codes(
             func.count(RequestMetric.id).label("count"),
         )
         .join(ExternalAPI, RequestMetric.api_id == ExternalAPI.id)
-        .where(RequestMetric.client_id == client_id)
+        .where(RequestMetric.account_id == account_id)
         .group_by(ExternalAPI.id, ExternalAPI.name, RequestMetric.status_code)
         .order_by(ExternalAPI.name, func.count(RequestMetric.id).desc())
     )
@@ -255,23 +270,25 @@ async def get_client_status_codes(
     for row in rows:
         key = str(row.api_id)
         if len(api_codes[key]) < top_n:
-            api_codes[key].append({
-                "api_id": str(row.api_id),
-                "api_name": row.api_name,
-                "status_code": row.status_code,
-                "count": row.count,
-            })
+            api_codes[key].append(
+                {
+                    "api_id": str(row.api_id),
+                    "api_name": row.api_name,
+                    "status_code": row.status_code,
+                    "count": row.count,
+                }
+            )
     return [item for items in api_codes.values() for item in items]
 
 
 async def get_client_requests_by_key(
     db: AsyncSession,
-    client_id: uuid.UUID,
+    account_id: uuid.UUID,
     api_id: Optional[uuid.UUID] = None,
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
 ) -> list[dict[str, Any]]:
-    """Requests agrupados por API key para um cliente."""
+    """Requests agrupados por API key para uma account."""
     stmt = (
         select(
             APIKey.id.label("key_id"),
@@ -280,7 +297,7 @@ async def get_client_requests_by_key(
             func.count(RequestMetric.id).label("total_requests"),
         )
         .join(APIKey, RequestMetric.key_id == APIKey.id)
-        .where(RequestMetric.client_id == client_id)
+        .where(RequestMetric.account_id == account_id)
         .group_by(APIKey.id, APIKey.name, APIKey.key_prefix)
         .order_by(func.count(RequestMetric.id).desc())
     )
@@ -314,7 +331,9 @@ async def get_metrics_by_api(
             ExternalAPI.id.label("api_id"),
             ExternalAPI.name.label("api_name"),
             func.count(RequestMetric.id).label("total"),
-            func.sum(func.cast(RequestMetric.status_code != 200, Integer)).label("errors"),
+            func.sum(func.cast(RequestMetric.status_code != 200, Integer)).label(
+                "errors"
+            ),
         )
         .join(ExternalAPI, RequestMetric.api_id == ExternalAPI.id)
         .group_by(ExternalAPI.id, ExternalAPI.name)

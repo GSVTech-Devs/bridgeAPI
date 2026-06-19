@@ -3,14 +3,13 @@ from logging.config import fileConfig
 
 from sqlalchemy.ext.asyncio import create_async_engine
 
+import app.domains.accounts.models  # noqa: F401
 import app.domains.apis.models  # noqa: F401
 import app.domains.auth.models  # noqa: F401
-import app.domains.clients.models  # noqa: F401
 import app.domains.keys.models  # noqa: F401
 import app.domains.metrics.models  # noqa: F401
 import app.domains.permissions.models  # noqa: F401
 from alembic import context
-
 from app.core.config import settings  # noqa: F401
 from app.core.database import Base  # noqa: F401
 

@@ -6,14 +6,18 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import decrypt_value, encrypt_value, hash_password, verify_password
-from app.domains.clients.models import ClientStatus
-from app.domains.clients.service import ClientNotFoundError, get_client_by_email
+from app.core.security import (
+    decrypt_value,
+    encrypt_value,
+    hash_password,
+    verify_password,
+)
+from app.domains.accounts.models import AccountStatus
+from app.domains.accounts.service import AccountNotFoundError, get_account_by_id
 from app.domains.keys.models import APIKey, APIKeyStatus
 from app.domains.permissions.models import Permission
 
-
-MAX_KEYS_PER_CLIENT_PER_API = 5
+MAX_KEYS_PER_ACCOUNT_PER_API = 5
 
 
 class APIKeyNotFoundError(Exception):
@@ -28,40 +32,47 @@ class APIKeyLimitExceededError(Exception):
     pass
 
 
+async def _require_active_account(db: AsyncSession, account_id: uuid.UUID):
+    account = await get_account_by_id(db, str(account_id))
+    if account.status != AccountStatus.ACTIVE:
+        raise AccountNotFoundError(f"Account is not active: {account_id}")
+    return account
+
+
 async def create_api_key(
-    db: AsyncSession, client_email: str, name: str, *, api_id: uuid.UUID
+    db: AsyncSession, account_id: uuid.UUID, name: str, *, api_id: uuid.UUID
 ) -> tuple[APIKey, str]:
-    client = await get_client_by_email(db, client_email)
-    if client.status != ClientStatus.ACTIVE:
-        raise ClientNotFoundError(f"Client is not active: {client_email}")
+    await _require_active_account(db, account_id)
 
     perm_result = await db.execute(
         select(Permission).where(
-            Permission.client_id == client.id,
+            Permission.account_id == account_id,
             Permission.api_id == api_id,
             Permission.revoked_at.is_(None),
         )
     )
     if perm_result.scalar_one_or_none() is None:
-        raise UnauthorizedApiError(f"Client has no active permission for API {api_id}")
+        raise UnauthorizedApiError(f"Account has no active permission for API {api_id}")
 
     count_result = await db.execute(
-        select(func.count()).select_from(APIKey).where(
-            APIKey.client_id == client.id,
+        select(func.count())
+        .select_from(APIKey)
+        .where(
+            APIKey.account_id == account_id,
             APIKey.api_id == api_id,
             APIKey.status == APIKeyStatus.ACTIVE,
         )
     )
-    if count_result.scalar_one() >= MAX_KEYS_PER_CLIENT_PER_API:
+    if count_result.scalar_one() >= MAX_KEYS_PER_ACCOUNT_PER_API:
         raise APIKeyLimitExceededError(
-            f"Maximum of {MAX_KEYS_PER_CLIENT_PER_API} active keys per API reached"
+            f"Maximum of {MAX_KEYS_PER_ACCOUNT_PER_API} active keys per API reached"
         )
 
     key_prefix = secrets.token_hex(4)
     raw_secret = f"brg_{key_prefix}_{secrets.token_urlsafe(24)}"
 
     api_key = APIKey(
-        client_id=client.id,
+        account_id=account_id,
         api_id=api_id,
         name=name,
         key_prefix=key_prefix,
@@ -74,9 +85,10 @@ async def create_api_key(
     return api_key, raw_secret
 
 
-async def list_api_keys(db: AsyncSession, client_email: str) -> list[tuple[APIKey, str | None]]:
-    client = await get_client_by_email(db, client_email)
-    result = await db.execute(select(APIKey).where(APIKey.client_id == client.id))
+async def list_api_keys(
+    db: AsyncSession, account_id: uuid.UUID
+) -> list[tuple[APIKey, str | None]]:
+    result = await db.execute(select(APIKey).where(APIKey.account_id == account_id))
     keys = list(result.scalars().all())
     return [
         (k, decrypt_value(k.key_secret_encrypted) if k.key_secret_encrypted else None)
@@ -84,12 +96,13 @@ async def list_api_keys(db: AsyncSession, client_email: str) -> list[tuple[APIKe
     ]
 
 
-async def revoke_api_key(db: AsyncSession, client_email: str, key_id: str) -> APIKey:
-    client = await get_client_by_email(db, client_email)
+async def revoke_api_key(
+    db: AsyncSession, account_id: uuid.UUID, key_id: str
+) -> APIKey:
     result = await db.execute(
         select(APIKey).where(
             APIKey.id == key_id,
-            APIKey.client_id == client.id,
+            APIKey.account_id == account_id,
         )
     )
     api_key = result.scalar_one_or_none()

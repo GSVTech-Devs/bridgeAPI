@@ -5,8 +5,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.authz import Feature
 from app.core.database import get_db
-from app.domains.auth.router import get_current_client
+from app.domains.auth.router import require_feature
 from app.domains.auth.schemas import MeResponse
 from app.domains.keys.schemas import (
     APIKeyCreateRequest,
@@ -34,11 +35,11 @@ router = APIRouter(prefix="/keys", tags=["keys"])
 async def create(
     body: APIKeyCreateRequest,
     db: AsyncSession = Depends(get_db),
-    current_client: MeResponse = Depends(get_current_client),
+    identity: MeResponse = Depends(require_feature(Feature.API_KEYS)),
 ) -> APIKeyCreateResponse:
     try:
         api_key, plain_secret = await create_api_key(
-            db, current_client.email, body.name, api_id=body.api_id
+            db, identity.account_id, body.name, api_id=body.api_id
         )
     except UnauthorizedApiError:
         raise HTTPException(
@@ -48,7 +49,10 @@ async def create(
     except APIKeyLimitExceededError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Maximum of 5 active keys per API reached. Revoke a key before creating a new one.",
+            detail=(
+                "Maximum of 5 active keys per API reached. "
+                "Revoke a key before creating a new one."
+            ),
         )
     return APIKeyCreateResponse(
         **APIKeyResponse.model_validate(api_key).model_dump(exclude={"api_key"}),
@@ -59,9 +63,9 @@ async def create(
 @router.get("", response_model=APIKeyListResponse)
 async def list_all(
     db: AsyncSession = Depends(get_db),
-    current_client: MeResponse = Depends(get_current_client),
+    identity: MeResponse = Depends(require_feature(Feature.API_KEYS)),
 ) -> APIKeyListResponse:
-    pairs = await list_api_keys(db, current_client.email)
+    pairs = await list_api_keys(db, identity.account_id)
     items = []
     for api_key, plain_secret in pairs:
         data = APIKeyResponse.model_validate(api_key).model_dump()
@@ -74,10 +78,10 @@ async def list_all(
 async def revoke(
     key_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_client: MeResponse = Depends(get_current_client),
+    identity: MeResponse = Depends(require_feature(Feature.API_KEYS)),
 ) -> APIKeyResponse:
     try:
-        api_key = await revoke_api_key(db, current_client.email, str(key_id))
+        api_key = await revoke_api_key(db, identity.account_id, str(key_id))
     except APIKeyNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

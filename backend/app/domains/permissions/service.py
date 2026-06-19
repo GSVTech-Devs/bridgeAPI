@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.accounts.models import Account
 from app.domains.apis.models import ExternalAPI
-from app.domains.clients.models import Client
 from app.domains.permissions.models import Permission
 
 
@@ -19,10 +19,12 @@ class PermissionNotFoundError(Exception):
     pass
 
 
-async def grant_permission(db: AsyncSession, client_id: str, api_id: str) -> Permission:
+async def grant_permission(
+    db: AsyncSession, account_id: str, api_id: str
+) -> Permission:
     result = await db.execute(
         select(Permission).where(
-            Permission.client_id == uuid.UUID(client_id),
+            Permission.account_id == uuid.UUID(account_id),
             Permission.api_id == uuid.UUID(api_id),
         )
     )
@@ -30,7 +32,7 @@ async def grant_permission(db: AsyncSession, client_id: str, api_id: str) -> Per
     if existing is not None:
         if existing.revoked_at is None:
             raise DuplicatePermissionError(
-                f"Permission already exists for client {client_id} and api {api_id}"
+                f"Permission already exists for account {account_id} and api {api_id}"
             )
         existing.revoked_at = None
         existing.granted_at = datetime.now(timezone.utc)
@@ -39,7 +41,7 @@ async def grant_permission(db: AsyncSession, client_id: str, api_id: str) -> Per
         return existing
 
     permission = Permission(
-        client_id=uuid.UUID(client_id),
+        account_id=uuid.UUID(account_id),
         api_id=uuid.UUID(api_id),
         granted_at=datetime.now(timezone.utc),
     )
@@ -50,11 +52,11 @@ async def grant_permission(db: AsyncSession, client_id: str, api_id: str) -> Per
 
 
 async def revoke_permission(
-    db: AsyncSession, client_id: str, api_id: str
+    db: AsyncSession, account_id: str, api_id: str
 ) -> Permission:
     result = await db.execute(
         select(Permission).where(
-            Permission.client_id == uuid.UUID(client_id),
+            Permission.account_id == uuid.UUID(account_id),
             Permission.api_id == uuid.UUID(api_id),
             Permission.revoked_at.is_(None),
         )
@@ -62,7 +64,7 @@ async def revoke_permission(
     permission = result.scalar_one_or_none()
     if permission is None:
         raise PermissionNotFoundError(
-            f"Active permission not found for client {client_id} and api {api_id}"
+            f"Active permission not found for account {account_id} and api {api_id}"
         )
 
     permission.revoked_at = datetime.now(timezone.utc)
@@ -73,21 +75,21 @@ async def revoke_permission(
 async def list_permissions(db: AsyncSession) -> list[dict]:
     result = await db.execute(
         select(
-            Permission.client_id,
+            Permission.account_id,
             Permission.api_id,
-            Client.name.label("client_name"),
+            Account.name.label("account_name"),
             ExternalAPI.name.label("api_name"),
             Permission.revoked_at,
         )
-        .join(Client, Client.id == Permission.client_id)
+        .join(Account, Account.id == Permission.account_id)
         .join(ExternalAPI, ExternalAPI.id == Permission.api_id)
     )
     rows = result.fetchall()
     return [
         {
-            "client_id": str(r.client_id),
+            "account_id": str(r.account_id),
             "api_id": str(r.api_id),
-            "client_name": r.client_name,
+            "account_name": r.account_name,
             "api_name": r.api_name,
             "status": "revoked" if r.revoked_at is not None else "active",
         }
@@ -95,17 +97,14 @@ async def list_permissions(db: AsyncSession) -> list[dict]:
     ]
 
 
-async def get_client_authorized_apis(
-    db: AsyncSession, client_email: str
+async def get_account_authorized_apis(
+    db: AsyncSession, account_id: uuid.UUID
 ) -> list[ExternalAPI]:
-    from app.domains.clients.service import get_client_by_email
-
-    client = await get_client_by_email(db, client_email)
     result = await db.execute(
         select(ExternalAPI)
         .join(Permission, Permission.api_id == ExternalAPI.id)
         .where(
-            Permission.client_id == client.id,
+            Permission.account_id == account_id,
             Permission.revoked_at.is_(None),
         )
     )

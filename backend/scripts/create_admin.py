@@ -11,6 +11,7 @@ virtual ativado e as variáveis de ambiente do .env carregadas.
     cd backend
     python scripts/create_admin.py --email admin@bridge.dev --password suasenha
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,7 +27,12 @@ sys.path.insert(0, ".")
 
 from app.core.config import settings  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
+
+# Importar o modelo Account registra a tabela "accounts" no metadata, para que
+# a FK users.account_id consiga resolver a tabela de destino durante o flush.
+from app.domains.accounts.models import Account  # noqa: E402, F401
 from app.domains.auth.models import User  # noqa: E402
+from app.domains.auth.models import UserRole  # noqa: E402
 
 
 async def create_admin(email: str, password: str) -> None:
@@ -46,14 +52,15 @@ async def create_admin(email: str, password: str) -> None:
         user = User(
             email=email,
             password_hash=hash_password(password),
-            role="admin",
+            role=UserRole.ADMIN,
+            account_id=None,  # admin da plataforma não pertence a nenhuma account
         )
         session.add(user)
         await session.commit()
         await session.refresh(user)
 
     await engine.dispose()
-    print(f"[✓] Admin criado com sucesso!")
+    print("[✓] Admin criado com sucesso!")
     print(f"    Email : {user.email}")
     print(f"    ID    : {user.id}")
     print(f"    Role  : {user.role}")

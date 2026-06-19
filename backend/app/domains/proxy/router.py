@@ -51,7 +51,7 @@ async def _dispatch(
     correlation_id = generate_correlation_id()
 
     try:
-        api_key_obj, client, api = await validate_request(
+        api_key_obj, account, api = await validate_request(
             db, presented_key, api_id, redis
         )
     except InvalidKeyError as exc:
@@ -98,7 +98,7 @@ async def _dispatch(
     cost = api.cost_per_query if upstream_response.status_code == 200 else None
     await record_metric(
         db=db,
-        client_id=client.id,
+        account_id=account.id,
         api_id=api.id,
         key_id=api_key_obj.id,
         path=path,
@@ -113,7 +113,7 @@ async def _dispatch(
             mongo_db,
             {
                 "correlation_id": correlation_id,
-                "client_id": str(client.id),
+                "client_id": str(account.id),
                 "api_id": str(api.id),
                 "key_id": str(api_key_obj.id),
                 "path": path,

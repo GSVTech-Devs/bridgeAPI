@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-
 from typing import Optional
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String
@@ -21,14 +20,16 @@ class APIKey(Base):
     __tablename__ = "api_keys"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clients.id"), index=True)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id"), index=True)
     api_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("external_apis.id"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(255))
     key_prefix: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     key_secret_hash: Mapped[str] = mapped_column(String(255))
-    key_secret_encrypted: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    key_secret_encrypted: Mapped[Optional[str]] = mapped_column(
+        String(512), nullable=True
+    )
     status: Mapped[str] = mapped_column(
         String(20), default=APIKeyStatus.ACTIVE, index=True
     )

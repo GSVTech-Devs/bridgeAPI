@@ -8,9 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decrypt_value
+from app.domains.accounts.models import Account, AccountStatus
 from app.domains.apis.models import APIAuthType, APIStatus, ExternalAPI
 from app.domains.apis.service import get_api_by_id
-from app.domains.clients.models import Client, ClientStatus
 from app.domains.keys.models import APIKey
 from app.domains.keys.service import authenticate_api_key
 from app.domains.permissions.models import Permission
@@ -41,17 +41,17 @@ async def validate_request(
     presented_key: str,
     api_id: str,
     redis=None,
-) -> tuple[APIKey, Client, ExternalAPI]:
+) -> tuple[APIKey, Account, ExternalAPI]:
     # 1. Valida a API key
     api_key = await authenticate_api_key(db, presented_key)
     if api_key is None:
         raise InvalidKeyError("Invalid or revoked API key")
 
-    # 2. Valida o cliente
-    result = await db.execute(select(Client).where(Client.id == api_key.client_id))
-    client = result.scalar_one_or_none()
-    if client is None or client.status != ClientStatus.ACTIVE:
-        raise InactiveClientError(f"Client is not active: {api_key.client_id}")
+    # 2. Valida a account
+    result = await db.execute(select(Account).where(Account.id == api_key.account_id))
+    account = result.scalar_one_or_none()
+    if account is None or account.status != AccountStatus.ACTIVE:
+        raise InactiveClientError(f"Account is not active: {api_key.account_id}")
 
     # 2b. Se a chave estiver vinculada a uma API específica, verifica correspondência
     if api_key.api_id is not None and str(api_key.api_id) != api_id:
@@ -67,20 +67,20 @@ async def validate_request(
     # 4. Valida permissão
     perm_result = await db.execute(
         select(Permission).where(
-            Permission.client_id == client.id,
+            Permission.account_id == account.id,
             Permission.api_id == api.id,
             Permission.revoked_at.is_(None),
         )
     )
     if perm_result.scalar_one_or_none() is None:
         raise PermissionDeniedError(
-            f"Client {client.id} has no permission for API {api.id}"
+            f"Account {account.id} has no permission for API {api.id}"
         )
 
     # 5. Verifica rate limit
     await check_rate_limit(str(api_key.id), api_key.rate_limit, redis)
 
-    return api_key, client, api
+    return api_key, account, api
 
 
 async def check_rate_limit(
@@ -156,10 +156,8 @@ def _build_url_from_template(api: ExternalAPI, path: str) -> str:
     if api.master_key_encrypted:
         master_key = decrypt_value(api.master_key_encrypted)
 
-    return (
-        api.url_template
-        .replace("{query}", path.lstrip("/"))
-        .replace("{token}", master_key)
+    return api.url_template.replace("{query}", path.lstrip("/")).replace(
+        "{token}", master_key
     )
 
 

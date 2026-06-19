@@ -1,3 +1,6 @@
+import uuid
+from typing import Optional
+
 from pydantic import BaseModel, EmailStr
 
 
@@ -14,3 +17,5 @@ class TokenResponse(BaseModel):
 class MeResponse(BaseModel):
     email: str
     role: str
+    user_id: Optional[uuid.UUID] = None
+    account_id: Optional[uuid.UUID] = None
