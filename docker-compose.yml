@@ -72,8 +72,7 @@ services:
     container_name: bridge_migrator
     command: alembic upgrade head
     env_file: .env
-    # DB URLs são definidas pelo override do ambiente (dev/staging/prod).
-    # env_file sozinho é suficiente para VPS APP (aponta para a VPS DB via .env).
+    # DB URLs vêm do .env (dev usa o override docker-compose.dev.yml).
     profiles: [app]
 
   backend:
@@ -94,7 +93,6 @@ services:
       context: ./frontend
       # NEXT_PUBLIC_API_URL é injetada no bundle no momento do build.
       # Local dev: http://localhost:8000
-      # Prod/staging: definido no override (docker-compose.prod.yml etc.)
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     container_name: bridge_frontend
