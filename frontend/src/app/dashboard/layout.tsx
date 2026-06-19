@@ -96,7 +96,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {/* <button className="text-on-surface-variant hover:bg-surface-container-low rounded-full p-2 transition-colors">
               <span className="material-symbols-outlined text-[20px]">notifications</span>
             </button> */}
-            <ThemeDropdown />
+            <ThemeDropdown passwordHref="/dashboard/settings" />
             <div className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-sm ml-1">
               U
             </div>

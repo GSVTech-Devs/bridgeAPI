@@ -14,9 +14,41 @@ class DuplicateEmailError(Exception):
     pass
 
 
+class InvalidCurrentPasswordError(Exception):
+    pass
+
+
+class UserNotFoundError(Exception):
+    pass
+
+
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     result = await db.execute(select(User).where(User.email == email))
     return result.scalar_one_or_none()
+
+
+async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID | str) -> User | None:
+    result = await db.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()
+
+
+async def change_user_password(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID | str,
+    current_password: str,
+    new_password: str,
+) -> User:
+    """Troca a senha do próprio usuário, validando a senha atual."""
+    user = await get_user_by_id(db, user_id)
+    if user is None:
+        raise UserNotFoundError(f"User not found: {user_id}")
+    if not verify_password(current_password, user.password_hash):
+        raise InvalidCurrentPasswordError("Current password is incorrect")
+    user.password_hash = hash_password(new_password)
+    await db.commit()
+    await db.refresh(user)
+    return user
 
 
 async def authenticate_user(db: AsyncSession, email: str, password: str) -> User | None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 from datetime import datetime, timedelta, timezone
 
 from cryptography.fernet import Fernet
@@ -11,6 +12,23 @@ from passlib.context import CryptContext
 from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Requisitos mínimos de senha: 8+ caracteres, ao menos uma letra maiúscula,
+# um número e um caractere especial (qualquer não-alfanumérico).
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_PATTERN = re.compile(r"^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$")
+PASSWORD_REQUIREMENTS_MESSAGE = (
+    "A senha deve ter no mínimo 8 caracteres e incluir ao menos uma letra "
+    "maiúscula, um número e um caractere especial."
+)
+
+
+def validate_password_strength(password: str) -> str:
+    """Valida a força da senha; levanta ``ValueError`` se não atender aos
+    requisitos mínimos. Retorna a própria senha para uso em validators."""
+    if not PASSWORD_PATTERN.match(password):
+        raise ValueError(PASSWORD_REQUIREMENTS_MESSAGE)
+    return password
 
 
 def _get_fernet() -> Fernet:

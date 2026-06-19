@@ -184,3 +184,77 @@ async def test_me_with_account_token_returns_account_scope(client: AsyncClient) 
     body = response.json()
     assert body["role"] == "owner"
     assert body["account_id"] == str(account_id)
+
+
+# ---------------------------------------------------------------------------
+# PATCH /auth/portal/password  (self-service)
+# ---------------------------------------------------------------------------
+
+
+def portal_headers() -> dict:
+    token = create_access_token(
+        "owner@acme.com",
+        role="owner",
+        extra_claims={"user_id": str(uuid.uuid4()), "account_id": str(uuid.uuid4())},
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.mark.asyncio
+async def test_portal_user_changes_own_password(client: AsyncClient) -> None:
+    with patch(
+        "app.domains.auth.router.change_user_password",
+        new=AsyncMock(return_value=make_owner(uuid.uuid4())),
+    ):
+        response = await client.patch(
+            "/auth/portal/password",
+            json={"current_password": "secret123", "new_password": "Supersecret1!"},
+            headers=portal_headers(),
+        )
+    assert response.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_change_password_wrong_current_returns_400(client: AsyncClient) -> None:
+    from app.domains.auth.service import InvalidCurrentPasswordError
+
+    with patch(
+        "app.domains.auth.router.change_user_password",
+        new=AsyncMock(side_effect=InvalidCurrentPasswordError),
+    ):
+        response = await client.patch(
+            "/auth/portal/password",
+            json={"current_password": "wrong", "new_password": "Supersecret1!"},
+            headers=portal_headers(),
+        )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_change_password_weak_new_returns_422(client: AsyncClient) -> None:
+    response = await client.patch(
+        "/auth/portal/password",
+        json={"current_password": "secret123", "new_password": "weakpass"},
+        headers=portal_headers(),
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_change_password_requires_account_user(client: AsyncClient) -> None:
+    token = create_access_token("admin@bridge.com", role="admin")
+    response = await client.patch(
+        "/auth/portal/password",
+        json={"current_password": "secret123", "new_password": "Supersecret1!"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_change_password_requires_auth(client: AsyncClient) -> None:
+    response = await client.patch(
+        "/auth/portal/password",
+        json={"current_password": "secret123", "new_password": "Supersecret1!"},
+    )
+    assert response.status_code == 401

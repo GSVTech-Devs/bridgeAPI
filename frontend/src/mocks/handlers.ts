@@ -14,6 +14,8 @@ export const handlers = [
     HttpResponse.json({ email: "admin@bridge.dev", role: "admin", account_id: null })
   ),
 
+  http.patch(`${BASE}/auth/portal/password`, () => new HttpResponse(null, { status: 204 })),
+
   // ---------------------------------------------------------------------------
   // Accounts (admin)
   // ---------------------------------------------------------------------------
@@ -26,6 +28,8 @@ export const handlers = [
           type: "company",
           status: "active",
           created_at: "2024-01-01T00:00:00Z",
+          owner_email: "owner@acme.com",
+          owner_id: "u1",
         },
         {
           id: "c2",
@@ -33,6 +37,8 @@ export const handlers = [
           type: "individual",
           status: "blocked",
           created_at: "2024-02-01T00:00:00Z",
+          owner_email: "beta@user.com",
+          owner_id: "u2",
         },
       ],
       total: 2,
@@ -60,6 +66,15 @@ export const handlers = [
       { status: 201 }
     )
   ),
+
+  http.patch(`${BASE}/admin/accounts/:id/credentials`, async ({ params, request }) => {
+    const body = (await request.json()) as { email?: string; password?: string };
+    return HttpResponse.json({
+      account_id: params.id,
+      owner_id: "u1",
+      owner_email: body.email ?? "owner@acme.com",
+    });
+  }),
 
   http.patch(`${BASE}/admin/accounts/:id/block`, ({ params }) =>
     HttpResponse.json({ id: params.id, status: "blocked" })

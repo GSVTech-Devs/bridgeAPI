@@ -7,14 +7,20 @@ import {
   createCompany,
   blockAccount,
   unblockAccount,
+  updateAccountCredentials,
 } from "@/lib/api";
+import { isValidPassword, PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/password";
 
 type Account = {
   id: string;
   name: string;
   type: "individual" | "company";
   status: string;
+  owner_email: string | null;
 };
+
+const inputClass =
+  "w-full bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-4 py-2.5 text-sm text-on-surface focus:border-primary focus:ring-0 outline-none transition-all";
 
 const statusConfig: Record<string, { dot: string; label: string }> = {
   active: { dot: "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]", label: "Ativa" },
@@ -58,6 +64,11 @@ function CreateAccountModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const password = mode === "individual" ? form.password : form.owner_password;
+    if (!isValidPassword(password)) {
+      setError(PASSWORD_REQUIREMENTS_MESSAGE);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -82,9 +93,6 @@ function CreateAccountModal({
       setLoading(false);
     }
   }
-
-  const inputClass =
-    "w-full bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-4 py-2.5 text-sm text-on-surface focus:border-primary focus:ring-0 outline-none transition-all";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -146,12 +154,15 @@ function CreateAccountModal({
                 aria-label="Senha"
                 type="password"
                 className={inputClass}
-                placeholder="Senha inicial (mín. 8)"
+                placeholder="Senha inicial"
                 value={form.password}
                 onChange={(e) => set("password", e.target.value)}
                 minLength={8}
                 required
               />
+              <p className="text-xs text-on-surface-variant -mt-2">
+                {PASSWORD_REQUIREMENTS_MESSAGE}
+              </p>
             </>
           ) : (
             <>
@@ -176,12 +187,15 @@ function CreateAccountModal({
                 aria-label="Senha do responsável"
                 type="password"
                 className={inputClass}
-                placeholder="Senha inicial (mín. 8)"
+                placeholder="Senha inicial"
                 value={form.owner_password}
                 onChange={(e) => set("owner_password", e.target.value)}
                 minLength={8}
                 required
               />
+              <p className="text-xs text-on-surface-variant -mt-2">
+                {PASSWORD_REQUIREMENTS_MESSAGE}
+              </p>
             </>
           )}
 
@@ -207,12 +221,139 @@ function CreateAccountModal({
   );
 }
 
+function ManageAccountModal({
+  account,
+  onClose,
+  onUpdated,
+}: {
+  account: Account;
+  onClose: () => void;
+  onUpdated: (email: string) => void;
+}) {
+  const [email, setEmail] = useState(account.owner_email ?? "");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    const trimmedEmail = email.trim();
+    const emailChanged =
+      trimmedEmail !== "" && trimmedEmail !== (account.owner_email ?? "");
+    const data: { email?: string; password?: string } = {};
+    if (emailChanged) data.email = trimmedEmail;
+    if (password !== "") {
+      if (!isValidPassword(password)) {
+        setError(PASSWORD_REQUIREMENTS_MESSAGE);
+        return;
+      }
+      data.password = password;
+    }
+
+    if (data.email === undefined && data.password === undefined) {
+      setError("Altere o email ou a senha para salvar.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await updateAccountCredentials(account.id, data);
+      setPassword("");
+      setSuccess("Credenciais atualizadas com sucesso.");
+      onUpdated(res.owner_email);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao atualizar");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md bg-surface-container-lowest rounded-2xl p-8 shadow-xl">
+        <h3 className="text-xl font-bold text-on-surface font-headline mb-1">
+          Gerenciar acesso
+        </h3>
+        <p className="text-sm text-on-surface-variant mb-6">
+          {account.name} · {account.type === "company" ? "Empresa" : "Avulso"}
+        </p>
+
+        {error && (
+          <div role="alert" className="mb-4 p-3 bg-error-container rounded-lg text-on-error-container text-sm">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div role="status" className="mb-4 p-3 bg-tertiary-container rounded-lg text-on-tertiary-container text-sm">
+            {success}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-outline uppercase tracking-widest mb-1.5">
+              Email de acesso
+            </label>
+            <input
+              aria-label="Email de acesso"
+              type="email"
+              className={inputClass}
+              placeholder="email@exemplo.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-outline uppercase tracking-widest mb-1.5">
+              Nova senha
+            </label>
+            <input
+              aria-label="Nova senha"
+              type="password"
+              className={inputClass}
+              placeholder="Deixe em branco para manter"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <p className="text-xs text-on-surface-variant mt-1.5">
+              {PASSWORD_REQUIREMENTS_MESSAGE}
+            </p>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-lg bg-surface-container-high text-on-surface font-semibold text-sm hover:brightness-95 transition-all"
+            >
+              Fechar
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-2.5 rounded-lg bg-gradient-to-br from-primary to-primary-container text-white font-bold text-sm hover:scale-[1.02] transition-all disabled:opacity-60"
+            >
+              {loading ? "Salvando…" : "Salvar"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [managing, setManaging] = useState<Account | null>(null);
 
   async function load() {
     try {
@@ -255,6 +396,20 @@ export default function AccountsPage() {
         <CreateAccountModal onClose={() => setShowCreate(false)} onCreated={load} />
       )}
 
+      {managing && (
+        <ManageAccountModal
+          account={managing}
+          onClose={() => setManaging(null)}
+          onUpdated={(email) =>
+            setAccounts((prev) =>
+              prev.map((a) =>
+                a.id === managing.id ? { ...a, owner_email: email } : a
+              )
+            )
+          }
+        />
+      )}
+
       <div className="flex items-end justify-between gap-6">
         <div className="space-y-2">
           <h2 className="text-4xl font-extrabold tracking-tight text-on-surface font-headline">Contas</h2>
@@ -280,7 +435,7 @@ export default function AccountsPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-surface-container-low/50">
-                  {["Conta", "Tipo", "Status", "Ações"].map((h) => (
+                  {["Conta", "Tipo", "Acesso", "Status", "Ações"].map((h) => (
                     <th key={h} className="px-6 py-4 text-xs font-bold text-outline uppercase tracking-widest">
                       {h}
                     </th>
@@ -290,7 +445,7 @@ export default function AccountsPage() {
               <tbody className="divide-y divide-outline-variant/10">
                 {accounts.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="text-center py-12 text-on-surface-variant">
+                    <td colSpan={5} className="text-center py-12 text-on-surface-variant">
                       Nenhuma conta cadastrada
                     </td>
                   </tr>
@@ -311,6 +466,9 @@ export default function AccountsPage() {
                       <td className="px-6 py-5 text-sm text-outline">
                         {a.type === "company" ? "Empresa" : "Avulso"}
                       </td>
+                      <td className="px-6 py-5 text-sm text-on-surface-variant">
+                        {a.owner_email ?? "—"}
+                      </td>
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-1.5">
                           <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
@@ -319,6 +477,12 @@ export default function AccountsPage() {
                       </td>
                       <td className="px-6 py-5">
                         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => setManaging(a)}
+                            className="px-3 py-1 bg-surface-container-high text-on-surface rounded-md text-xs font-bold hover:brightness-95 transition-all"
+                          >
+                            Gerenciar
+                          </button>
                           {a.status === "active" && (
                             <button
                               onClick={() => handleBlock(a.id)}

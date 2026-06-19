@@ -11,8 +11,18 @@ from app.core.security import create_access_token, decode_access_token
 from app.domains.accounts.models import AccountStatus
 from app.domains.accounts.service import AccountNotFoundError, get_account_by_id
 from app.domains.auth.models import UserRole
-from app.domains.auth.schemas import LoginRequest, MeResponse, TokenResponse
-from app.domains.auth.service import authenticate_user
+from app.domains.auth.schemas import (
+    ChangePasswordRequest,
+    LoginRequest,
+    MeResponse,
+    TokenResponse,
+)
+from app.domains.auth.service import (
+    InvalidCurrentPasswordError,
+    UserNotFoundError,
+    authenticate_user,
+    change_user_password,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -145,6 +155,35 @@ async def portal_login(
         extra_claims={"user_id": str(user.id), "account_id": str(user.account_id)},
     )
     return TokenResponse(access_token=token)
+
+
+@router.patch("/portal/password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_portal_password(
+    body: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    identity: MeResponse = Depends(get_current_account_user),
+) -> None:
+    """Troca de senha self-service do usuário do portal (não altera o email)."""
+    if identity.user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
+    try:
+        await change_user_password(
+            db,
+            user_id=identity.user_id,
+            current_password=body.current_password,
+            new_password=body.new_password,
+        )
+    except InvalidCurrentPasswordError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    except UserNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
 
 @router.get("/me", response_model=MeResponse)

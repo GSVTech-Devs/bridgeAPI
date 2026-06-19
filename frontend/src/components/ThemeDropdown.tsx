@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTheme, type Theme } from "@/contexts/ThemeContext";
 
 const options: { value: Theme; label: string; icon: string }[] = [
@@ -9,8 +10,9 @@ const options: { value: Theme; label: string; icon: string }[] = [
   { value: "system", label: "Sistema", icon: "computer" },
 ];
 
-export function ThemeDropdown() {
+export function ThemeDropdown({ passwordHref }: { passwordHref?: string } = {}) {
   const { theme, setTheme } = useTheme();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -36,6 +38,24 @@ export function ThemeDropdown() {
 
       {open && (
         <div className="absolute right-0 top-full mt-2 w-48 bg-surface-container-low border border-outline-variant/20 rounded-xl shadow-lg z-50 overflow-hidden py-1">
+          {passwordHref && (
+            <>
+              <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest px-4 pt-2 pb-1.5">
+                Conta
+              </p>
+              <button
+                onClick={() => {
+                  router.push(passwordHref);
+                  setOpen(false);
+                }}
+                className="flex items-center gap-3 w-full px-4 py-2 text-sm text-on-surface hover:bg-surface-container transition-colors"
+              >
+                <span className="material-symbols-outlined text-[18px]">lock</span>
+                <span>Alterar senha</span>
+              </button>
+              <div className="my-1 border-t border-outline-variant/15" />
+            </>
+          )}
           <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest px-4 pt-2 pb-1.5">
             Aparência
           </p>

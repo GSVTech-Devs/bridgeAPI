@@ -69,7 +69,7 @@ async def test_admin_creates_individual_user(client: AsyncClient) -> None:
             json={
                 "name": "Alice",
                 "email": "owner@example.com",
-                "password": "supersecret",
+                "password": "Supersecret1!",
             },
             headers=admin_headers(),
         )
@@ -83,7 +83,7 @@ async def test_admin_creates_individual_user(client: AsyncClient) -> None:
 async def test_create_individual_requires_admin(client: AsyncClient) -> None:
     response = await client.post(
         "/admin/users",
-        json={"name": "Alice", "email": "a@b.com", "password": "supersecret"},
+        json={"name": "Alice", "email": "a@b.com", "password": "Supersecret1!"},
         headers=owner_headers(),
     )
     assert response.status_code == 403
@@ -93,7 +93,7 @@ async def test_create_individual_requires_admin(client: AsyncClient) -> None:
 async def test_create_individual_requires_auth(client: AsyncClient) -> None:
     response = await client.post(
         "/admin/users",
-        json={"name": "Alice", "email": "a@b.com", "password": "supersecret"},
+        json={"name": "Alice", "email": "a@b.com", "password": "Supersecret1!"},
     )
     assert response.status_code == 401
 
@@ -122,7 +122,7 @@ async def test_create_individual_duplicate_email_returns_409(
     ):
         response = await client.post(
             "/admin/users",
-            json={"name": "Alice", "email": "dup@b.com", "password": "supersecret"},
+            json={"name": "Alice", "email": "dup@b.com", "password": "Supersecret1!"},
             headers=admin_headers(),
         )
     assert response.status_code == 409
@@ -146,7 +146,7 @@ async def test_admin_creates_company_with_owner(client: AsyncClient) -> None:
             json={
                 "company_name": "Globex",
                 "owner_email": "owner@example.com",
-                "owner_password": "supersecret",
+                "owner_password": "Supersecret1!",
             },
             headers=admin_headers(),
         )
@@ -163,7 +163,7 @@ async def test_create_company_requires_admin(client: AsyncClient) -> None:
         json={
             "company_name": "Globex",
             "owner_email": "o@b.com",
-            "owner_password": "supersecret",
+            "owner_password": "Supersecret1!",
         },
         headers=owner_headers(),
     )
@@ -177,16 +177,20 @@ async def test_create_company_requires_admin(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_admin_can_list_accounts(client: AsyncClient) -> None:
-    accounts = [make_account(), make_account()]
+    a1 = make_account()
+    a2 = make_account()
+    rows = [(a1, make_owner(a1.id)), (a2, None)]
     with patch(
         "app.domains.accounts.router.list_accounts",
-        new=AsyncMock(return_value=(accounts, 2)),
+        new=AsyncMock(return_value=(rows, 2)),
     ):
         response = await client.get("/admin/accounts", headers=admin_headers())
     assert response.status_code == 200
     body = response.json()
     assert body["total"] == 2
     assert len(body["items"]) == 2
+    assert body["items"][0]["owner_email"] == "owner@example.com"
+    assert body["items"][1]["owner_email"] is None
 
 
 @pytest.mark.asyncio
@@ -238,5 +242,107 @@ async def test_unblock_active_account_returns_409(client: AsyncClient) -> None:
     ):
         response = await client.patch(
             f"/admin/accounts/{uuid.uuid4()}/unblock", headers=admin_headers()
+        )
+    assert response.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# PATCH /admin/accounts/{id}/credentials
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_admin_updates_account_credentials(client: AsyncClient) -> None:
+    account = make_account()
+    owner = make_owner(account.id)
+    owner.email = "novo@example.com"
+    with patch(
+        "app.domains.accounts.router.update_account_credentials",
+        new=AsyncMock(return_value=(account, owner)),
+    ):
+        response = await client.patch(
+            f"/admin/accounts/{account.id}/credentials",
+            json={"email": "novo@example.com", "password": "Supersecret1!"},
+            headers=admin_headers(),
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["owner_email"] == "novo@example.com"
+    assert body["account_id"] == str(account.id)
+
+
+@pytest.mark.asyncio
+async def test_update_credentials_requires_admin(client: AsyncClient) -> None:
+    response = await client.patch(
+        f"/admin/accounts/{uuid.uuid4()}/credentials",
+        json={"password": "Supersecret1!"},
+        headers=owner_headers(),
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_update_credentials_requires_auth(client: AsyncClient) -> None:
+    response = await client.patch(
+        f"/admin/accounts/{uuid.uuid4()}/credentials",
+        json={"password": "Supersecret1!"},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_update_credentials_empty_body_returns_422(client: AsyncClient) -> None:
+    response = await client.patch(
+        f"/admin/accounts/{uuid.uuid4()}/credentials",
+        json={},
+        headers=admin_headers(),
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_credentials_weak_password_returns_422(
+    client: AsyncClient,
+) -> None:
+    response = await client.patch(
+        f"/admin/accounts/{uuid.uuid4()}/credentials",
+        json={"password": "alllowercase1"},
+        headers=admin_headers(),
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_credentials_account_not_found_returns_404(
+    client: AsyncClient,
+) -> None:
+    from app.domains.accounts.service import AccountNotFoundError
+
+    with patch(
+        "app.domains.accounts.router.update_account_credentials",
+        new=AsyncMock(side_effect=AccountNotFoundError),
+    ):
+        response = await client.patch(
+            f"/admin/accounts/{uuid.uuid4()}/credentials",
+            json={"password": "Supersecret1!"},
+            headers=admin_headers(),
+        )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_credentials_duplicate_email_returns_409(
+    client: AsyncClient,
+) -> None:
+    from app.domains.auth.service import DuplicateEmailError
+
+    with patch(
+        "app.domains.accounts.router.update_account_credentials",
+        new=AsyncMock(side_effect=DuplicateEmailError),
+    ):
+        response = await client.patch(
+            f"/admin/accounts/{uuid.uuid4()}/credentials",
+            json={"email": "dup@example.com"},
+            headers=admin_headers(),
         )
     assert response.status_code == 409

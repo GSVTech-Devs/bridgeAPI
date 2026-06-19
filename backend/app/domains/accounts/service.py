@@ -13,6 +13,10 @@ class AccountNotFoundError(Exception):
     pass
 
 
+class OwnerNotFoundError(Exception):
+    pass
+
+
 class InvalidStatusTransitionError(Exception):
     pass
 
@@ -83,17 +87,59 @@ async def get_account_by_id(db: AsyncSession, account_id: str) -> Account:
     return account
 
 
+async def get_account_owner(db: AsyncSession, account_id: str) -> User:
+    """Retorna o usuário responsável (owner) da account."""
+    result = await db.execute(
+        select(User).where(
+            User.account_id == account_id,
+            User.role == UserRole.OWNER.value,
+        )
+    )
+    owner = result.scalar_one_or_none()
+    if owner is None:
+        raise OwnerNotFoundError(f"Owner not found for account: {account_id}")
+    return owner
+
+
+async def update_account_credentials(
+    db: AsyncSession,
+    account_id: str,
+    *,
+    email: str | None = None,
+    password: str | None = None,
+) -> tuple[Account, User]:
+    """Atualiza email e/ou senha de acesso do responsável da account."""
+    account = await get_account_by_id(db, account_id)
+    owner = await get_account_owner(db, account_id)
+
+    if email is not None and email != owner.email:
+        if await get_user_by_email(db, email) is not None:
+            raise DuplicateEmailError(f"Email already registered: {email}")
+        owner.email = email
+
+    if password is not None:
+        owner.password_hash = hash_password(password)
+
+    await db.commit()
+    await db.refresh(owner)
+    return account, owner
+
+
 async def list_accounts(
     db: AsyncSession, page: int = 1, per_page: int = 20
-) -> tuple[list[Account], int]:
+) -> tuple[list[tuple[Account, User | None]], int]:
     total = (await db.execute(select(func.count()).select_from(Account))).scalar_one()
     result = await db.execute(
-        select(Account)
+        select(Account, User)
+        .outerjoin(
+            User,
+            (User.account_id == Account.id) & (User.role == UserRole.OWNER.value),
+        )
         .order_by(Account.created_at.desc())
         .offset((page - 1) * per_page)
         .limit(per_page)
     )
-    return list(result.scalars().all()), total
+    return [(row[0], row[1]) for row in result.all()], total
 
 
 async def block_account(db: AsyncSession, account_id: str) -> Account:

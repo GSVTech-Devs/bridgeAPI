@@ -63,6 +63,17 @@ export function portalLogin(email: string, password: string) {
   );
 }
 
+// Troca de senha self-service do usuário do portal (não altera o email).
+export function changePassword(data: {
+  current_password: string;
+  new_password: string;
+}) {
+  return apiFetch<void>("/auth/portal/password", {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Accounts (admin)  →  /admin/*
 // ---------------------------------------------------------------------------
@@ -76,6 +87,8 @@ export function getAccounts() {
       type: AccountType;
       status: string;
       created_at: string;
+      owner_email: string | null;
+      owner_id: string | null;
     }[];
     total: number;
   }>("/admin/accounts");
@@ -105,6 +118,22 @@ export function createCompany(data: {
     owner_email: string;
     owner_id: string;
   }>("/admin/companies", { method: "POST", body: JSON.stringify(data) });
+}
+
+// Troca o email e/ou a senha de acesso do responsável da conta
+// (vale tanto para empresas quanto para usuários avulsos).
+export function updateAccountCredentials(
+  id: string,
+  data: { email?: string; password?: string }
+) {
+  return apiFetch<{
+    account_id: string;
+    owner_id: string;
+    owner_email: string;
+  }>(`/admin/accounts/${id}/credentials`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export function blockAccount(id: string) {

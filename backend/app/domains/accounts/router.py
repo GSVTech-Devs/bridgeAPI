@@ -7,20 +7,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.domains.accounts.schemas import (
+    AccountCredentialsResponse,
+    AccountListItem,
     AccountListResponse,
     AccountResponse,
     AccountWithOwnerResponse,
     CreateCompanyRequest,
     CreateIndividualRequest,
+    UpdateAccountCredentialsRequest,
 )
 from app.domains.accounts.service import (
     AccountNotFoundError,
     InvalidStatusTransitionError,
+    OwnerNotFoundError,
     block_account,
     create_company,
     create_individual,
     list_accounts,
     unblock_account,
+    update_account_credentials,
 )
 from app.domains.auth.router import get_current_user
 from app.domains.auth.schemas import MeResponse
@@ -91,11 +96,15 @@ async def list_all(
     db: AsyncSession = Depends(get_db),
     _: MeResponse = Depends(get_current_user),
 ) -> AccountListResponse:
-    accounts, total = await list_accounts(db, page, per_page)
-    return AccountListResponse(
-        items=[AccountResponse.model_validate(a) for a in accounts],
-        total=total,
-    )
+    rows, total = await list_accounts(db, page, per_page)
+    items = []
+    for account, owner in rows:
+        item = AccountListItem.model_validate(account)
+        if owner is not None:
+            item.owner_email = owner.email
+            item.owner_id = owner.id
+        items.append(item)
+    return AccountListResponse(items=items, total=total)
 
 
 @router.patch("/accounts/{account_id}/block", response_model=AccountResponse)
@@ -113,6 +122,37 @@ async def block(
     except InvalidStatusTransitionError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     return AccountResponse.model_validate(account)
+
+
+@router.patch(
+    "/accounts/{account_id}/credentials",
+    response_model=AccountCredentialsResponse,
+)
+async def update_credentials(
+    account_id: uuid.UUID,
+    body: UpdateAccountCredentialsRequest,
+    db: AsyncSession = Depends(get_db),
+    _: MeResponse = Depends(get_current_user),
+) -> AccountCredentialsResponse:
+    """Troca o email e/ou a senha de acesso do responsável da account.
+
+    Funciona tanto para empresas quanto para usuários avulsos.
+    """
+    try:
+        account, owner = await update_account_credentials(
+            db, str(account_id), email=body.email, password=body.password
+        )
+    except (AccountNotFoundError, OwnerNotFoundError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Account not found"
+        )
+    except DuplicateEmailError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
+        )
+    return AccountCredentialsResponse(
+        account_id=account.id, owner_id=owner.id, owner_email=owner.email
+    )
 
 
 @router.patch("/accounts/{account_id}/unblock", response_model=AccountResponse)
