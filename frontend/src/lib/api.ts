@@ -48,50 +48,71 @@ export function login(email: string, password: string) {
 }
 
 export function getMe() {
-  return apiFetch<{ email: string; role: string }>("/auth/me");
+  return apiFetch<{
+    email: string;
+    role: string;
+    account_id?: string | null;
+  }>("/auth/me");
 }
 
-// ---------------------------------------------------------------------------
-// Client auth  →  /clients/register  /clients/login
-// ---------------------------------------------------------------------------
-export function registerClient(data: { name: string; email: string; password: string }) {
-  return apiFetch<{ id: string; name: string; email: string; status: string }>(
-    "/clients/register",
-    { method: "POST", body: JSON.stringify(data) }
+// Login do portal (usuários de account: responsável/membro).
+export function portalLogin(email: string, password: string) {
+  return apiFetch<{ access_token: string; token_type: string }>(
+    "/auth/portal/login",
+    { method: "POST", body: JSON.stringify({ email, password }) }
   );
 }
 
-export function clientLogin(email: string, password: string) {
-  return apiFetch<{ access_token: string; token_type: string }>("/clients/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-}
+// ---------------------------------------------------------------------------
+// Accounts (admin)  →  /admin/*
+// ---------------------------------------------------------------------------
+export type AccountType = "individual" | "company";
 
-// ---------------------------------------------------------------------------
-// Clients (admin)  →  /clients/*
-// ---------------------------------------------------------------------------
-export function getClients() {
+export function getAccounts() {
   return apiFetch<{
-    items: { id: string; name: string; email: string; status: string }[];
+    items: {
+      id: string;
+      name: string;
+      type: AccountType;
+      status: string;
+      created_at: string;
+    }[];
     total: number;
-  }>("/clients");
+  }>("/admin/accounts");
 }
 
-export function approveClient(id: string) {
-  return apiFetch(`/clients/${id}/approve`, { method: "PATCH" });
+// Cria um usuário avulso (account individual + responsável).
+export function createIndividualUser(data: {
+  name: string;
+  email: string;
+  password: string;
+}) {
+  return apiFetch<{
+    account: { id: string; name: string; type: AccountType; status: string };
+    owner_email: string;
+    owner_id: string;
+  }>("/admin/users", { method: "POST", body: JSON.stringify(data) });
 }
 
-export function rejectClient(id: string) {
-  return apiFetch(`/clients/${id}/reject`, { method: "PATCH" });
+// Cria uma empresa + usuário responsável inicial.
+export function createCompany(data: {
+  company_name: string;
+  owner_email: string;
+  owner_password: string;
+}) {
+  return apiFetch<{
+    account: { id: string; name: string; type: AccountType; status: string };
+    owner_email: string;
+    owner_id: string;
+  }>("/admin/companies", { method: "POST", body: JSON.stringify(data) });
 }
 
-export function blockClient(id: string) {
-  return apiFetch(`/clients/${id}/block`, { method: "PATCH" });
+export function blockAccount(id: string) {
+  return apiFetch(`/admin/accounts/${id}/block`, { method: "PATCH" });
 }
 
-export function unblockClient(id: string) {
-  return apiFetch(`/clients/${id}/unblock`, { method: "PATCH" });
+export function unblockAccount(id: string) {
+  return apiFetch(`/admin/accounts/${id}/unblock`, { method: "PATCH" });
 }
 
 // ---------------------------------------------------------------------------
@@ -155,7 +176,7 @@ export function deleteApi(id: string) {
 
 export function getPermissions() {
   return apiFetch<{
-    items: { client_id: string; api_id: string; client_name: string; api_name: string; status: string }[];
+    items: { account_id: string; api_id: string; account_name: string; api_name: string; status: string }[];
     total: number;
   }>("/permissions");
 }
@@ -281,15 +302,15 @@ export function getAdminErrorLogs(params?: { api_id?: string; skip?: number; lim
 // ---------------------------------------------------------------------------
 // Permissions (admin)  →  /permissions/*
 // ---------------------------------------------------------------------------
-export function grantPermission(clientId: string, apiId: string) {
+export function grantPermission(accountId: string, apiId: string) {
   return apiFetch("/permissions", {
     method: "POST",
-    body: JSON.stringify({ client_id: clientId, api_id: apiId }),
+    body: JSON.stringify({ account_id: accountId, api_id: apiId }),
   });
 }
 
-export function revokePermission(clientId: string, apiId: string) {
-  return apiFetch(`/permissions/${clientId}/${apiId}/revoke`, {
+export function revokePermission(accountId: string, apiId: string) {
+  return apiFetch(`/permissions/${accountId}/${apiId}/revoke`, {
     method: "PATCH",
   });
 }

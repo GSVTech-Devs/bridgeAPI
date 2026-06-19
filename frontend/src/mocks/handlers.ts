@@ -10,39 +10,63 @@ export const handlers = [
     HttpResponse.json({ access_token: "mock-token", token_type: "bearer" })
   ),
 
-  http.get(`${BASE}/me`, () =>
-    HttpResponse.json({ email: "admin@bridge.dev", role: "admin" })
+  http.get(`${BASE}/auth/me`, () =>
+    HttpResponse.json({ email: "admin@bridge.dev", role: "admin", account_id: null })
   ),
 
   // ---------------------------------------------------------------------------
-  // Clients (admin)
+  // Accounts (admin)
   // ---------------------------------------------------------------------------
-  http.get(`${BASE}/clients`, () =>
+  http.get(`${BASE}/admin/accounts`, () =>
     HttpResponse.json({
       items: [
         {
           id: "c1",
           name: "Acme Corp",
-          email: "acme@example.com",
+          type: "company",
           status: "active",
+          created_at: "2024-01-01T00:00:00Z",
         },
         {
           id: "c2",
-          name: "Beta Ltd",
-          email: "beta@example.com",
-          status: "pending",
+          name: "Beta",
+          type: "individual",
+          status: "blocked",
+          created_at: "2024-02-01T00:00:00Z",
         },
       ],
       total: 2,
     })
   ),
 
-  http.patch(`${BASE}/clients/:id/approve`, ({ params }) =>
-    HttpResponse.json({ id: params.id, status: "active" })
+  http.post(`${BASE}/admin/users`, () =>
+    HttpResponse.json(
+      {
+        account: { id: "c3", name: "New User", type: "individual", status: "active" },
+        owner_email: "new@user.com",
+        owner_id: "u3",
+      },
+      { status: 201 }
+    )
   ),
 
-  http.patch(`${BASE}/clients/:id/reject`, ({ params }) =>
-    HttpResponse.json({ id: params.id, status: "rejected" })
+  http.post(`${BASE}/admin/companies`, () =>
+    HttpResponse.json(
+      {
+        account: { id: "c4", name: "New Co", type: "company", status: "active" },
+        owner_email: "boss@newco.com",
+        owner_id: "u4",
+      },
+      { status: 201 }
+    )
+  ),
+
+  http.patch(`${BASE}/admin/accounts/:id/block`, ({ params }) =>
+    HttpResponse.json({ id: params.id, status: "blocked" })
+  ),
+
+  http.patch(`${BASE}/admin/accounts/:id/unblock`, ({ params }) =>
+    HttpResponse.json({ id: params.id, status: "active" })
   ),
 
   // ---------------------------------------------------------------------------
@@ -78,11 +102,11 @@ export const handlers = [
   // Permissions (admin)
   // ---------------------------------------------------------------------------
   http.post(`${BASE}/permissions`, () =>
-    HttpResponse.json({ client_id: "c1", api_id: "a1" }, { status: 201 })
+    HttpResponse.json({ account_id: "c1", api_id: "a1" }, { status: 201 })
   ),
 
-  http.patch(`${BASE}/permissions/:clientId/:apiId/revoke`, ({ params }) =>
-    HttpResponse.json({ client_id: params.clientId, api_id: params.apiId })
+  http.patch(`${BASE}/permissions/:accountId/:apiId/revoke`, ({ params }) =>
+    HttpResponse.json({ account_id: params.accountId, api_id: params.apiId })
   ),
 
   // ---------------------------------------------------------------------------
@@ -150,17 +174,10 @@ export const handlers = [
   ),
 
   // ---------------------------------------------------------------------------
-  // Client register / login
+  // Portal login (account users)
   // ---------------------------------------------------------------------------
-  http.post(`${BASE}/clients/register`, () =>
-    HttpResponse.json(
-      { id: "c3", name: "New Corp", email: "new@corp.com", status: "pending" },
-      { status: 201 }
-    )
-  ),
-
-  http.post(`${BASE}/clients/login`, () =>
-    HttpResponse.json({ access_token: "mock-client-token", token_type: "bearer" })
+  http.post(`${BASE}/auth/portal/login`, () =>
+    HttpResponse.json({ access_token: "mock-portal-token", token_type: "bearer" })
   ),
 
   // ---------------------------------------------------------------------------
@@ -189,6 +206,48 @@ export const handlers = [
       total_cost: 87.5,
       billable_requests: 7800,
       non_billable_requests: 600,
+    })
+  ),
+
+  http.get(`${BASE}/metrics/admin/breakdown`, () =>
+    HttpResponse.json({
+      items: [
+        { api_id: "a1", api_name: "Stripe", total_requests: 5000, error_rate: 1.2 },
+      ],
+    })
+  ),
+
+  http.get(`${BASE}/metrics/admin/usage`, () =>
+    HttpResponse.json({
+      items: [
+        {
+          client_id: "c1",
+          client_name: "Acme Corp",
+          client_email: "owner@acme.com",
+          api_id: "a1",
+          api_name: "Stripe",
+          total_requests: 5000,
+          total_cost: 50.0,
+        },
+      ],
+    })
+  ),
+
+  http.get(`${BASE}/logs/admin`, () =>
+    HttpResponse.json({
+      items: [
+        {
+          correlation_id: "cid-a",
+          client_id: "c1",
+          api_id: "a1",
+          path: "v1/charges",
+          method: "POST",
+          status_code: 200,
+          latency_ms: 80.0,
+          created_at: "2024-06-01T00:00:00Z",
+        },
+      ],
+      total: 1,
     })
   ),
 

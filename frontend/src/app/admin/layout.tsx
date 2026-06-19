@@ -8,7 +8,7 @@ import { ThemeDropdown } from "@/components/ThemeDropdown";
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: "dashboard" },
-  { href: "/admin/clients", label: "Clientes", icon: "group" },
+  { href: "/admin/clients", label: "Contas", icon: "group" },
   { href: "/admin/apis", label: "APIs", icon: "api" },
   { href: "/admin/permissions", label: "Permissões", icon: "vpn_key" },
   { href: "/admin/metrics", label: "Métricas", icon: "analytics" },
@@ -19,16 +19,22 @@ const navItems = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const isLoginPage = pathname === "/admin/login";
 
   useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
+    if (!isLoginPage && !getToken()) {
+      router.push("/admin/login");
     }
-  }, [router]);
+  }, [router, isLoginPage]);
 
   function handleLogout() {
     clearAuth();
-    router.push("/login");
+    router.push("/admin/login");
+  }
+
+  // A página de login do admin não usa o chrome (sidebar/header) do painel.
+  if (isLoginPage) {
+    return <>{children}</>;
   }
 
   return (

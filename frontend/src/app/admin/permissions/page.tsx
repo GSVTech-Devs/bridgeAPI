@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getClients, getApis, getPermissions, grantPermission, revokePermission } from "@/lib/api";
+import { getAccounts, getApis, getPermissions, grantPermission, revokePermission } from "@/lib/api";
 
-type Client = { id: string; name: string; email: string; status: string };
+type Client = { id: string; name: string; type: string; status: string };
 type Api = { id: string; name: string; base_url: string; status: string; auth_type: string };
-type Permission = { client_id: string; api_id: string; client_name: string; api_name: string; status: string };
+type Permission = { account_id: string; api_id: string; account_name: string; api_name: string; status: string };
 
 const apiIcons = ["payments", "analytics", "cloud_sync", "shield_lock", "dataset", "monitoring"];
 
@@ -24,7 +24,7 @@ export default function PermissionsPage() {
   async function load() {
     try {
       const [clientsData, apisData, permsData] = await Promise.all([
-        getClients(),
+        getAccounts(),
         getApis(),
         getPermissions(),
       ]);
@@ -64,7 +64,7 @@ export default function PermissionsPage() {
       await revokePermission(clientId, apiId);
       setPermissions((prev) =>
         prev.map((p) =>
-          p.client_id === clientId && p.api_id === apiId ? { ...p, status: "revoked" } : p
+          p.account_id === clientId && p.api_id === apiId ? { ...p, status: "revoked" } : p
         )
       );
     } catch (err: unknown) {
@@ -150,7 +150,7 @@ export default function PermissionsPage() {
                         <h4 className={`font-bold text-sm ${active ? "text-on-surface" : "text-on-surface-variant"}`}>
                           {c.name}
                         </h4>
-                        <p className="text-xs text-on-surface-variant opacity-60">{c.email}</p>
+                        <p className="text-xs text-on-surface-variant opacity-60">{c.type === "company" ? "Empresa" : "Avulso"}</p>
                       </div>
                       {active && (
                         <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -197,7 +197,7 @@ export default function PermissionsPage() {
               <div className="space-y-4">
                 {apis.map((api, i) => {
                   const permKey = `${selectedClient}-${api.id}`;
-                  const hasAccess = activePerms.some((p) => p.client_id === selectedClient && p.api_id === api.id);
+                  const hasAccess = activePerms.some((p) => p.account_id === selectedClient && p.api_id === api.id);
                   return (
                     <div key={api.id} className="grid grid-cols-12 items-center bg-surface-container-lowest p-6 rounded-3xl hover:bg-white transition-all shadow-sm">
                       <div className="col-span-6 flex items-center gap-4">

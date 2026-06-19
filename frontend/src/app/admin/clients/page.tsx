@@ -1,15 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getClients, approveClient, rejectClient, blockClient, unblockClient } from "@/lib/api";
+import {
+  getAccounts,
+  createIndividualUser,
+  createCompany,
+  blockAccount,
+  unblockAccount,
+} from "@/lib/api";
 
-type Client = { id: string; name: string; email: string; status: string };
+type Account = {
+  id: string;
+  name: string;
+  type: "individual" | "company";
+  status: string;
+};
 
 const statusConfig: Record<string, { dot: string; label: string }> = {
-  active:   { dot: "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]", label: "Active" },
-  pending:  { dot: "bg-amber-500 animate-pulse", label: "Pending Approval" },
-  rejected: { dot: "bg-error shadow-[0_0_8px_rgba(186,26,26,0.4)]", label: "Rejected" },
-  blocked:  { dot: "bg-slate-400", label: "Blocked" },
+  active: { dot: "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]", label: "Ativa" },
+  blocked: { dot: "bg-slate-400", label: "Bloqueada" },
 };
 
 function Spinner() {
@@ -24,16 +33,191 @@ function Spinner() {
   );
 }
 
-export default function ClientsPage() {
-  const [clients, setClients] = useState<Client[]>([]);
+function CreateAccountModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [mode, setMode] = useState<"individual" | "company">("individual");
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    company_name: "",
+    owner_email: "",
+    owner_password: "",
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function set(field: string, value: string) {
+    setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      if (mode === "individual") {
+        await createIndividualUser({
+          name: form.name,
+          email: form.email,
+          password: form.password,
+        });
+      } else {
+        await createCompany({
+          company_name: form.company_name,
+          owner_email: form.owner_email,
+          owner_password: form.owner_password,
+        });
+      }
+      onCreated();
+      onClose();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao criar conta");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const inputClass =
+    "w-full bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-4 py-2.5 text-sm text-on-surface focus:border-primary focus:ring-0 outline-none transition-all";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md bg-surface-container-lowest rounded-2xl p-8 shadow-xl">
+        <h3 className="text-xl font-bold text-on-surface font-headline mb-1">Nova conta</h3>
+        <p className="text-sm text-on-surface-variant mb-6">
+          Crie um usuário avulso ou uma empresa com responsável.
+        </p>
+
+        {/* Mode toggle */}
+        <div className="flex gap-2 mb-6 bg-surface-container-low rounded-lg p-1">
+          <button
+            type="button"
+            onClick={() => setMode("individual")}
+            className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${
+              mode === "individual" ? "bg-primary text-white" : "text-on-surface-variant"
+            }`}
+          >
+            Usuário avulso
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("company")}
+            className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${
+              mode === "company" ? "bg-primary text-white" : "text-on-surface-variant"
+            }`}
+          >
+            Empresa
+          </button>
+        </div>
+
+        {error && (
+          <div role="alert" className="mb-4 p-3 bg-error-container rounded-lg text-on-error-container text-sm">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {mode === "individual" ? (
+            <>
+              <input
+                aria-label="Nome"
+                className={inputClass}
+                placeholder="Nome do usuário"
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+                required
+              />
+              <input
+                aria-label="Email"
+                type="email"
+                className={inputClass}
+                placeholder="email@exemplo.com"
+                value={form.email}
+                onChange={(e) => set("email", e.target.value)}
+                required
+              />
+              <input
+                aria-label="Senha"
+                type="password"
+                className={inputClass}
+                placeholder="Senha inicial (mín. 8)"
+                value={form.password}
+                onChange={(e) => set("password", e.target.value)}
+                minLength={8}
+                required
+              />
+            </>
+          ) : (
+            <>
+              <input
+                aria-label="Nome da empresa"
+                className={inputClass}
+                placeholder="Nome da empresa"
+                value={form.company_name}
+                onChange={(e) => set("company_name", e.target.value)}
+                required
+              />
+              <input
+                aria-label="Email do responsável"
+                type="email"
+                className={inputClass}
+                placeholder="responsavel@empresa.com"
+                value={form.owner_email}
+                onChange={(e) => set("owner_email", e.target.value)}
+                required
+              />
+              <input
+                aria-label="Senha do responsável"
+                type="password"
+                className={inputClass}
+                placeholder="Senha inicial (mín. 8)"
+                value={form.owner_password}
+                onChange={(e) => set("owner_password", e.target.value)}
+                minLength={8}
+                required
+              />
+            </>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 rounded-lg bg-surface-container-high text-on-surface font-semibold text-sm hover:brightness-95 transition-all"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-2.5 rounded-lg bg-gradient-to-br from-primary to-primary-container text-white font-bold text-sm hover:scale-[1.02] transition-all disabled:opacity-60"
+            >
+              {loading ? "Criando…" : "Criar"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export default function AccountsPage() {
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   async function load() {
     try {
-      const data = await getClients();
-      setClients(data.items);
+      const data = await getAccounts();
+      setAccounts(data.items);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erro ao carregar");
     } finally {
@@ -41,184 +225,126 @@ export default function ClientsPage() {
     }
   }
 
-  useEffect(() => { load(); }, []);
-
-  async function handleApprove(id: string) {
-    setActionLoading(id + "-approve");
-    try {
-      await approveClient(id);
-      setClients((prev) => prev.map((c) => c.id === id ? { ...c, status: "active" } : c));
-    } finally { setActionLoading(null); }
-  }
-
-  async function handleReject(id: string) {
-    setActionLoading(id + "-reject");
-    try {
-      await rejectClient(id);
-      setClients((prev) => prev.map((c) => c.id === id ? { ...c, status: "rejected" } : c));
-    } finally { setActionLoading(null); }
-  }
+  useEffect(() => {
+    load();
+  }, []);
 
   async function handleBlock(id: string) {
     setActionLoading(id + "-block");
     try {
-      await blockClient(id);
-      setClients((prev) => prev.map((c) => c.id === id ? { ...c, status: "blocked" } : c));
-    } finally { setActionLoading(null); }
+      await blockAccount(id);
+      setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, status: "blocked" } : a)));
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   async function handleUnblock(id: string) {
     setActionLoading(id + "-unblock");
     try {
-      await unblockClient(id);
-      setClients((prev) => prev.map((c) => c.id === id ? { ...c, status: "active" } : c));
-    } finally { setActionLoading(null); }
+      await unblockAccount(id);
+      setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, status: "active" } : a)));
+    } finally {
+      setActionLoading(null);
+    }
   }
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
-      {/* Page header + stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="md:col-span-2 space-y-2">
-          <h2 className="text-4xl font-extrabold tracking-tight text-on-surface font-headline">Client Management</h2>
+      {showCreate && (
+        <CreateAccountModal onClose={() => setShowCreate(false)} onCreated={load} />
+      )}
+
+      <div className="flex items-end justify-between gap-6">
+        <div className="space-y-2">
+          <h2 className="text-4xl font-extrabold tracking-tight text-on-surface font-headline">Contas</h2>
           <p className="text-on-surface-variant max-w-md">
-            Orchestrate access levels, monitor status, and manage developer credentials.
+            Gerencie contas avulsas e empresas, e controle o acesso à plataforma.
           </p>
         </div>
-        <div className="bg-surface-container-lowest p-6 rounded-xl flex flex-col justify-between">
-          <span className="text-xs font-bold text-outline uppercase tracking-wider">Active Clients</span>
-          <div className="flex items-end justify-between">
-            <span className="text-3xl font-black text-primary">
-              {clients.filter((c) => c.status === "active").length}
-            </span>
-            <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full">Live</span>
-          </div>
-        </div>
-        <div className="bg-surface-container-lowest p-6 rounded-xl flex flex-col justify-between">
-          <span className="text-xs font-bold text-outline uppercase tracking-wider">Pending Tasks</span>
-          <div className="flex items-end justify-between">
-            <span className="text-3xl font-black text-tertiary">
-              {clients.filter((c) => c.status === "pending").length}
-            </span>
-            <span className="material-symbols-outlined text-tertiary">pending_actions</span>
-          </div>
-        </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-br from-primary to-primary-container text-white rounded-lg font-bold text-sm hover:scale-[1.02] transition-all shadow-sm"
+        >
+          <span className="material-symbols-outlined text-sm">add</span>
+          Nova conta
+        </button>
       </div>
 
-      {/* Table */}
       <div className="bg-surface-container-lowest rounded-xl overflow-hidden">
-        {/* Filters bar */}
-        <div className="px-6 py-4 flex items-center justify-between gap-4 bg-surface-container-low/30">
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-outline text-lg">filter_list</span>
-            <input
-              className="pl-10 pr-4 py-2 bg-white rounded-lg border border-outline-variant/30 focus:border-primary focus:ring-0 text-sm w-72 transition-all outline-none"
-              placeholder="Filter by name or email..."
-            />
-          </div>
-          <button className="flex items-center gap-2 px-6 py-2 bg-gradient-to-br from-primary to-primary-container text-white rounded-lg font-bold text-sm hover:scale-[1.02] transition-all shadow-sm">
-            <span className="material-symbols-outlined text-sm">person_add</span>
-            Onboard Client
-          </button>
-        </div>
-
         {loading && <Spinner />}
         {error && <div role="alert" className="p-6 text-error bg-error-container/20">{error}</div>}
 
         {!loading && !error && (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-surface-container-low/50">
-                    {["Client & Company", "Email", "Status", "Actions"].map((h) => (
-                      <th key={h} className="px-6 py-4 text-xs font-bold text-outline uppercase tracking-widest">
-                        {h}
-                      </th>
-                    ))}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-surface-container-low/50">
+                  {["Conta", "Tipo", "Status", "Ações"].map((h) => (
+                    <th key={h} className="px-6 py-4 text-xs font-bold text-outline uppercase tracking-widest">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/10">
+                {accounts.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="text-center py-12 text-on-surface-variant">
+                      Nenhuma conta cadastrada
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-outline-variant/10">
-                  {clients.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="text-center py-12 text-on-surface-variant">
-                        Nenhum cliente cadastrado
+                )}
+                {accounts.map((a) => {
+                  const cfg = statusConfig[a.status] ?? { dot: "bg-outline", label: a.status };
+                  const initials = a.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+                  return (
+                    <tr key={a.id} className="hover:bg-surface-container-low/20 transition-colors group">
+                      <td className="px-6 py-5">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary font-bold text-sm">
+                            {initials}
+                          </div>
+                          <span className="text-sm font-bold text-on-surface">{a.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-5 text-sm text-outline">
+                        {a.type === "company" ? "Empresa" : "Avulso"}
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
+                          <span className="text-sm font-medium text-on-surface">{cfg.label}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {a.status === "active" && (
+                            <button
+                              onClick={() => handleBlock(a.id)}
+                              disabled={actionLoading === a.id + "-block"}
+                              className="px-3 py-1 bg-error-container text-on-error-container rounded-md text-xs font-bold hover:brightness-95 transition-all disabled:opacity-50"
+                            >
+                              {actionLoading === a.id + "-block" ? "…" : "Bloquear"}
+                            </button>
+                          )}
+                          {a.status === "blocked" && (
+                            <button
+                              onClick={() => handleUnblock(a.id)}
+                              disabled={actionLoading === a.id + "-unblock"}
+                              className="px-3 py-1 bg-tertiary text-white rounded-md text-xs font-bold shadow-sm hover:brightness-110 transition-all disabled:opacity-50"
+                            >
+                              {actionLoading === a.id + "-unblock" ? "…" : "Desbloquear"}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
-                  )}
-                  {clients.map((c) => {
-                    const cfg = statusConfig[c.status] ?? { dot: "bg-outline", label: c.status };
-                    const initials = c.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-                    return (
-                      <tr key={c.id} className="hover:bg-surface-container-low/20 transition-colors group">
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary font-bold text-sm">
-                              {initials}
-                            </div>
-                            <span className="text-sm font-bold text-on-surface">{c.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-5 text-sm text-outline">{c.email}</td>
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-1.5">
-                            <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
-                            <span className="text-sm font-medium text-on-surface">{cfg.label}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-5">
-                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {(c.status === "pending" || c.status === "rejected") && (
-                              <button
-                                onClick={() => handleApprove(c.id)}
-                                disabled={actionLoading === c.id + "-approve"}
-                                className="px-3 py-1 bg-tertiary text-white rounded-md text-xs font-bold shadow-sm hover:brightness-110 transition-all disabled:opacity-50"
-                              >
-                                {actionLoading === c.id + "-approve" ? "…" : "Approve"}
-                              </button>
-                            )}
-                            {c.status === "pending" && (
-                              <button
-                                onClick={() => handleReject(c.id)}
-                                disabled={actionLoading === c.id + "-reject"}
-                                className="px-3 py-1 bg-error-container text-on-error-container rounded-md text-xs font-bold hover:brightness-95 transition-all disabled:opacity-50"
-                              >
-                                {actionLoading === c.id + "-reject" ? "…" : "Reject"}
-                              </button>
-                            )}
-                            {c.status === "active" && (
-                              <button
-                                onClick={() => handleBlock(c.id)}
-                                disabled={actionLoading === c.id + "-block"}
-                                className="px-3 py-1 bg-error-container text-on-error-container rounded-md text-xs font-bold hover:brightness-95 transition-all disabled:opacity-50"
-                              >
-                                {actionLoading === c.id + "-block" ? "…" : "Block"}
-                              </button>
-                            )}
-                            {c.status === "blocked" && (
-                              <button
-                                onClick={() => handleUnblock(c.id)}
-                                disabled={actionLoading === c.id + "-unblock"}
-                                className="px-3 py-1 bg-tertiary text-white rounded-md text-xs font-bold shadow-sm hover:brightness-110 transition-all disabled:opacity-50"
-                              >
-                                {actionLoading === c.id + "-unblock" ? "…" : "Unblock"}
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {/* Pagination footer */}
-            <div className="px-6 py-4 flex items-center justify-between border-t border-outline-variant/10">
-              <span className="text-xs font-medium text-outline">
-                Showing {clients.length} client{clients.length !== 1 ? "s" : ""}
-              </span>
-            </div>
-          </>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

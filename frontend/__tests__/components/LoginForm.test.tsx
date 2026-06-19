@@ -41,7 +41,7 @@ describe("LoginForm", () => {
         })
       )
     );
-    render(<LoginForm />);
+    render(<LoginForm variant="admin" />);
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: "admin@bridge.dev" },
     });
@@ -59,12 +59,9 @@ describe("LoginForm", () => {
     server.use(
       http.post("http://localhost:8000/auth/login", () =>
         HttpResponse.json({ access_token: ADMIN_JWT, token_type: "bearer" })
-      ),
-      http.get("http://localhost:8000/me", () =>
-        HttpResponse.json({ email: "admin@bridge.dev", role: "admin" })
       )
     );
-    render(<LoginForm />);
+    render(<LoginForm variant="admin" />);
     fireEvent.change(screen.getByLabelText(/email/i), {
       target: { value: "admin@bridge.dev" },
     });
@@ -78,13 +75,10 @@ describe("LoginForm", () => {
     });
   });
 
-  it("redirects client to /dashboard after login", async () => {
+  it("redirects portal user to /dashboard after login", async () => {
     server.use(
-      http.post("http://localhost:8000/auth/login", () =>
+      http.post("http://localhost:8000/auth/portal/login", () =>
         HttpResponse.json({ access_token: CLIENT_JWT, token_type: "bearer" })
-      ),
-      http.get("http://localhost:8000/me", () =>
-        HttpResponse.json({ email: "acme@example.com", role: "client" })
       )
     );
     render(<LoginForm />);
@@ -103,10 +97,7 @@ describe("LoginForm", () => {
 
   it("shows error message on invalid credentials", async () => {
     server.use(
-      http.post("http://localhost:8000/auth/login", () =>
-        HttpResponse.json({ detail: "Invalid credentials" }, { status: 401 })
-      ),
-      http.post("http://localhost:8000/clients/login", () =>
+      http.post("http://localhost:8000/auth/portal/login", () =>
         HttpResponse.json({ detail: "Invalid credentials" }, { status: 401 })
       )
     );

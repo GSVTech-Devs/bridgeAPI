@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getApis, getAdminErrorLogs, getClients } from "@/lib/api";
+import { getApis, getAdminErrorLogs, getAccounts } from "@/lib/api";
 
 type Api = { id: string; name: string; status: string };
-type Client = { id: string; name: string; email: string };
+type Client = { id: string; name: string };
 
 type ErrorLog = {
   correlation_id: string;
@@ -55,7 +55,7 @@ export default function LogsPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([getApis(), getAdminErrorLogs(), getClients()])
+    Promise.all([getApis(), getAdminErrorLogs(), getAccounts()])
       .then(([apisRes, logsRes, clientsRes]) => {
         setApis(apisRes.items);
         setLogs(logsRes.items);
@@ -71,7 +71,7 @@ export default function LogsPage() {
     : logs.filter((l) => l.api_id === activeApiId);
 
   const apiMap = Object.fromEntries(apis.map((a) => [a.id, a.name]));
-  const clientMap = Object.fromEntries(clients.map((c) => [c.id, { name: c.name, email: c.email }]));
+  const clientMap = Object.fromEntries(clients.map((c) => [c.id, { name: c.name }]));
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
@@ -167,12 +167,12 @@ export default function LogsPage() {
                       <div className="px-5 pb-5 space-y-4 bg-surface-container-low/20">
                         <div className="grid grid-cols-2 gap-2 text-xs text-on-surface-variant pt-2">
                           <span>
-                            <span className="font-bold">Cliente:</span>{" "}
+                            <span className="font-bold">Conta:</span>{" "}
                             {clientMap[log.client_id]?.name ?? log.client_id}
                           </span>
                           <span>
-                            <span className="font-bold">Email:</span>{" "}
-                            {clientMap[log.client_id]?.email ?? "—"}
+                            <span className="font-bold">Conta ID:</span>{" "}
+                            {log.client_id}
                           </span>
                           <span><span className="font-bold">Key:</span> {log.key_id}</span>
                           <span><span className="font-bold">Correlation ID:</span> {log.correlation_id}</span>

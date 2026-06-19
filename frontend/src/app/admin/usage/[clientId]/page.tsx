@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { getAdminClientDetail, getClients } from "@/lib/api";
+import { getAdminClientDetail, getAccounts } from "@/lib/api";
 
 type ApiDetail = {
   api_id: string;
@@ -53,9 +53,9 @@ export default function ClientUsageDetailPage() {
   }
 
   useEffect(() => {
-    getClients().then((res) => {
+    getAccounts().then((res) => {
       const c = res.items.find((c) => c.id === clientId);
-      if (c) { setClientName(c.name); setClientEmail(c.email); }
+      if (c) { setClientName(c.name); setClientEmail(c.type); }
     });
     load();
   }, []);

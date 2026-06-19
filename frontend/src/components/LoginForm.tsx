@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { login, clientLogin } from "@/lib/api";
+import { login, portalLogin } from "@/lib/api";
 import { saveAuth } from "@/lib/auth";
 
 function decodeJwtPayload(token: string): { sub: string; role: string } {
@@ -13,8 +12,13 @@ function decodeJwtPayload(token: string): { sub: string; role: string } {
   return JSON.parse(atob(padded));
 }
 
-export default function LoginForm() {
+export default function LoginForm({
+  variant = "portal",
+}: {
+  variant?: "admin" | "portal";
+}) {
   const router = useRouter();
+  const isAdmin = variant === "admin";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,21 +29,13 @@ export default function LoginForm() {
     setLoading(true);
     setError(null);
     try {
-      let token: string;
-      let role: string;
-
-      try {
-        const res = await login(email, password);
-        token = res.access_token;
-        role = decodeJwtPayload(token).role;
-      } catch {
-        const res = await clientLogin(email, password);
-        token = res.access_token;
-        role = decodeJwtPayload(token).role;
-      }
-
+      const res = isAdmin
+        ? await login(email, password)
+        : await portalLogin(email, password);
+      const token = res.access_token;
+      const role = decodeJwtPayload(token).role;
       saveAuth(token, role);
-      router.push(role === "admin" ? "/admin" : "/dashboard");
+      router.push(isAdmin ? "/admin" : "/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Credenciais inválidas");
     } finally {
@@ -62,7 +58,9 @@ export default function LoginForm() {
             <span className="material-symbols-outlined text-primary text-4xl">hub</span>
           </div>
           <h1 className="font-headline text-3xl font-extrabold tracking-tight text-on-background">Bridge API</h1>
-          <p className="text-on-surface-variant font-medium mt-1">GSV Tech</p>
+          <p className="text-on-surface-variant font-medium mt-1">
+            {isAdmin ? "Painel do Administrador" : "Portal do Cliente"}
+          </p>
         </div>
 
         {/* Card */}
@@ -134,13 +132,6 @@ export default function LoginForm() {
               )}
             </button>
           </form>
-
-          <p className="mt-6 text-center text-sm text-gray-500">
-            Não tem uma conta?{" "}
-            <Link href="/clients/register" className="text-blue-600 hover:underline font-medium">
-              Cadastre-se
-            </Link>
-          </p>
         </div>
       </div>
 

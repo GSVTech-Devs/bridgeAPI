@@ -48,10 +48,10 @@ describe("AdminLayout", () => {
     expect(screen.getByTestId("content")).toBeInTheDocument();
   });
 
-  it("renders nav items: Dashboard, Clientes, APIs, Permissões, Métricas", () => {
+  it("renders nav items: Dashboard, Contas, APIs, Permissões, Métricas", () => {
     render(<AdminLayout><div /></AdminLayout>);
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByText("Clientes")).toBeInTheDocument();
+    expect(screen.getByText("Contas")).toBeInTheDocument();
     expect(screen.getByText("APIs")).toBeInTheDocument();
     expect(screen.getByText("Permissões")).toBeInTheDocument();
     expect(screen.getByText("Métricas")).toBeInTheDocument();
@@ -74,10 +74,10 @@ describe("AdminLayout", () => {
     expect(clearAuth).toHaveBeenCalledTimes(1);
   });
 
-  it("redirects to /login after logout", () => {
+  it("redirects to /admin/login after logout", () => {
     render(<AdminLayout><div /></AdminLayout>);
     fireEvent.click(screen.getByRole("button", { name: /sair/i }));
-    expect(mockPush).toHaveBeenCalledWith("/login");
+    expect(mockPush).toHaveBeenCalledWith("/admin/login");
   });
 
   it("highlights the active nav item based on pathname", () => {
@@ -87,17 +87,17 @@ describe("AdminLayout", () => {
     expect(dashboardLink).toHaveClass("text-primary");
   });
 
-  it("redirects to /login on mount when no token is stored", async () => {
+  it("redirects to /admin/login on mount when no token is stored", async () => {
     const { getToken } = jest.requireMock("@/lib/auth");
     (getToken as jest.Mock).mockReturnValue(null);
     render(<AdminLayout><div /></AdminLayout>);
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/login");
+      expect(mockPush).toHaveBeenCalledWith("/admin/login");
     });
   });
 
   it("does not redirect when token is present", () => {
     render(<AdminLayout><div /></AdminLayout>);
-    expect(mockPush).not.toHaveBeenCalledWith("/login");
+    expect(mockPush).not.toHaveBeenCalledWith("/admin/login");
   });
 });

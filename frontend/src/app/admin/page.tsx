@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getAdminMetrics, getClients, getApis, getAdminLogs } from "@/lib/api";
+import { getAdminMetrics, getAccounts, getApis, getAdminLogs } from "@/lib/api";
 
 type DashboardData = {
   totalClients: number;
@@ -94,16 +94,16 @@ export default function AdminPage() {
     today.setHours(0, 0, 0, 0);
 
     Promise.all([
-      getClients(),
+      getAccounts(),
       getAdminMetrics({ since: today.toISOString() }),
       getApis(),
       getAdminLogs(0, 5),
     ])
-      .then(([clients, metrics, apis, logsRes]) => {
+      .then(([accounts, metrics, apis, logsRes]) => {
         const activeApis = apis.items.filter((a) => a.status === "active").length;
         const errorRate = metrics.error_rate;
         setData({
-          totalClients: clients.total,
+          totalClients: accounts.total,
           totalRequests: metrics.total_requests,
           successRate: Math.max(0, 100 - errorRate),
           activeApis,
