@@ -19,6 +19,7 @@ O que pega que os outros testes não pegam:
 ATENÇÃO: os testes deste módulo são ORDER-DEPENDENT — cada teste herda o
 estado do banco deixado pelo anterior. Não reordene sem ajustar as asserções.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -46,7 +47,7 @@ ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 _DOMAIN_TABLES: frozenset[str] = frozenset(
     {
         "users",
-        "clients",
+        "accounts",
         "external_apis",
         "api_keys",
         "endpoints",
@@ -57,6 +58,7 @@ _DOMAIN_TABLES: frozenset[str] = frozenset(
 
 
 # ──────────────────────────── helpers async ────────────────────────────────
+
 
 async def _ensure_db(url: str) -> None:
     import asyncpg
@@ -126,6 +128,7 @@ async def _count_alembic_versions(url: str) -> int:
 
 # ──────────────────────────── fixture ──────────────────────────────────────
 
+
 @pytest.fixture(scope="module")
 def migrate_cfg():
     """
@@ -136,6 +139,7 @@ def migrate_cfg():
     do env.py do Alembic.
     """
     from alembic.config import Config
+
     from app.core.config import settings
 
     asyncio.run(_ensure_db(MIGRATE_DB_URL))
@@ -154,6 +158,7 @@ def migrate_cfg():
 
 
 # ──────────────────────────── testes ───────────────────────────────────────
+
 
 def test_upgrade_head_creates_all_domain_tables(migrate_cfg) -> None:
     """upgrade('head') deve criar todas as tabelas de domínio."""
@@ -180,17 +185,15 @@ def test_downgrade_base_removes_all_domain_tables(migrate_cfg) -> None:
 
     tables = asyncio.run(_get_public_tables(MIGRATE_DB_URL))
     remaining = _DOMAIN_TABLES & tables
-    assert not remaining, (
-        f"Tabelas que deveriam ter sido removidas no downgrade: {remaining}"
-    )
+    assert (
+        not remaining
+    ), f"Tabelas que deveriam ter sido removidas no downgrade: {remaining}"
 
 
 def test_downgrade_base_empties_version_table(migrate_cfg) -> None:
     """alembic_version deve estar vazia após downgrade base."""
     count = asyncio.run(_count_alembic_versions(MIGRATE_DB_URL))
-    assert count == 0, (
-        f"Esperado 0 revisions após downgrade base, encontrado: {count}"
-    )
+    assert count == 0, f"Esperado 0 revisions após downgrade base, encontrado: {count}"
 
 
 def test_re_upgrade_restores_all_tables(migrate_cfg) -> None:

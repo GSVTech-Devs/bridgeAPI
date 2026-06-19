@@ -32,6 +32,7 @@ def make_collection_mock(docs: list[dict] | None = None) -> AsyncMock:
     )
     # Encadeia find().skip().limit().to_list()
     cursor = MagicMock()
+    cursor.sort.return_value = cursor
     cursor.skip.return_value = cursor
     cursor.limit.return_value = cursor
     cursor.to_list = AsyncMock(return_value=docs or [])

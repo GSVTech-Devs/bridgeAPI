@@ -13,10 +13,10 @@ import pytest
 from httpx import AsyncClient
 
 from app.core.security import encrypt_value
+from app.domains.accounts.models import Account, AccountStatus, AccountType
 from app.domains.apis.models import APIAuthType, APIStatus, ExternalAPI
-from app.domains.clients.models import Client, ClientStatus
-from app.domains.keys.models import APIKey, APIKeyStatus
 from app.domains.apis.service import APINotFoundError
+from app.domains.keys.models import APIKey, APIKeyStatus
 from app.domains.proxy.service import (
     DisabledAPIError,
     InactiveClientError,
@@ -36,7 +36,7 @@ def proxy_headers() -> dict:
 def make_api_key() -> APIKey:
     return APIKey(
         id=uuid.uuid4(),
-        client_id=uuid.uuid4(),
+        account_id=uuid.uuid4(),
         name="Test Key",
         key_prefix="abcd1234",
         key_secret_hash="hashed",
@@ -45,13 +45,14 @@ def make_api_key() -> APIKey:
     )
 
 
-def make_client() -> Client:
-    return Client(
+def make_client() -> Account:
+    # Conta consumidora (sucede o antigo Client) — usada no retorno mockado
+    # de validate_request, do qual o router lê apenas account.id.
+    return Account(
         id=uuid.uuid4(),
         name="Acme Corp",
-        email="acme@example.com",
-        password_hash="hashed",
-        status=ClientStatus.ACTIVE,
+        type=AccountType.INDIVIDUAL,
+        status=AccountStatus.ACTIVE,
         created_at=datetime.now(timezone.utc),
     )
 
@@ -526,7 +527,8 @@ def _slug_patches(
         patch(
             "app.domains.proxy.router.validate_request",
             new=AsyncMock(
-                return_value=validate_result or (make_api_key(), make_client(), active_api),
+                return_value=validate_result
+                or (make_api_key(), make_client(), active_api),
                 side_effect=validate_error,
             ),
         ),
@@ -534,7 +536,8 @@ def _slug_patches(
         patch(
             "app.domains.proxy.router.forward_to_upstream",
             new=AsyncMock(
-                return_value=forward_result or make_upstream_response(200, json_body={"ok": True})
+                return_value=forward_result
+                or make_upstream_response(200, json_body={"ok": True})
             ),
         ),
         patch("app.domains.proxy.router.record_metric", new=AsyncMock()),
@@ -544,7 +547,13 @@ def _slug_patches(
 
 @pytest.mark.asyncio
 async def test_slug_route_valid_request_returns_200(client: AsyncClient) -> None:
-    with _slug_patches()[0], _slug_patches()[1], _slug_patches()[2], _slug_patches()[3], _slug_patches()[4]:
+    with (
+        _slug_patches()[0],
+        _slug_patches()[1],
+        _slug_patches()[2],
+        _slug_patches()[3],
+        _slug_patches()[4],
+    ):
         pass  # will use context managers below
 
 
@@ -555,13 +564,19 @@ async def test_slug_route_forwards_request_and_returns_upstream_body(
     active_api = make_api(slug=SLUG)
     upstream_resp = make_upstream_response(200, json_body={"price": 42000})
     with (
-        patch("app.domains.proxy.router.get_api_by_slug", new=AsyncMock(return_value=active_api)),
+        patch(
+            "app.domains.proxy.router.get_api_by_slug",
+            new=AsyncMock(return_value=active_api),
+        ),
         patch(
             "app.domains.proxy.router.validate_request",
             new=AsyncMock(return_value=(make_api_key(), make_client(), active_api)),
         ),
         patch("app.domains.proxy.router.build_upstream_headers", return_value={}),
-        patch("app.domains.proxy.router.forward_to_upstream", new=AsyncMock(return_value=upstream_resp)),
+        patch(
+            "app.domains.proxy.router.forward_to_upstream",
+            new=AsyncMock(return_value=upstream_resp),
+        ),
         patch("app.domains.proxy.router.record_metric", new=AsyncMock()),
     ):
         response = await client.get(slug_url("bitcoin"))
@@ -583,7 +598,10 @@ async def test_slug_route_unknown_slug_returns_404(client: AsyncClient) -> None:
 async def test_slug_route_invalid_bridge_key_returns_401(client: AsyncClient) -> None:
     active_api = make_api(slug=SLUG)
     with (
-        patch("app.domains.proxy.router.get_api_by_slug", new=AsyncMock(return_value=active_api)),
+        patch(
+            "app.domains.proxy.router.get_api_by_slug",
+            new=AsyncMock(return_value=active_api),
+        ),
         patch(
             "app.domains.proxy.router.validate_request",
             new=AsyncMock(side_effect=InvalidKeyError("bad key")),
@@ -597,7 +615,10 @@ async def test_slug_route_invalid_bridge_key_returns_401(client: AsyncClient) ->
 async def test_slug_route_inactive_client_returns_403(client: AsyncClient) -> None:
     active_api = make_api(slug=SLUG)
     with (
-        patch("app.domains.proxy.router.get_api_by_slug", new=AsyncMock(return_value=active_api)),
+        patch(
+            "app.domains.proxy.router.get_api_by_slug",
+            new=AsyncMock(return_value=active_api),
+        ),
         patch(
             "app.domains.proxy.router.validate_request",
             new=AsyncMock(side_effect=InactiveClientError("inactive")),
@@ -611,7 +632,10 @@ async def test_slug_route_inactive_client_returns_403(client: AsyncClient) -> No
 async def test_slug_route_disabled_api_returns_503(client: AsyncClient) -> None:
     active_api = make_api(slug=SLUG)
     with (
-        patch("app.domains.proxy.router.get_api_by_slug", new=AsyncMock(return_value=active_api)),
+        patch(
+            "app.domains.proxy.router.get_api_by_slug",
+            new=AsyncMock(return_value=active_api),
+        ),
         patch(
             "app.domains.proxy.router.validate_request",
             new=AsyncMock(side_effect=DisabledAPIError("disabled")),
@@ -625,7 +649,10 @@ async def test_slug_route_disabled_api_returns_503(client: AsyncClient) -> None:
 async def test_slug_route_no_permission_returns_403(client: AsyncClient) -> None:
     active_api = make_api(slug=SLUG)
     with (
-        patch("app.domains.proxy.router.get_api_by_slug", new=AsyncMock(return_value=active_api)),
+        patch(
+            "app.domains.proxy.router.get_api_by_slug",
+            new=AsyncMock(return_value=active_api),
+        ),
         patch(
             "app.domains.proxy.router.validate_request",
             new=AsyncMock(side_effect=PermissionDeniedError("denied")),
@@ -639,7 +666,10 @@ async def test_slug_route_no_permission_returns_403(client: AsyncClient) -> None
 async def test_slug_route_rate_limited_returns_429(client: AsyncClient) -> None:
     active_api = make_api(slug=SLUG)
     with (
-        patch("app.domains.proxy.router.get_api_by_slug", new=AsyncMock(return_value=active_api)),
+        patch(
+            "app.domains.proxy.router.get_api_by_slug",
+            new=AsyncMock(return_value=active_api),
+        ),
         patch(
             "app.domains.proxy.router.validate_request",
             new=AsyncMock(side_effect=RateLimitExceededError("limit")),
@@ -653,7 +683,10 @@ async def test_slug_route_rate_limited_returns_429(client: AsyncClient) -> None:
 async def test_slug_route_upstream_timeout_returns_504(client: AsyncClient) -> None:
     active_api = make_api(slug=SLUG)
     with (
-        patch("app.domains.proxy.router.get_api_by_slug", new=AsyncMock(return_value=active_api)),
+        patch(
+            "app.domains.proxy.router.get_api_by_slug",
+            new=AsyncMock(return_value=active_api),
+        ),
         patch(
             "app.domains.proxy.router.validate_request",
             new=AsyncMock(return_value=(make_api_key(), make_client(), active_api)),
@@ -672,7 +705,10 @@ async def test_slug_route_upstream_timeout_returns_504(client: AsyncClient) -> N
 async def test_slug_route_upstream_5xx_returns_502(client: AsyncClient) -> None:
     active_api = make_api(slug=SLUG)
     with (
-        patch("app.domains.proxy.router.get_api_by_slug", new=AsyncMock(return_value=active_api)),
+        patch(
+            "app.domains.proxy.router.get_api_by_slug",
+            new=AsyncMock(return_value=active_api),
+        ),
         patch(
             "app.domains.proxy.router.validate_request",
             new=AsyncMock(return_value=(make_api_key(), make_client(), active_api)),
@@ -698,13 +734,19 @@ async def test_slug_route_query_is_forwarded_as_path(client: AsyncClient) -> Non
         return make_upstream_response(200, json_body={"ok": True})
 
     with (
-        patch("app.domains.proxy.router.get_api_by_slug", new=AsyncMock(return_value=active_api)),
+        patch(
+            "app.domains.proxy.router.get_api_by_slug",
+            new=AsyncMock(return_value=active_api),
+        ),
         patch(
             "app.domains.proxy.router.validate_request",
             new=AsyncMock(return_value=(make_api_key(), make_client(), active_api)),
         ),
         patch("app.domains.proxy.router.build_upstream_headers", return_value={}),
-        patch("app.domains.proxy.router.forward_to_upstream", new=AsyncMock(side_effect=fake_forward)),
+        patch(
+            "app.domains.proxy.router.forward_to_upstream",
+            new=AsyncMock(side_effect=fake_forward),
+        ),
         patch("app.domains.proxy.router.record_metric", new=AsyncMock()),
     ):
         await client.get(slug_url(query="bitcoin"))
@@ -724,8 +766,14 @@ async def test_slug_route_bridge_key_comes_from_url_not_header(
         return make_api_key(), make_client(), active_api
 
     with (
-        patch("app.domains.proxy.router.get_api_by_slug", new=AsyncMock(return_value=active_api)),
-        patch("app.domains.proxy.router.validate_request", new=AsyncMock(side_effect=fake_validate)),
+        patch(
+            "app.domains.proxy.router.get_api_by_slug",
+            new=AsyncMock(return_value=active_api),
+        ),
+        patch(
+            "app.domains.proxy.router.validate_request",
+            new=AsyncMock(side_effect=fake_validate),
+        ),
         patch("app.domains.proxy.router.build_upstream_headers", return_value={}),
         patch(
             "app.domains.proxy.router.forward_to_upstream",
@@ -743,7 +791,10 @@ async def test_slug_route_bridge_key_comes_from_url_not_header(
 async def test_slug_route_records_metric(client: AsyncClient) -> None:
     active_api = make_api(slug=SLUG)
     with (
-        patch("app.domains.proxy.router.get_api_by_slug", new=AsyncMock(return_value=active_api)),
+        patch(
+            "app.domains.proxy.router.get_api_by_slug",
+            new=AsyncMock(return_value=active_api),
+        ),
         patch(
             "app.domains.proxy.router.validate_request",
             new=AsyncMock(return_value=(make_api_key(), make_client(), active_api)),

@@ -17,7 +17,7 @@ pytestmark = pytest.mark.integration
 async def test_migrations_applied_and_tables_empty(
     db_session: AsyncSession,
 ) -> None:
-    for table in ("clients", "users", "external_apis", "api_keys", "permissions"):
+    for table in ("accounts", "users", "external_apis", "api_keys", "permissions"):
         result = await db_session.execute(text(f"SELECT COUNT(*) FROM {table}"))
         assert result.scalar() == 0, f"expected empty table {table}"
 

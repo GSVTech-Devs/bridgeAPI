@@ -40,8 +40,8 @@ _DOMAIN_TABLES = (
     "api_keys",
     "endpoints",
     "external_apis",
-    "clients",
     "users",
+    "accounts",
 )
 
 

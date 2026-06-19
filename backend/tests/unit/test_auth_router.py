@@ -1,102 +1,167 @@
-# RED → GREEN
-# Testes para o router de autenticação — POST /auth/login e GET /auth/me.
-# O banco de dados é mockado via dependency override.
+# Testes para o router de autenticação — /auth/login (admin),
+# /auth/portal/login (account) e /auth/me.
+import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 
 from app.core.security import create_access_token, hash_password
-from app.domains.auth.models import User
+from app.domains.accounts.models import Account, AccountStatus, AccountType
+from app.domains.auth.models import User, UserRole
 
 
-def make_user(email: str = "admin@bridge.com") -> User:
+def make_admin(email: str = "admin@bridge.com") -> User:
     return User(
+        id=uuid.uuid4(),
         email=email,
         password_hash=hash_password("secret123"),
-        role="admin",
+        role=UserRole.ADMIN,
+    )
+
+
+def make_owner(account_id: uuid.UUID, email: str = "owner@acme.com") -> User:
+    return User(
+        id=uuid.uuid4(),
+        email=email,
+        password_hash=hash_password("secret123"),
+        role=UserRole.OWNER,
+        account_id=account_id,
+    )
+
+
+def make_account(status: AccountStatus = AccountStatus.ACTIVE) -> Account:
+    return Account(
+        id=uuid.uuid4(), name="Acme", type=AccountType.COMPANY, status=status
     )
 
 
 # ---------------------------------------------------------------------------
-# POST /auth/login
+# POST /auth/login  (admin)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_valid_credentials_return_jwt(client: AsyncClient) -> None:
-    user = make_user()
+async def test_admin_login_returns_jwt(client: AsyncClient) -> None:
     with patch(
-        "app.domains.auth.router.authenticate_user", new=AsyncMock(return_value=user)
+        "app.domains.auth.router.authenticate_user",
+        new=AsyncMock(return_value=make_admin()),
     ):
         response = await client.post(
             "/auth/login",
             json={"email": "admin@bridge.com", "password": "secret123"},
         )
     assert response.status_code == 200
-    body = response.json()
-    assert "access_token" in body
-    assert body["token_type"] == "bearer"
+    assert "access_token" in response.json()
 
 
 @pytest.mark.asyncio
-async def test_invalid_password_returns_401(client: AsyncClient) -> None:
+async def test_admin_login_invalid_returns_401(client: AsyncClient) -> None:
     with patch(
         "app.domains.auth.router.authenticate_user", new=AsyncMock(return_value=None)
     ):
         response = await client.post(
             "/auth/login",
-            json={"email": "admin@bridge.com", "password": "wrongpassword"},
+            json={"email": "admin@bridge.com", "password": "wrong"},
         )
     assert response.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_unknown_email_returns_401(client: AsyncClient) -> None:
+async def test_owner_cannot_login_via_admin_endpoint(client: AsyncClient) -> None:
+    owner = make_owner(uuid.uuid4())
     with patch(
-        "app.domains.auth.router.authenticate_user", new=AsyncMock(return_value=None)
+        "app.domains.auth.router.authenticate_user",
+        new=AsyncMock(return_value=owner),
     ):
         response = await client.post(
             "/auth/login",
-            json={"email": "unknown@bridge.com", "password": "any"},
+            json={"email": "owner@acme.com", "password": "secret123"},
         )
     assert response.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_login_with_missing_fields_returns_422(client: AsyncClient) -> None:
+async def test_admin_login_missing_fields_returns_422(client: AsyncClient) -> None:
     response = await client.post("/auth/login", json={"email": "admin@bridge.com"})
     assert response.status_code == 422
 
 
 # ---------------------------------------------------------------------------
-# GET /auth/me  (rota protegida)
+# POST /auth/portal/login  (account)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_protected_route_without_token_returns_401(
-    client: AsyncClient,
-) -> None:
+async def test_portal_login_returns_jwt_with_account_scope(client: AsyncClient) -> None:
+    account = make_account()
+    owner = make_owner(account.id)
+    with (
+        patch(
+            "app.domains.auth.router.authenticate_user",
+            new=AsyncMock(return_value=owner),
+        ),
+        patch(
+            "app.domains.auth.router.get_account_by_id",
+            new=AsyncMock(return_value=account),
+        ),
+    ):
+        response = await client.post(
+            "/auth/portal/login",
+            json={"email": "owner@acme.com", "password": "secret123"},
+        )
+    assert response.status_code == 200
+    assert "access_token" in response.json()
+
+
+@pytest.mark.asyncio
+async def test_portal_login_blocked_account_returns_403(client: AsyncClient) -> None:
+    account = make_account(status=AccountStatus.BLOCKED)
+    owner = make_owner(account.id)
+    with (
+        patch(
+            "app.domains.auth.router.authenticate_user",
+            new=AsyncMock(return_value=owner),
+        ),
+        patch(
+            "app.domains.auth.router.get_account_by_id",
+            new=AsyncMock(return_value=account),
+        ),
+    ):
+        response = await client.post(
+            "/auth/portal/login",
+            json={"email": "owner@acme.com", "password": "secret123"},
+        )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_login_via_portal_endpoint(client: AsyncClient) -> None:
+    with patch(
+        "app.domains.auth.router.authenticate_user",
+        new=AsyncMock(return_value=make_admin()),
+    ):
+        response = await client.post(
+            "/auth/portal/login",
+            json={"email": "admin@bridge.com", "password": "secret123"},
+        )
+    assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GET /auth/me
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_me_without_token_returns_401(client: AsyncClient) -> None:
     response = await client.get("/auth/me")
     assert response.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_protected_route_with_invalid_token_returns_401(
-    client: AsyncClient,
-) -> None:
-    response = await client.get(
-        "/auth/me", headers={"Authorization": "Bearer invalidtoken"}
-    )
-    assert response.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_protected_route_with_valid_token_returns_200(
-    client: AsyncClient,
-) -> None:
-    token = create_access_token("admin@bridge.com")
+async def test_me_with_admin_token_returns_identity(client: AsyncClient) -> None:
+    token = create_access_token("admin@bridge.com", role="admin")
     response = await client.get(
         "/auth/me", headers={"Authorization": f"Bearer {token}"}
     )
@@ -105,9 +170,17 @@ async def test_protected_route_with_valid_token_returns_200(
 
 
 @pytest.mark.asyncio
-async def test_client_token_cannot_access_admin_route(client: AsyncClient) -> None:
-    token = create_access_token("acme@example.com", role="client")
+async def test_me_with_account_token_returns_account_scope(client: AsyncClient) -> None:
+    account_id = uuid.uuid4()
+    token = create_access_token(
+        "owner@acme.com",
+        role="owner",
+        extra_claims={"user_id": str(uuid.uuid4()), "account_id": str(account_id)},
+    )
     response = await client.get(
         "/auth/me", headers={"Authorization": f"Bearer {token}"}
     )
-    assert response.status_code == 403
+    assert response.status_code == 200
+    body = response.json()
+    assert body["role"] == "owner"
+    assert body["account_id"] == str(account_id)

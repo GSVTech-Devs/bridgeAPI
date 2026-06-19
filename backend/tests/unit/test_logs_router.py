@@ -14,7 +14,11 @@ from app.core.security import create_access_token
 
 
 def client_headers() -> dict:
-    token = create_access_token("acme@example.com", role="client")
+    token = create_access_token(
+        "acme@example.com",
+        role="owner",
+        extra_claims={"user_id": str(uuid.uuid4()), "account_id": str(uuid.uuid4())},
+    )
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -51,9 +55,15 @@ def make_log_doc(client_id: str | None = None) -> dict:
 async def test_client_can_list_own_logs(client: AsyncClient) -> None:
     logs = [make_log_doc(), make_log_doc()]
 
-    with patch(
-        "app.domains.logs.router.get_client_logs",
-        new=AsyncMock(return_value=logs),
+    with (
+        patch(
+            "app.domains.logs.router.get_client_logs",
+            new=AsyncMock(return_value=logs),
+        ),
+        patch(
+            "app.domains.logs.router._enrich_with_key_names",
+            new=AsyncMock(side_effect=lambda _db, docs: docs),
+        ),
     ):
         response = await client.get("/logs", headers=client_headers())
 
@@ -81,9 +91,15 @@ async def test_logs_response_includes_correlation_id(client: AsyncClient) -> Non
     logs = [make_log_doc()]
     logs[0]["correlation_id"] = cid
 
-    with patch(
-        "app.domains.logs.router.get_client_logs",
-        new=AsyncMock(return_value=logs),
+    with (
+        patch(
+            "app.domains.logs.router.get_client_logs",
+            new=AsyncMock(return_value=logs),
+        ),
+        patch(
+            "app.domains.logs.router._enrich_with_key_names",
+            new=AsyncMock(side_effect=lambda _db, docs: docs),
+        ),
     ):
         response = await client.get("/logs", headers=client_headers())
 

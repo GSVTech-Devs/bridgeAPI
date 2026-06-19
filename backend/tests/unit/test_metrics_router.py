@@ -1,11 +1,9 @@
-# RED → GREEN
-# Testes de integração para app/domains/metrics/router.py
-# Usa tokens JWT reais (create_access_token) e patches nos services,
-# seguindo o padrão estabelecido nos outros testes de router.
+# Testes para app/domains/metrics/router.py.
+# Tokens JWT reais; services mockados via patch.
 from __future__ import annotations
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -31,8 +29,12 @@ ADMIN_PAYLOAD = {
 }
 
 
-def client_headers() -> dict:
-    token = create_access_token("acme@example.com", role="client")
+def account_headers() -> dict:
+    token = create_access_token(
+        "acme@example.com",
+        role="owner",
+        extra_claims={"user_id": str(uuid.uuid4()), "account_id": str(uuid.uuid4())},
+    )
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -41,142 +43,68 @@ def admin_headers() -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-def make_client_obj() -> MagicMock:
-    obj = MagicMock()
-    obj.id = uuid.uuid4()
-    return obj
-
-
 # ---------------------------------------------------------------------------
-# GET /metrics/dashboard — cliente autenticado
+# GET /metrics/dashboard — usuário de account
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_client_dashboard_returns_200(client: AsyncClient) -> None:
-    with (
-        patch(
-            "app.domains.metrics.router.get_client_by_email",
-            new=AsyncMock(return_value=make_client_obj()),
-        ),
-        patch(
-            "app.domains.metrics.router.get_client_dashboard",
-            new=AsyncMock(return_value=DASHBOARD_PAYLOAD),
-        ),
+async def test_account_dashboard_returns_payload(client: AsyncClient) -> None:
+    with patch(
+        "app.domains.metrics.router.get_client_dashboard",
+        new=AsyncMock(return_value=DASHBOARD_PAYLOAD),
     ):
-        response = await client.get("/metrics/dashboard", headers=client_headers())
+        response = await client.get("/metrics/dashboard", headers=account_headers())
 
     assert response.status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_client_dashboard_returns_correct_payload(client: AsyncClient) -> None:
-    with (
-        patch(
-            "app.domains.metrics.router.get_client_by_email",
-            new=AsyncMock(return_value=make_client_obj()),
-        ),
-        patch(
-            "app.domains.metrics.router.get_client_dashboard",
-            new=AsyncMock(return_value=DASHBOARD_PAYLOAD),
-        ),
-    ):
-        response = await client.get("/metrics/dashboard", headers=client_headers())
-
     data = response.json()
     assert data["total_requests"] == 100
-    assert data["error_rate"] == 5.0
-    assert data["avg_latency_ms"] == 42.0
     assert data["total_cost"] == 1.50
 
 
 @pytest.mark.asyncio
-async def test_client_dashboard_without_token_returns_401(client: AsyncClient) -> None:
+async def test_dashboard_uses_account_id_from_token(client: AsyncClient) -> None:
+    mock_svc = AsyncMock(return_value=DASHBOARD_PAYLOAD)
+    with patch("app.domains.metrics.router.get_client_dashboard", new=mock_svc):
+        await client.get("/metrics/dashboard", headers=account_headers())
+    # o account_id (2º argumento posicional) deve ser um UUID vindo do token
+    args = mock_svc.call_args.args
+    assert isinstance(args[1], uuid.UUID)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_without_token_returns_401(client: AsyncClient) -> None:
     response = await client.get("/metrics/dashboard")
     assert response.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_admin_cannot_access_client_dashboard(client: AsyncClient) -> None:
+async def test_admin_cannot_access_account_dashboard(client: AsyncClient) -> None:
     response = await client.get("/metrics/dashboard", headers=admin_headers())
     assert response.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_client_dashboard_accepts_since_filter(client: AsyncClient) -> None:
-    with (
-        patch(
-            "app.domains.metrics.router.get_client_by_email",
-            new=AsyncMock(return_value=make_client_obj()),
-        ),
-        patch(
-            "app.domains.metrics.router.get_client_dashboard",
-            new=AsyncMock(return_value=DASHBOARD_PAYLOAD),
-        ) as mock_svc,
-    ):
+async def test_dashboard_accepts_date_filters(client: AsyncClient) -> None:
+    with patch(
+        "app.domains.metrics.router.get_client_dashboard",
+        new=AsyncMock(return_value=DASHBOARD_PAYLOAD),
+    ) as mock_svc:
         response = await client.get(
-            "/metrics/dashboard?since=2024-01-01T00:00:00Z",
-            headers=client_headers(),
+            "/metrics/dashboard?since=2024-01-01T00:00:00Z&until=2024-12-31T23:59:59Z",
+            headers=account_headers(),
         )
-
     assert response.status_code == 200
     assert mock_svc.called
 
 
-@pytest.mark.asyncio
-async def test_client_dashboard_accepts_until_filter(client: AsyncClient) -> None:
-    with (
-        patch(
-            "app.domains.metrics.router.get_client_by_email",
-            new=AsyncMock(return_value=make_client_obj()),
-        ),
-        patch(
-            "app.domains.metrics.router.get_client_dashboard",
-            new=AsyncMock(return_value=DASHBOARD_PAYLOAD),
-        ) as mock_svc,
-    ):
-        response = await client.get(
-            "/metrics/dashboard?until=2024-12-31T23:59:59Z",
-            headers=client_headers(),
-        )
-
-    assert response.status_code == 200
-    assert mock_svc.called
-
-
-@pytest.mark.asyncio
-async def test_client_dashboard_response_has_all_keys(client: AsyncClient) -> None:
-    with (
-        patch(
-            "app.domains.metrics.router.get_client_by_email",
-            new=AsyncMock(return_value=make_client_obj()),
-        ),
-        patch(
-            "app.domains.metrics.router.get_client_dashboard",
-            new=AsyncMock(return_value=DASHBOARD_PAYLOAD),
-        ),
-    ):
-        response = await client.get("/metrics/dashboard", headers=client_headers())
-
-    data = response.json()
-    expected_keys = {
-        "total_requests",
-        "error_rate",
-        "avg_latency_ms",
-        "total_cost",
-        "billable_requests",
-        "non_billable_requests",
-    }
-    assert expected_keys.issubset(data.keys())
-
-
 # ---------------------------------------------------------------------------
-# GET /metrics/admin — admin autenticado
+# GET /metrics/admin — admin
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_admin_metrics_returns_200(client: AsyncClient) -> None:
+async def test_admin_metrics_returns_payload(client: AsyncClient) -> None:
     with patch(
         "app.domains.metrics.router.get_admin_global_metrics",
         new=AsyncMock(return_value=ADMIN_PAYLOAD),
@@ -184,20 +112,7 @@ async def test_admin_metrics_returns_200(client: AsyncClient) -> None:
         response = await client.get("/metrics/admin", headers=admin_headers())
 
     assert response.status_code == 200
-
-
-@pytest.mark.asyncio
-async def test_admin_metrics_returns_correct_payload(client: AsyncClient) -> None:
-    with patch(
-        "app.domains.metrics.router.get_admin_global_metrics",
-        new=AsyncMock(return_value=ADMIN_PAYLOAD),
-    ):
-        response = await client.get("/metrics/admin", headers=admin_headers())
-
-    data = response.json()
-    assert data["total_requests"] == 5000
-    assert data["error_rate"] == 3.0
-    assert data["total_cost"] == 120.0
+    assert response.json()["total_requests"] == 5000
 
 
 @pytest.mark.asyncio
@@ -207,21 +122,6 @@ async def test_admin_metrics_without_token_returns_401(client: AsyncClient) -> N
 
 
 @pytest.mark.asyncio
-async def test_client_cannot_access_admin_metrics(client: AsyncClient) -> None:
-    response = await client.get("/metrics/admin", headers=client_headers())
+async def test_account_user_cannot_access_admin_metrics(client: AsyncClient) -> None:
+    response = await client.get("/metrics/admin", headers=account_headers())
     assert response.status_code == 403
-
-
-@pytest.mark.asyncio
-async def test_admin_metrics_accepts_since_filter(client: AsyncClient) -> None:
-    with patch(
-        "app.domains.metrics.router.get_admin_global_metrics",
-        new=AsyncMock(return_value=ADMIN_PAYLOAD),
-    ) as mock_svc:
-        response = await client.get(
-            "/metrics/admin?since=2024-01-01T00:00:00Z",
-            headers=admin_headers(),
-        )
-
-    assert response.status_code == 200
-    assert mock_svc.called

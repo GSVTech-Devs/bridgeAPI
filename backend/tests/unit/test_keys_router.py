@@ -19,7 +19,7 @@ def make_api_key(
 ) -> APIKey:
     return APIKey(
         id=uuid.uuid4(),
-        client_id=uuid.uuid4(),
+        account_id=uuid.uuid4(),
         api_id=api_id,
         name="Production Key",
         key_prefix="abcd1234",
@@ -30,7 +30,11 @@ def make_api_key(
 
 
 def client_headers() -> dict:
-    token = create_access_token("acme@example.com", role="client")
+    token = create_access_token(
+        "acme@example.com",
+        role="owner",
+        extra_claims={"user_id": str(uuid.uuid4()), "account_id": str(uuid.uuid4())},
+    )
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -88,19 +92,20 @@ async def test_api_key_secret_shown_only_at_creation(client: AsyncClient) -> Non
         )
     with patch(
         "app.domains.keys.router.list_api_keys",
-        new=AsyncMock(return_value=[api_key]),
+        new=AsyncMock(return_value=[(api_key, None)]),
     ):
         list_response = await client.get("/keys", headers=client_headers())
-    assert "api_key" in create_response.json()
-    assert "api_key" not in list_response.json()["items"][0]
+    assert create_response.json()["api_key"] == "brg_abcd1234_secret-value"
+    # no list o segredo não é exposto (api_key vem nulo)
+    assert list_response.json()["items"][0]["api_key"] is None
 
 
 @pytest.mark.asyncio
 async def test_client_can_list_own_api_keys(client: AsyncClient) -> None:
-    api_keys = [make_api_key(), make_api_key()]
+    pairs = [(make_api_key(), None), (make_api_key(), None)]
     with patch(
         "app.domains.keys.router.list_api_keys",
-        new=AsyncMock(return_value=api_keys),
+        new=AsyncMock(return_value=pairs),
     ):
         response = await client.get("/keys", headers=client_headers())
     assert response.status_code == 200
