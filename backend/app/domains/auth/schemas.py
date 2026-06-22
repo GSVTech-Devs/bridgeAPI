@@ -28,6 +28,36 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class CompanyOption(BaseModel):
+    """Uma empresa/account à qual o email logado tem acesso (para o seletor)."""
+
+    account_id: uuid.UUID
+    name: str
+    type: str
+    role: str
+
+
+class PortalLoginResponse(BaseModel):
+    """Resposta do login do portal.
+
+    ``access_token`` é um token de identidade (sem account selecionada): só
+    serve para listar empresas e selecionar uma via ``/auth/portal/select``.
+    ``companies`` lista as accounts ativas acessíveis pelo email.
+    """
+
+    access_token: str
+    token_type: str = "bearer"
+    companies: list[CompanyOption]
+
+
+class SelectCompanyRequest(BaseModel):
+    account_id: uuid.UUID
+
+
+class CompaniesResponse(BaseModel):
+    companies: list[CompanyOption]
+
+
 class MeResponse(BaseModel):
     email: str
     role: str
@@ -38,3 +68,5 @@ class MeResponse(BaseModel):
     account_type: Optional[str] = None
     account_name: Optional[str] = None
     is_owner: bool = False
+    # Quantas empresas/accounts este email acessa (para exibir "Trocar empresa").
+    account_count: int = 0

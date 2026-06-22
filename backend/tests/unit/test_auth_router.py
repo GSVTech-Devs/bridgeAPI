@@ -9,6 +9,7 @@ from httpx import AsyncClient
 from app.core.security import create_access_token, hash_password
 from app.domains.accounts.models import Account, AccountStatus, AccountType
 from app.domains.auth.models import User, UserRole
+from app.domains.auth.schemas import CompanyOption
 
 
 def make_admin(email: str = "admin@bridge.com") -> User:
@@ -93,17 +94,22 @@ async def test_admin_login_missing_fields_returns_422(client: AsyncClient) -> No
 
 
 @pytest.mark.asyncio
-async def test_portal_login_returns_jwt_with_account_scope(client: AsyncClient) -> None:
+async def test_portal_login_returns_identity_token_and_companies(
+    client: AsyncClient,
+) -> None:
     account = make_account()
     owner = make_owner(account.id)
+    company = CompanyOption(
+        account_id=account.id, name="Acme", type="company", role="owner"
+    )
     with (
         patch(
             "app.domains.auth.router.authenticate_user",
             new=AsyncMock(return_value=owner),
         ),
         patch(
-            "app.domains.auth.router.get_account_by_id",
-            new=AsyncMock(return_value=account),
+            "app.domains.auth.router._portal_companies",
+            new=AsyncMock(return_value=[company]),
         ),
     ):
         response = await client.post(
@@ -111,21 +117,41 @@ async def test_portal_login_returns_jwt_with_account_scope(client: AsyncClient) 
             json={"email": "owner@acme.com", "password": "secret123"},
         )
     assert response.status_code == 200
-    assert "access_token" in response.json()
+    body = response.json()
+    assert "access_token" in body
+    assert len(body["companies"]) == 1
+    assert body["companies"][0]["account_id"] == str(account.id)
 
 
 @pytest.mark.asyncio
-async def test_portal_login_blocked_account_returns_403(client: AsyncClient) -> None:
-    account = make_account(status=AccountStatus.BLOCKED)
-    owner = make_owner(account.id)
+async def test_portal_login_invalid_credentials_returns_401(
+    client: AsyncClient,
+) -> None:
+    with patch(
+        "app.domains.auth.router.authenticate_user",
+        new=AsyncMock(return_value=None),
+    ):
+        response = await client.post(
+            "/auth/portal/login",
+            json={"email": "owner@acme.com", "password": "wrong"},
+        )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_portal_login_no_active_company_returns_403(
+    client: AsyncClient,
+) -> None:
+    """Autenticou mas não há empresa ativa (todas bloqueadas / sem vínculo)."""
+    owner = make_owner(uuid.uuid4())
     with (
         patch(
             "app.domains.auth.router.authenticate_user",
             new=AsyncMock(return_value=owner),
         ),
         patch(
-            "app.domains.auth.router.get_account_by_id",
-            new=AsyncMock(return_value=account),
+            "app.domains.auth.router._portal_companies",
+            new=AsyncMock(return_value=[]),
         ),
     ):
         response = await client.post(
@@ -137,15 +163,112 @@ async def test_portal_login_blocked_account_returns_403(client: AsyncClient) -> 
 
 @pytest.mark.asyncio
 async def test_admin_cannot_login_via_portal_endpoint(client: AsyncClient) -> None:
-    with patch(
-        "app.domains.auth.router.authenticate_user",
-        new=AsyncMock(return_value=make_admin()),
+    # Admin autentica, mas não tem nenhuma empresa de portal → 403.
+    with (
+        patch(
+            "app.domains.auth.router.authenticate_user",
+            new=AsyncMock(return_value=make_admin()),
+        ),
+        patch(
+            "app.domains.auth.router._portal_companies",
+            new=AsyncMock(return_value=[]),
+        ),
     ):
         response = await client.post(
             "/auth/portal/login",
             json={"email": "admin@bridge.com", "password": "secret123"},
         )
-    assert response.status_code == 401
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_portal_companies_lists_accounts(client: AsyncClient) -> None:
+    account = make_account()
+    company = CompanyOption(
+        account_id=account.id, name="Acme", type="company", role="owner"
+    )
+    token = create_access_token("owner@acme.com", role="portal_identity")
+    with (
+        patch(
+            "app.domains.auth.router.get_users_by_email",
+            new=AsyncMock(return_value=[make_owner(account.id)]),
+        ),
+        patch(
+            "app.domains.auth.router._portal_companies",
+            new=AsyncMock(return_value=[company]),
+        ),
+    ):
+        response = await client.get(
+            "/auth/portal/companies",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert response.status_code == 200
+    assert len(response.json()["companies"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_portal_companies_rejects_non_portal_token(client: AsyncClient) -> None:
+    # Token cujo email não tem nenhum vínculo de portal → 403.
+    token = create_access_token("adm@bridge.com", role="portal_identity")
+    with patch(
+        "app.domains.auth.router.get_users_by_email",
+        new=AsyncMock(return_value=[make_admin("adm@bridge.com")]),
+    ):
+        response = await client.get(
+            "/auth/portal/companies",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_portal_select_issues_account_scoped_token(client: AsyncClient) -> None:
+    account = make_account()
+    owner = make_owner(account.id)
+    token = create_access_token("owner@acme.com", role="portal_identity")
+    with (
+        patch(
+            "app.domains.auth.router.get_users_by_email",
+            new=AsyncMock(return_value=[owner]),
+        ),
+        patch(
+            "app.domains.auth.router.get_account_user",
+            new=AsyncMock(return_value=owner),
+        ),
+        patch(
+            "app.domains.auth.router.get_account_by_id",
+            new=AsyncMock(return_value=account),
+        ),
+    ):
+        response = await client.post(
+            "/auth/portal/select",
+            json={"account_id": str(account.id)},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert response.status_code == 200
+    assert "access_token" in response.json()
+
+
+@pytest.mark.asyncio
+async def test_portal_select_without_access_returns_403(client: AsyncClient) -> None:
+    account = make_account()
+    token = create_access_token("owner@acme.com", role="portal_identity")
+    with (
+        patch(
+            "app.domains.auth.router.get_users_by_email",
+            new=AsyncMock(return_value=[make_owner(uuid.uuid4())]),
+        ),
+        patch(
+            "app.domains.auth.router.get_account_user",
+            new=AsyncMock(return_value=None),
+        ),
+    ):
+        response = await client.post(
+            "/auth/portal/select",
+            json={"account_id": str(account.id)},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert response.status_code == 403
 
 
 # ---------------------------------------------------------------------------
@@ -178,9 +301,18 @@ async def test_me_with_account_token_returns_account_scope(client: AsyncClient) 
         extra_claims={"user_id": str(uuid.uuid4()), "account_id": str(account_id)},
     )
     account = Account(id=account_id, name="Acme", type=AccountType.COMPANY)
-    with patch(
-        "app.domains.auth.router.get_account_by_id",
-        new=AsyncMock(return_value=account),
+    company = CompanyOption(
+        account_id=account_id, name="Acme", type="company", role="owner"
+    )
+    with (
+        patch(
+            "app.domains.auth.router.get_account_by_id",
+            new=AsyncMock(return_value=account),
+        ),
+        patch(
+            "app.domains.auth.router._portal_companies",
+            new=AsyncMock(return_value=[company, company]),
+        ),
     ):
         response = await client.get(
             "/auth/me", headers={"Authorization": f"Bearer {token}"}
@@ -193,6 +325,8 @@ async def test_me_with_account_token_returns_account_scope(client: AsyncClient) 
     assert body["is_owner"] is True
     assert body["account_type"] == "company"
     assert "members" in body["capabilities"]
+    # account_count reflete quantas empresas o email acessa
+    assert body["account_count"] == 2
 
 
 # ---------------------------------------------------------------------------

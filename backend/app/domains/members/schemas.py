@@ -60,12 +60,17 @@ class RoleResponse(BaseModel):
 
 class MemberCreate(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8)
+    # Opcional: se o email já existe na plataforma (já tem acesso a outra
+    # empresa), o convidado reutiliza a senha que já possui e este campo é
+    # ignorado. Para um email inédito, a senha é obrigatória.
+    password: Optional[str] = Field(default=None, min_length=8)
     role_id: uuid.UUID
 
     @field_validator("password")
     @classmethod
-    def _validate_password(cls, value: str) -> str:
+    def _validate_password(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
         return validate_password_strength(value)
 
 

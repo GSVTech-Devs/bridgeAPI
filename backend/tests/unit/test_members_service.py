@@ -1,13 +1,20 @@
 # Testes para o domínio members: resolução de capabilities e validação de schemas.
 import uuid
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
 
+from app.domains.auth.service import DuplicateEmailError
 from app.domains.members.schemas import MemberCreate, RoleCreate
-from app.domains.members.service import resolve_user_capabilities
+from app.domains.members.service import (
+    PasswordRequiredError,
+    SharedIdentityError,
+    create_member,
+    resolve_user_capabilities,
+    update_member,
+)
 
 
 @pytest.mark.asyncio
@@ -77,3 +84,180 @@ def test_role_create_accepts_valid_capabilities() -> None:
 def test_member_create_rejects_weak_password() -> None:
     with pytest.raises(ValidationError):
         MemberCreate(email="dev@acme.com", password="weak", role_id=uuid.uuid4())
+
+
+def test_member_create_allows_omitting_password() -> None:
+    # Email já existente é convidado sem senha (reusa a credencial da identidade).
+    member = MemberCreate(email="dev@acme.com", role_id=uuid.uuid4())
+    assert member.password is None
+
+
+# ---------------------------------------------------------------------------
+# create_member — reuso de identidade / senha por email
+# ---------------------------------------------------------------------------
+def _member_db() -> AsyncMock:
+    db = AsyncMock()
+    db.add = MagicMock()
+    return db
+
+
+@pytest.mark.asyncio
+async def test_create_member_reuses_existing_identity_password() -> None:
+    """Email já existente em OUTRA empresa: reusa a senha e ignora a enviada."""
+    account_id = uuid.uuid4()
+    existing = SimpleNamespace(
+        account_id=uuid.uuid4(), role="member", password_hash="reused-hash"
+    )
+    with (
+        patch(
+            "app.domains.members.service._get_role_for_account",
+            new=AsyncMock(return_value=object()),
+        ),
+        patch(
+            "app.domains.members.service.get_users_by_email",
+            new=AsyncMock(return_value=[existing]),
+        ),
+        patch("app.domains.members.service.hash_password") as hp,
+    ):
+        member = await create_member(
+            _member_db(),
+            account_id=account_id,
+            email="dev@acme.com",
+            password="QualquerIgnorada1!",
+            role_id=uuid.uuid4(),
+        )
+    assert member.password_hash == "reused-hash"
+    hp.assert_not_called()  # não gera hash novo
+
+
+@pytest.mark.asyncio
+async def test_create_member_new_email_requires_password() -> None:
+    with (
+        patch(
+            "app.domains.members.service._get_role_for_account",
+            new=AsyncMock(return_value=object()),
+        ),
+        patch(
+            "app.domains.members.service.get_users_by_email",
+            new=AsyncMock(return_value=[]),
+        ),
+    ):
+        with pytest.raises(PasswordRequiredError):
+            await create_member(
+                _member_db(),
+                account_id=uuid.uuid4(),
+                email="novo@acme.com",
+                password=None,
+                role_id=uuid.uuid4(),
+            )
+
+
+@pytest.mark.asyncio
+async def test_create_member_rejects_duplicate_in_same_account() -> None:
+    account_id = uuid.uuid4()
+    existing = SimpleNamespace(account_id=account_id, role="member", password_hash="h")
+    with (
+        patch(
+            "app.domains.members.service._get_role_for_account",
+            new=AsyncMock(return_value=object()),
+        ),
+        patch(
+            "app.domains.members.service.get_users_by_email",
+            new=AsyncMock(return_value=[existing]),
+        ),
+    ):
+        with pytest.raises(DuplicateEmailError):
+            await create_member(
+                _member_db(),
+                account_id=account_id,
+                email="dev@acme.com",
+                password="Senha123!",
+                role_id=uuid.uuid4(),
+            )
+
+
+@pytest.mark.asyncio
+async def test_create_member_rejects_admin_email() -> None:
+    existing = SimpleNamespace(account_id=None, role="admin", password_hash="h")
+    with (
+        patch(
+            "app.domains.members.service._get_role_for_account",
+            new=AsyncMock(return_value=object()),
+        ),
+        patch(
+            "app.domains.members.service.get_users_by_email",
+            new=AsyncMock(return_value=[existing]),
+        ),
+    ):
+        with pytest.raises(DuplicateEmailError):
+            await create_member(
+                _member_db(),
+                account_id=uuid.uuid4(),
+                email="adm@bridge.com",
+                password="Senha123!",
+                role_id=uuid.uuid4(),
+            )
+
+
+# ---------------------------------------------------------------------------
+# update_member — guarda de identidade compartilhada
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_update_member_blocks_password_change_on_shared_identity() -> None:
+    account_id = uuid.uuid4()
+    member = SimpleNamespace(
+        account_id=account_id, email="dev@acme.com", role_id=None, password_hash="h"
+    )
+    # o email também existe em outra account → identidade compartilhada
+    rows = [
+        SimpleNamespace(account_id=account_id),
+        SimpleNamespace(account_id=uuid.uuid4()),
+    ]
+    with (
+        patch(
+            "app.domains.members.service._get_member_for_account",
+            new=AsyncMock(return_value=member),
+        ),
+        patch(
+            "app.domains.members.service.get_users_by_email",
+            new=AsyncMock(return_value=rows),
+        ),
+    ):
+        with pytest.raises(SharedIdentityError):
+            await update_member(
+                _member_db(),
+                account_id=account_id,
+                member_id=uuid.uuid4(),
+                password="NovaSenha1!",
+            )
+
+
+@pytest.mark.asyncio
+async def test_update_member_allows_role_change_on_shared_identity() -> None:
+    account_id = uuid.uuid4()
+    new_role = uuid.uuid4()
+    member = SimpleNamespace(
+        account_id=account_id, email="dev@acme.com", role_id=None, password_hash="h"
+    )
+    with (
+        patch(
+            "app.domains.members.service._get_member_for_account",
+            new=AsyncMock(return_value=member),
+        ),
+        patch(
+            "app.domains.members.service._get_role_for_account",
+            new=AsyncMock(return_value=object()),
+        ),
+        patch(
+            "app.domains.members.service.get_users_by_email",
+            new=AsyncMock(return_value=[]),
+        ),
+    ):
+        # só troca o papel → não dispara a guarda de credencial
+        result = await update_member(
+            _member_db(),
+            account_id=account_id,
+            member_id=uuid.uuid4(),
+            role_id=new_role,
+        )
+    assert result.role_id == new_role

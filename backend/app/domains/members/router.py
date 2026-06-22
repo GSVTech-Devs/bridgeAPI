@@ -24,9 +24,11 @@ from app.domains.members.schemas import (
 )
 from app.domains.members.service import (
     MemberNotFoundError,
+    PasswordRequiredError,
     RoleInUseError,
     RoleNameConflictError,
     RoleNotFoundError,
+    SharedIdentityError,
     create_member,
     create_role,
     delete_member,
@@ -198,6 +200,10 @@ async def create_account_member(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Role não encontrada"
         )
+    except PasswordRequiredError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except SharedIdentityError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except DuplicateEmailError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
@@ -229,6 +235,10 @@ async def update_account_member(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Role não encontrada"
         )
+    except PasswordRequiredError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except SharedIdentityError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except DuplicateEmailError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
@@ -399,6 +409,10 @@ async def admin_create_member(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Role não encontrada"
         )
+    except PasswordRequiredError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except SharedIdentityError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except DuplicateEmailError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
@@ -433,6 +447,10 @@ async def admin_update_member(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Role não encontrada"
         )
+    except PasswordRequiredError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except SharedIdentityError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except DuplicateEmailError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email already registered"

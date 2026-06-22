@@ -10,8 +10,8 @@ from app.core.security import hash_password
 from app.domains.auth.models import User, UserRole
 from app.domains.auth.service import (
     DuplicateEmailError,
-    get_user_by_email,
     get_user_by_id,
+    get_users_by_email,
 )
 from app.domains.members.models import AccountRole
 
@@ -30,6 +30,15 @@ class RoleInUseError(Exception):
 
 class MemberNotFoundError(Exception):
     pass
+
+
+class PasswordRequiredError(Exception):
+    """Email novo na plataforma — é preciso definir uma senha inicial."""
+
+
+class SharedIdentityError(Exception):
+    """O email do membro também pertence a outras empresas; a credencial é
+    compartilhada e gerida pela própria identidade, não pelo owner."""
 
 
 # ---------------------------------------------------------------------------
@@ -189,16 +198,31 @@ async def create_member(
     *,
     account_id: uuid.UUID | str,
     email: str,
-    password: str,
+    password: str | None,
     role_id: uuid.UUID | str,
 ) -> User:
     if await _get_role_for_account(db, account_id, role_id) is None:
         raise RoleNotFoundError(f"Role não encontrada: {role_id}")
-    if await get_user_by_email(db, email) is not None:
+
+    existing = await get_users_by_email(db, email)
+    # Não pode haver duas linhas do mesmo email nesta account.
+    if any(str(u.account_id) == str(account_id) for u in existing):
         raise DuplicateEmailError(f"Email already registered: {email}")
+    # Se o email já existe na plataforma (outra empresa), reaproveitamos a
+    # senha da identidade — o convidado entra com a senha que já tem. Senha
+    # nova só é exigida (e usada) quando o email é inédito.
+    if existing:
+        if any(u.role == UserRole.ADMIN.value for u in existing):
+            raise DuplicateEmailError(f"Email already registered: {email}")
+        password_hash = existing[0].password_hash
+    else:
+        if not password:
+            raise PasswordRequiredError("Senha obrigatória para novo usuário.")
+        password_hash = hash_password(password)
+
     member = User(
         email=email,
-        password_hash=hash_password(password),
+        password_hash=password_hash,
         role=UserRole.MEMBER.value,
         account_id=uuid.UUID(str(account_id)),
         role_id=uuid.UUID(str(role_id)),
@@ -240,8 +264,23 @@ async def update_member(
         if await _get_role_for_account(db, account_id, role_id) is None:
             raise RoleNotFoundError(f"Role não encontrada: {role_id}")
         member.role_id = uuid.UUID(str(role_id))
+
+    # Credencial (email/senha) só pode ser mexida pelo owner se o email for
+    # exclusivo desta account. Se a identidade também participa de outras
+    # empresas, a credencial é compartilhada — quem gere é a própria identidade.
+    if email is not None or password is not None:
+        shared = any(
+            u.account_id != member.account_id
+            for u in await get_users_by_email(db, member.email)
+        )
+        if shared:
+            raise SharedIdentityError(
+                "Usuário também pertence a outras empresas; "
+                "a senha/email é gerida pelo próprio usuário."
+            )
+
     if email is not None and email != member.email:
-        if await get_user_by_email(db, email) is not None:
+        if await get_users_by_email(db, email):
             raise DuplicateEmailError(f"Email already registered: {email}")
         member.email = email
     if password is not None:

@@ -6,7 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import hash_password
 from app.domains.accounts.models import Account, AccountStatus, AccountType
 from app.domains.auth.models import User, UserRole
-from app.domains.auth.service import DuplicateEmailError, get_user_by_email
+from app.domains.auth.service import (
+    DuplicateEmailError,
+    get_users_by_email,
+    set_password_for_email,
+)
 
 
 class AccountNotFoundError(Exception):
@@ -28,9 +32,17 @@ async def _create_account_with_owner(
     account_type: AccountType,
     owner_email: str,
     owner_password: str,
+    allow_existing: bool = False,
 ) -> tuple[Account, User]:
-    if await get_user_by_email(db, owner_email) is not None:
+    # Quando ``allow_existing`` (empresas), um email já cadastrado pode virar
+    # owner de outra account: reaproveitamos a senha da identidade (um email,
+    # uma senha) e ignoramos a senha enviada. Email de admin nunca é reusado.
+    existing = await get_users_by_email(db, owner_email)
+    if existing and (
+        not allow_existing or any(u.role == UserRole.ADMIN.value for u in existing)
+    ):
         raise DuplicateEmailError(f"Email already registered: {owner_email}")
+    password_hash = existing[0].password_hash if existing else hash_password(owner_password)
 
     account = Account(
         name=account_name,
@@ -42,7 +54,7 @@ async def _create_account_with_owner(
 
     owner = User(
         email=owner_email,
-        password_hash=hash_password(owner_password),
+        password_hash=password_hash,
         role=UserRole.OWNER,
         account_id=account.id,
     )
@@ -76,6 +88,7 @@ async def create_company(
         account_type=AccountType.COMPANY,
         owner_email=owner_email,
         owner_password=owner_password,
+        allow_existing=True,
     )
 
 
@@ -113,12 +126,18 @@ async def update_account_credentials(
     owner = await get_account_owner(db, account_id)
 
     if email is not None and email != owner.email:
-        if await get_user_by_email(db, email) is not None:
+        # Troca de email da identidade: o novo email não pode já pertencer a
+        # outra identidade. Renomeia todas as linhas do email antigo (a mesma
+        # pessoa pode estar em várias accounts).
+        if await get_users_by_email(db, email):
             raise DuplicateEmailError(f"Email already registered: {email}")
-        owner.email = email
+        old_email = owner.email
+        for user in await get_users_by_email(db, old_email):
+            user.email = email
 
     if password is not None:
-        owner.password_hash = hash_password(password)
+        # Propaga para todas as linhas do email (um email, uma senha).
+        await set_password_for_email(db, owner.email, password, commit=False)
 
     await db.commit()
     await db.refresh(owner)

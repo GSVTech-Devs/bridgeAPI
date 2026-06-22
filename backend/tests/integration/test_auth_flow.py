@@ -104,7 +104,23 @@ async def test_me_rejects_missing_and_invalid_token(client: AsyncClient) -> None
 # ---------------------------------------------------------------------------
 
 
-async def test_portal_login_returns_token_with_account_scope(
+async def _portal_token(client: AsyncClient, email: str, password: str, account_id) -> str:
+    """Faz login no portal e seleciona uma empresa, devolvendo o token escopado."""
+    login = await client.post(
+        "/auth/portal/login", json={"email": email, "password": password}
+    )
+    assert login.status_code == 200
+    identity_token = login.json()["access_token"]
+    select = await client.post(
+        "/auth/portal/select",
+        json={"account_id": str(account_id)},
+        headers={"Authorization": f"Bearer {identity_token}"},
+    )
+    assert select.status_code == 200
+    return select.json()["access_token"]
+
+
+async def test_portal_login_lists_companies_and_select_scopes_token(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
     account, _ = await seed_account(
@@ -116,7 +132,18 @@ async def test_portal_login_returns_token_with_account_scope(
         json={"email": "owner@acme.com", "password": "hunter2"},
     )
     assert login.status_code == 200
-    token = login.json()["access_token"]
+    body = login.json()
+    assert len(body["companies"]) == 1
+    assert body["companies"][0]["account_id"] == str(account.id)
+
+    # selecionar a empresa emite o token escopado (sem reentrar a senha)
+    select = await client.post(
+        "/auth/portal/select",
+        json={"account_id": str(account.id)},
+        headers={"Authorization": f"Bearer {body['access_token']}"},
+    )
+    assert select.status_code == 200
+    token = select.json()["access_token"]
 
     me = await client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.status_code == 200
@@ -131,18 +158,15 @@ async def test_admin_cannot_login_via_portal(
     response = await client.post(
         "/auth/portal/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}
     )
-    assert response.status_code == 401
+    # autentica, mas não tem nenhuma empresa de portal → 403
+    assert response.status_code == 403
 
 
 async def test_account_token_cannot_access_admin_route(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
     account, _ = await seed_account(db_session, email="owner@acme.com")
-    login = await client.post(
-        "/auth/portal/login",
-        json={"email": "owner@acme.com", "password": "hunter2"},
-    )
-    token = login.json()["access_token"]
+    token = await _portal_token(client, "owner@acme.com", "hunter2", account.id)
 
     # rota admin-only
     response = await client.get(

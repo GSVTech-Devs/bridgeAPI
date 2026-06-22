@@ -13,8 +13,12 @@ from app.domains.accounts.service import AccountNotFoundError, get_account_by_id
 from app.domains.auth.models import UserRole
 from app.domains.auth.schemas import (
     ChangePasswordRequest,
+    CompaniesResponse,
+    CompanyOption,
     LoginRequest,
     MeResponse,
+    PortalLoginResponse,
+    SelectCompanyRequest,
     TokenResponse,
 )
 from app.domains.auth.service import (
@@ -22,6 +26,8 @@ from app.domains.auth.service import (
     UserNotFoundError,
     authenticate_user,
     change_user_password,
+    get_account_user,
+    get_users_by_email,
 )
 from app.domains.members.service import resolve_user_capabilities
 
@@ -30,6 +36,33 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 bearer = HTTPBearer()
 
 _ACCOUNT_ROLES = {UserRole.OWNER.value, UserRole.MEMBER.value}
+# Token emitido logo após o login do portal, antes de escolher a empresa:
+# autentica a identidade (email) mas não dá acesso a nenhuma account até que
+# uma seja selecionada via /auth/portal/select.
+_PORTAL_IDENTITY_ROLE = "portal_identity"
+
+
+async def _portal_companies(db: AsyncSession, email: str) -> list[CompanyOption]:
+    """Empresas ativas acessíveis por um email (para o seletor de empresa)."""
+    companies: list[CompanyOption] = []
+    for user in await get_users_by_email(db, email):
+        if user.role not in _ACCOUNT_ROLES or user.account_id is None:
+            continue
+        try:
+            account = await get_account_by_id(db, str(user.account_id))
+        except AccountNotFoundError:
+            continue
+        if account.status != AccountStatus.ACTIVE:
+            continue
+        companies.append(
+            CompanyOption(
+                account_id=account.id,
+                name=account.name,
+                type=account.type,
+                role=user.role,
+            )
+        )
+    return companies
 
 
 def _build_identity(credentials: HTTPAuthorizationCredentials) -> MeResponse:
@@ -128,26 +161,87 @@ async def login(
     return TokenResponse(access_token=token)
 
 
-@router.post("/portal/login", response_model=TokenResponse)
+async def get_portal_identity(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer),
+    db: AsyncSession = Depends(get_db),
+) -> str:
+    """Identidade do portal (email) a partir de qualquer token válido seu.
+
+    Aceita tanto o token de identidade (pós-login, sem empresa) quanto um
+    token já escopado a uma empresa — ambos carregam o email em ``sub``. Exige
+    que o email tenha ao menos um vínculo de portal (owner/member).
+    """
+    identity = _decode_or_401(credentials)
+    users = await get_users_by_email(db, identity.email)
+    if not any(u.role in _ACCOUNT_ROLES and u.account_id for u in users):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    return identity.email
+
+
+@router.post("/portal/login", response_model=PortalLoginResponse)
 async def portal_login(
     body: LoginRequest,
     db: AsyncSession = Depends(get_db),
-) -> TokenResponse:
-    """Login dos usuários de account (responsável/membro)."""
+) -> PortalLoginResponse:
+    """Login dos usuários de account (responsável/membro).
+
+    Como um mesmo email pode acessar várias empresas, o login devolve a lista
+    de empresas + um token de identidade; o frontend seleciona uma empresa via
+    ``/auth/portal/select`` (ou entra direto quando há só uma).
+    """
     user = await authenticate_user(db, body.email, body.password)
-    if user is None or user.role not in _ACCOUNT_ROLES or user.account_id is None:
+    if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    companies = await _portal_companies(db, body.email)
+    if not companies:
+        # Email autenticou mas não tem nenhuma empresa ativa (sem vínculo de
+        # portal ou todas bloqueadas).
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Nenhuma empresa ativa disponível. Contate o administrador.",
+        )
+    token = create_access_token(body.email, role=_PORTAL_IDENTITY_ROLE)
+    return PortalLoginResponse(access_token=token, companies=companies)
+
+
+@router.get("/portal/companies", response_model=CompaniesResponse)
+async def portal_companies(
+    email: str = Depends(get_portal_identity),
+    db: AsyncSession = Depends(get_db),
+) -> CompaniesResponse:
+    """Empresas que o usuário logado pode acessar (para o seletor / troca)."""
+    return CompaniesResponse(companies=await _portal_companies(db, email))
+
+
+@router.post("/portal/select", response_model=TokenResponse)
+async def portal_select(
+    body: SelectCompanyRequest,
+    email: str = Depends(get_portal_identity),
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """Emite o token escopado a uma empresa escolhida (sem reentrar a senha).
+
+    Usado tanto na seleção pós-login quanto na troca de empresa já logado.
+    """
+    user = await get_account_user(db, body.account_id, email)
+    if user is None or user.role not in _ACCOUNT_ROLES or user.account_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sem acesso a esta empresa.",
+        )
     try:
         account = await get_account_by_id(db, str(user.account_id))
     except AccountNotFoundError:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sem acesso a esta empresa.",
         )
     if account.status != AccountStatus.ACTIVE:
         raise HTTPException(
@@ -155,7 +249,7 @@ async def portal_login(
             detail=f"Account is {account.status}. Contact the administrator.",
         )
     token = create_access_token(
-        user.email,
+        email,
         role=user.role,
         extra_claims={"user_id": str(user.id), "account_id": str(user.account_id)},
     )
@@ -207,4 +301,7 @@ async def me(
         except AccountNotFoundError:
             current.account_type = None
             current.account_name = None
+    if current.role in _ACCOUNT_ROLES:
+        # Quantas empresas ativas este email acessa — habilita "Trocar empresa".
+        current.account_count = len(await _portal_companies(db, current.email))
     return current
