@@ -60,7 +60,7 @@ async def upload_account_logo(
     if file.size is not None and file.size > MAX_LOGO_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Arquivo muito grande. O limite é 1 MB.",
+            detail="Arquivo muito grande. O limite é 5 MB.",
         )
     data = await file.read()
     try:

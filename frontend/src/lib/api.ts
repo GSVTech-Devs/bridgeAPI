@@ -59,6 +59,7 @@ export function getMe() {
     account_id?: string | null;
     capabilities: string[];
     account_type?: string | null;
+    account_name?: string | null;
     is_owner: boolean;
   }>("/auth/me");
 }

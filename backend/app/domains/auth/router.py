@@ -203,6 +203,8 @@ async def me(
         try:
             account = await get_account_by_id(db, str(current.account_id))
             current.account_type = account.type
+            current.account_name = account.name
         except AccountNotFoundError:
             current.account_type = None
+            current.account_name = None
     return current

@@ -3,8 +3,9 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { clearAuth, getToken } from "@/lib/auth";
+import { getToken } from "@/lib/auth";
 import { ThemeDropdown } from "@/components/ThemeDropdown";
+import { UserMenu } from "@/components/UserMenu";
 import { CAP } from "@/lib/capabilities";
 import {
   CapabilitiesProvider,
@@ -16,15 +17,14 @@ type NavItem = { href: string; label: string; icon: string; show: boolean };
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { email, can, isCompanyOwner, isOwner, logoDataUri } = useCapabilities();
+  const { email, accountName, can, isCompanyOwner, isOwner, logoDataUri } =
+    useCapabilities();
 
   useEffect(() => {
     if (!getToken()) {
       router.push("/login");
     }
   }, [router]);
-
-  const initial = email.trim().charAt(0).toUpperCase() || "?";
 
   const navItems: NavItem[] = [
     { href: "/dashboard", label: "Dashboard", icon: "dashboard", show: true },
@@ -38,11 +38,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     },
     { href: "/dashboard/users", label: "Usuários", icon: "group", show: isCompanyOwner },
   ];
-
-  function handleLogout() {
-    clearAuth();
-    router.push("/login");
-  }
 
   return (
     <div className="flex min-h-screen bg-surface text-on-surface font-body">
@@ -89,16 +84,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </ul>
-
-        <div className="mt-auto space-y-2 border-t border-outline-variant/15 pt-4">
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-2 rounded-full text-on-surface-variant hover:bg-surface transition-colors w-full text-left"
-          >
-            <span className="material-symbols-outlined text-[20px]">logout</span>
-            <span className="text-sm">Sair</span>
-          </button>
-        </div>
       </nav>
 
       {/* Main area */}
@@ -117,12 +102,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
               passwordHref="/dashboard/settings"
               brandingHref={isOwner ? "/dashboard/branding" : undefined}
             />
-            <div
-              title={email}
-              className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-sm ml-1"
-            >
-              {initial}
-            </div>
+            <UserMenu email={email} accountName={accountName} />
           </div>
         </header>
 

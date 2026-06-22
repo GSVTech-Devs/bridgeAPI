@@ -10,10 +10,10 @@ from app.domains.accounts.service import get_account_by_id
 # ---------------------------------------------------------------------------
 # Política de upload da logo — espelhada em frontend/src/lib/branding.ts.
 # ---------------------------------------------------------------------------
-MAX_LOGO_BYTES = 1024 * 1024  # 1 MB
+MAX_LOGO_BYTES = 5 * 1024 * 1024  # 5 MB
 ALLOWED_LOGO_TYPES: tuple[str, ...] = ("image/png", "image/jpeg", "image/webp")
 LOGO_REQUIREMENTS_MESSAGE = (
-    "Envie PNG, JPG ou WEBP de até 1 MB "
+    "Envie PNG, JPG ou WEBP de até 5 MB "
     "(recomendado ~320×80 px, fundo transparente)."
 )
 
@@ -45,7 +45,7 @@ def validate_logo(content_type: str | None, data: bytes) -> str:
     if not data:
         raise InvalidLogoError("Arquivo vazio.")
     if len(data) > MAX_LOGO_BYTES:
-        raise InvalidLogoError("Arquivo muito grande. O limite é 1 MB.")
+        raise InvalidLogoError("Arquivo muito grande. O limite é 5 MB.")
     normalized = (content_type or "").split(";")[0].strip().lower()
     if normalized not in ALLOWED_LOGO_TYPES:
         raise InvalidLogoError("Formato inválido. Envie PNG, JPG ou WEBP.")

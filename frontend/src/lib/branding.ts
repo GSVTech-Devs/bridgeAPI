@@ -8,10 +8,10 @@ export const LOGO_ALLOWED_TYPES = [
 
 export const LOGO_ACCEPT = LOGO_ALLOWED_TYPES.join(",");
 
-export const LOGO_MAX_BYTES = 1024 * 1024; // 1 MB
+export const LOGO_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
 export const LOGO_REQUIREMENTS_MESSAGE =
-  "PNG, JPG ou WEBP · até 1 MB · recomendado ~320×80 px com fundo transparente";
+  "PNG, JPG ou WEBP · até 5 MB · recomendado ~320×80 px com fundo transparente";
 
 /** Validação client-side; retorna a mensagem de erro ou null se estiver ok. */
 export function validateLogoFile(file: File): string | null {
@@ -19,7 +19,7 @@ export function validateLogoFile(file: File): string | null {
     return "Formato inválido. Envie PNG, JPG ou WEBP.";
   }
   if (file.size > LOGO_MAX_BYTES) {
-    return "Arquivo muito grande. O limite é 1 MB.";
+    return "Arquivo muito grande. O limite é 5 MB.";
   }
   return null;
 }

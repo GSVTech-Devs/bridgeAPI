@@ -9,6 +9,7 @@ interface CapabilitiesContextType {
   email: string;
   role: string;
   accountType: string | null;
+  accountName: string | null;
   isOwner: boolean;
   isCompanyOwner: boolean;
   capabilities: string[];
@@ -22,6 +23,7 @@ const CapabilitiesContext = createContext<CapabilitiesContextType>({
   email: "",
   role: "",
   accountType: null,
+  accountName: null,
   isOwner: false,
   isCompanyOwner: false,
   capabilities: [],
@@ -35,6 +37,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
   const [accountType, setAccountType] = useState<string | null>(null);
+  const [accountName, setAccountName] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [capabilities, setCapabilities] = useState<string[]>([]);
   const [logoDataUri, setLogoDataUri] = useState<string | null>(null);
@@ -48,6 +51,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
       setEmail(me.email);
       setRole(me.role);
       setAccountType(me.account_type ?? null);
+      setAccountName(me.account_name ?? null);
       setIsOwner(Boolean(me.is_owner));
       setCapabilities(me.capabilities ?? []);
       setLogoDataUri(branding.logo_data_uri ?? null);
@@ -76,6 +80,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
         email,
         role,
         accountType,
+        accountName,
         isOwner,
         isCompanyOwner,
         capabilities,

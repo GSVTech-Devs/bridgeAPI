@@ -36,4 +36,5 @@ class MeResponse(BaseModel):
     # Preenchidos apenas no endpoint /auth/me (para a UI decidir o que mostrar).
     capabilities: list[str] = Field(default_factory=list)
     account_type: Optional[str] = None
+    account_name: Optional[str] = None
     is_owner: bool = False

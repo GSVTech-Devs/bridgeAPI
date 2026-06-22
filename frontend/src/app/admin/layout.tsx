@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { clearAuth, getToken } from "@/lib/auth";
+import { getToken } from "@/lib/auth";
 import { getMe } from "@/lib/api";
 import { ThemeDropdown } from "@/components/ThemeDropdown";
+import { UserMenu } from "@/components/UserMenu";
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: "dashboard" },
@@ -33,13 +34,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       .then((me) => setEmail(me.email))
       .catch(() => {});
   }, [router, isLoginPage]);
-
-  const initial = email.trim().charAt(0).toUpperCase() || "?";
-
-  function handleLogout() {
-    clearAuth();
-    router.push("/admin/login");
-  }
 
   // A página de login do admin não usa o chrome (sidebar/header) do painel.
   if (isLoginPage) {
@@ -74,23 +68,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             );
           })}
         </nav>
-
-        <div className="mt-auto space-y-1 px-2">
-          <a
-            href="#"
-            className="flex items-center gap-3 text-on-surface-variant hover:text-primary px-6 py-3 transition-all"
-          >
-            {/* <span className="material-symbols-outlined text-[20px]">help</span> */}
-            {/* <span className="text-sm">Suporte</span> */}
-          </a>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 text-on-surface-variant hover:text-error px-6 py-3 transition-all w-full text-left"
-          >
-            <span className="material-symbols-outlined text-[20px]">logout</span>
-            <span className="text-sm">Sair</span>
-          </button>
-        </div>
       </aside>
 
       {/* Main content */}
@@ -103,12 +80,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <span className="material-symbols-outlined text-on-surface-variant text-[20px]">notifications</span>
             </button> */}
             <ThemeDropdown />
-            <div
-              title={email}
-              className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-sm ml-1"
-            >
-              {initial}
-            </div>
+            <UserMenu email={email} logoutHref="/admin/login" />
           </div>
         </header>
 

@@ -64,7 +64,7 @@ def test_validate_logo_rejects_content_type_mismatch():
 
 def test_validate_logo_rejects_too_large():
     with pytest.raises(InvalidLogoError):
-        validate_logo("image/png", PNG_BYTES[:8] + b"\x00" * (1024 * 1024 + 1))
+        validate_logo("image/png", PNG_BYTES[:8] + b"\x00" * (5 * 1024 * 1024 + 1))
 
 
 def test_validate_logo_rejects_empty():
