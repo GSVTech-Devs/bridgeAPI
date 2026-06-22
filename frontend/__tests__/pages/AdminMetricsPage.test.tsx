@@ -39,15 +39,21 @@ describe("AdminMetricsPage", () => {
     });
   });
 
-  it("exibe success rate corretamente como 100 - (error_rate * 100)", async () => {
-    // NOTA: AdminMetricsPage faz `errorRate = metrics.error_rate * 100`.
-    // O handler padrão tem error_rate: 0.012 (1.2% como fração).
-    // Portanto: errorRate = 1.2 → successRate = 98.80%.
-    //
-    // Se esse teste falhar com "0.00%", significa que o handler retorna
-    // error_rate como percentual (ex.: 1.2 = 120%) e o componente está
-    // interpretando errado — comportamento idêntico ao MetricsDashboard
-    // do cliente que não multiplica por 100.
+  it("exibe success rate como 100 - error_rate (error_rate já é percentual)", async () => {
+    // O backend devolve error_rate como PERCENTUAL (errors/total*100), ex.: 1.2
+    // para 1,2%. O componente faz successRate = 100 - error_rate, logo 98.80%.
+    server.use(
+      http.get("http://localhost:8000/metrics/admin", () =>
+        HttpResponse.json({
+          total_requests: 8400,
+          error_rate: 1.2,
+          avg_latency_ms: 64.0,
+          total_cost: 87.5,
+          billable_requests: 7800,
+          non_billable_requests: 600,
+        })
+      )
+    );
     render(<AdminMetricsPage />);
     await waitFor(() => {
       expect(screen.getByText(/98\.80%/)).toBeInTheDocument();
@@ -87,10 +93,10 @@ describe("AdminMetricsPage", () => {
     });
   });
 
-  it("renders health distribution section", async () => {
+  it("renders the success-vs-errors distribution section", async () => {
     render(<AdminMetricsPage />);
     await waitFor(() => {
-      expect(screen.getByText(/health distribution/i)).toBeInTheDocument();
+      expect(screen.getByText(/success vs errors/i)).toBeInTheDocument();
     });
   });
 });

@@ -31,12 +31,34 @@ jest.mock("@/lib/auth", () => ({
   getToken: jest.fn().mockReturnValue("valid-token"),
 }));
 
+// O CapabilitiesContext busca /auth/me e /portal/branding ao montar; mockamos
+// para tornar a navbar (gated por capabilities) determinística.
+jest.mock("@/lib/api", () => ({
+  getMe: jest.fn().mockResolvedValue({
+    email: "owner@acme.com",
+    role: "owner",
+    account_id: "acc-1",
+    capabilities: ["catalog", "docs", "api_keys"],
+    account_type: "company",
+    account_name: "Acme",
+    is_owner: true,
+    account_count: 1,
+  }),
+  getBranding: jest.fn().mockResolvedValue({ logo_data_uri: null }),
+}));
+
 beforeEach(() => {
   mockPush.mockClear();
   const { clearAuth, getToken } = jest.requireMock("@/lib/auth");
   (clearAuth as jest.Mock).mockClear();
   (getToken as jest.Mock).mockReset().mockReturnValue("valid-token");
 });
+
+/** Abre o dropdown do UserMenu (onde fica o botão Sair / Trocar empresa). */
+async function openUserMenu() {
+  const avatar = await screen.findByTitle("owner@acme.com");
+  fireEvent.click(avatar);
+}
 
 describe("DashboardLayout", () => {
   it("renders children content", () => {
@@ -48,11 +70,12 @@ describe("DashboardLayout", () => {
     expect(screen.getByTestId("page")).toBeInTheDocument();
   });
 
-  it("renders nav items: Dashboard, Catalog, My Keys", () => {
+  it("renders nav items: Dashboard, Catalog, My Keys", async () => {
     render(<DashboardLayout><div /></DashboardLayout>);
     expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /catalog/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /my keys/i })).toBeInTheDocument();
+    // "My Keys" é gated por capability api_keys, carregada async do /auth/me
+    expect(await screen.findByRole("link", { name: /my keys/i })).toBeInTheDocument();
   });
 
   it("renders 'Bridge API' brand in sidebar", () => {
@@ -60,20 +83,23 @@ describe("DashboardLayout", () => {
     expect(screen.getAllByText(/bridge api/i).length).toBeGreaterThan(0);
   });
 
-  it("renders logout button", () => {
+  it("renders logout button", async () => {
     render(<DashboardLayout><div /></DashboardLayout>);
+    await openUserMenu();
     expect(screen.getByRole("button", { name: /sair/i })).toBeInTheDocument();
   });
 
-  it("calls clearAuth when logout is clicked", () => {
+  it("calls clearAuth when logout is clicked", async () => {
     const { clearAuth } = jest.requireMock("@/lib/auth");
     render(<DashboardLayout><div /></DashboardLayout>);
+    await openUserMenu();
     fireEvent.click(screen.getByRole("button", { name: /sair/i }));
     expect(clearAuth).toHaveBeenCalledTimes(1);
   });
 
-  it("redirects to /login after logout", () => {
+  it("redirects to /login after logout", async () => {
     render(<DashboardLayout><div /></DashboardLayout>);
+    await openUserMenu();
     fireEvent.click(screen.getByRole("button", { name: /sair/i }));
     expect(mockPush).toHaveBeenCalledWith("/login");
   });

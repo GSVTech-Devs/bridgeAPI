@@ -31,12 +31,30 @@ jest.mock("@/lib/auth", () => ({
   getToken: jest.fn().mockReturnValue("valid-token"),
 }));
 
+// AdminLayout busca /auth/me ao montar para preencher o email do UserMenu.
+jest.mock("@/lib/api", () => ({
+  getMe: jest.fn().mockResolvedValue({
+    email: "admin@bridge.dev",
+    role: "admin",
+    account_id: null,
+    capabilities: [],
+    is_owner: false,
+    account_count: 0,
+  }),
+}));
+
 beforeEach(() => {
   mockPush.mockClear();
   const { clearAuth, getToken } = jest.requireMock("@/lib/auth");
   (clearAuth as jest.Mock).mockClear();
   (getToken as jest.Mock).mockReset().mockReturnValue("valid-token");
 });
+
+/** Abre o dropdown do UserMenu (onde fica o botão Sair). */
+async function openUserMenu() {
+  const avatar = await screen.findByTitle("admin@bridge.dev");
+  fireEvent.click(avatar);
+}
 
 describe("AdminLayout", () => {
   it("renders children content", () => {
@@ -62,20 +80,23 @@ describe("AdminLayout", () => {
     expect(screen.getByText("GSV Tech")).toBeInTheDocument();
   });
 
-  it("renders logout button", () => {
+  it("renders logout button", async () => {
     render(<AdminLayout><div /></AdminLayout>);
+    await openUserMenu();
     expect(screen.getByRole("button", { name: /sair/i })).toBeInTheDocument();
   });
 
-  it("calls clearAuth when logout button is clicked", () => {
+  it("calls clearAuth when logout button is clicked", async () => {
     const { clearAuth } = jest.requireMock("@/lib/auth");
     render(<AdminLayout><div /></AdminLayout>);
+    await openUserMenu();
     fireEvent.click(screen.getByRole("button", { name: /sair/i }));
     expect(clearAuth).toHaveBeenCalledTimes(1);
   });
 
-  it("redirects to /admin/login after logout", () => {
+  it("redirects to /admin/login after logout", async () => {
     render(<AdminLayout><div /></AdminLayout>);
+    await openUserMenu();
     fireEvent.click(screen.getByRole("button", { name: /sair/i }));
     expect(mockPush).toHaveBeenCalledWith("/admin/login");
   });
