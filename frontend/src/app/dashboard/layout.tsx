@@ -16,7 +16,7 @@ type NavItem = { href: string; label: string; icon: string; show: boolean };
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { email, can, isCompanyOwner, logoDataUri } = useCapabilities();
+  const { email, can, isCompanyOwner, isOwner, logoDataUri } = useCapabilities();
 
   useEffect(() => {
     if (!getToken()) {
@@ -113,7 +113,10 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
             />
           </div>
           <div className="flex items-center gap-3">
-            <ThemeDropdown passwordHref="/dashboard/settings" />
+            <ThemeDropdown
+              passwordHref="/dashboard/settings"
+              brandingHref={isOwner ? "/dashboard/branding" : undefined}
+            />
             <div
               title={email}
               className="h-8 w-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-sm ml-1"

@@ -10,7 +10,10 @@ const options: { value: Theme; label: string; icon: string }[] = [
   { value: "system", label: "Sistema", icon: "computer" },
 ];
 
-export function ThemeDropdown({ passwordHref }: { passwordHref?: string } = {}) {
+export function ThemeDropdown({
+  passwordHref,
+  brandingHref,
+}: { passwordHref?: string; brandingHref?: string } = {}) {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -37,22 +40,36 @@ export function ThemeDropdown({ passwordHref }: { passwordHref?: string } = {}) 
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-48 bg-surface-container-low border border-outline-variant/20 rounded-xl shadow-lg z-50 overflow-hidden py-1">
-          {passwordHref && (
+        <div className="absolute right-0 top-full mt-2 w-56 bg-surface-container-low border border-outline-variant/20 rounded-xl shadow-lg z-50 overflow-hidden py-1">
+          {(passwordHref || brandingHref) && (
             <>
               <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest px-4 pt-2 pb-1.5">
                 Conta
               </p>
-              <button
-                onClick={() => {
-                  router.push(passwordHref);
-                  setOpen(false);
-                }}
-                className="flex items-center gap-3 w-full px-4 py-2 text-sm text-on-surface hover:bg-surface-container transition-colors"
-              >
-                <span className="material-symbols-outlined text-[18px]">lock</span>
-                <span>Alterar senha</span>
-              </button>
+              {passwordHref && (
+                <button
+                  onClick={() => {
+                    router.push(passwordHref);
+                    setOpen(false);
+                  }}
+                  className="flex items-center gap-3 w-full px-4 py-2 text-sm text-on-surface hover:bg-surface-container transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[18px]">lock</span>
+                  <span>Alterar senha</span>
+                </button>
+              )}
+              {brandingHref && (
+                <button
+                  onClick={() => {
+                    router.push(brandingHref);
+                    setOpen(false);
+                  }}
+                  className="flex items-center gap-3 w-full px-4 py-2 text-sm text-on-surface hover:bg-surface-container transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[18px]">palette</span>
+                  <span>Identidade visual</span>
+                </button>
+              )}
               <div className="my-1 border-t border-outline-variant/15" />
             </>
           )}
