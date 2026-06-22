@@ -75,9 +75,18 @@ describe("LoginForm", () => {
     });
   });
 
-  it("redirects portal user to /dashboard after login", async () => {
+  it("redirects portal user with a single company straight to /dashboard", async () => {
     server.use(
       http.post("http://localhost:8000/auth/portal/login", () =>
+        HttpResponse.json({
+          access_token: CLIENT_JWT,
+          token_type: "bearer",
+          companies: [
+            { account_id: "c1", name: "Acme", type: "company", role: "owner" },
+          ],
+        })
+      ),
+      http.post("http://localhost:8000/auth/portal/select", () =>
         HttpResponse.json({ access_token: CLIENT_JWT, token_type: "bearer" })
       )
     );
@@ -92,6 +101,33 @@ describe("LoginForm", () => {
 
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith("/dashboard");
+    });
+  });
+
+  it("redirects portal user with multiple companies to /select-company", async () => {
+    server.use(
+      http.post("http://localhost:8000/auth/portal/login", () =>
+        HttpResponse.json({
+          access_token: CLIENT_JWT,
+          token_type: "bearer",
+          companies: [
+            { account_id: "c1", name: "Acme", type: "company", role: "owner" },
+            { account_id: "c2", name: "Beta", type: "individual", role: "member" },
+          ],
+        })
+      )
+    );
+    render(<LoginForm />);
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "multi@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/senha/i), {
+      target: { value: "pass" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /entrar|login|sign in/i }));
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/select-company");
     });
   });
 

@@ -6,6 +6,22 @@ export function saveAuth(token: string, role: string) {
   localStorage.setItem(ROLE_KEY, role);
 }
 
+function decodeRole(token: string): string {
+  try {
+    const base64Url = token.split(".")[1] ?? "";
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+    return JSON.parse(atob(padded)).role ?? "";
+  } catch {
+    return "";
+  }
+}
+
+// Salva o token já extraindo a role do próprio JWT.
+export function saveAuthFromToken(token: string) {
+  saveAuth(token, decodeRole(token));
+}
+
 export function clearAuth() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(ROLE_KEY);

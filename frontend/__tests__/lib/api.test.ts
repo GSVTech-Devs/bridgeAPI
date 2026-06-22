@@ -1,7 +1,12 @@
 import { http, HttpResponse } from "msw";
 import { server } from "../../src/mocks/server";
-import { apiFetch, login } from "../../src/lib/api";
-import { clearAuth } from "../../src/lib/auth";
+import {
+  apiFetch,
+  getPortalCompanies,
+  login,
+  portalLogin,
+  selectCompany,
+} from "../../src/lib/api";
 
 const BASE = "http://localhost:8000";
 
@@ -115,5 +120,32 @@ describe("login", () => {
     await expect(login("bad@email.com", "wrong")).rejects.toThrow(
       "Invalid credentials"
     );
+  });
+});
+
+describe("portal multi-account", () => {
+  it("portalLogin returns the identity token and the list of companies", async () => {
+    const res = await portalLogin("owner@acme.com", "secret");
+    expect(res.access_token).toBeTruthy();
+    expect(Array.isArray(res.companies)).toBe(true);
+    expect(res.companies[0]).toMatchObject({ account_id: "c1", role: "owner" });
+  });
+
+  it("getPortalCompanies lists the accessible companies", async () => {
+    const res = await getPortalCompanies();
+    expect(res.companies.map((c) => c.account_id)).toEqual(["c1", "c2"]);
+  });
+
+  it("selectCompany returns an account-scoped token", async () => {
+    let body: unknown;
+    server.use(
+      http.post(`${BASE}/auth/portal/select`, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ access_token: "scoped", token_type: "bearer" });
+      })
+    );
+    const res = await selectCompany("c2");
+    expect(res.access_token).toBe("scoped");
+    expect(body).toEqual({ account_id: "c2" });
   });
 });

@@ -11,7 +11,14 @@ export const handlers = [
   ),
 
   http.get(`${BASE}/auth/me`, () =>
-    HttpResponse.json({ email: "admin@bridge.dev", role: "admin", account_id: null })
+    HttpResponse.json({
+      email: "admin@bridge.dev",
+      role: "admin",
+      account_id: null,
+      capabilities: [],
+      is_owner: false,
+      account_count: 0,
+    })
   ),
 
   http.patch(`${BASE}/auth/portal/password`, () => new HttpResponse(null, { status: 204 })),
@@ -192,7 +199,26 @@ export const handlers = [
   // Portal login (account users)
   // ---------------------------------------------------------------------------
   http.post(`${BASE}/auth/portal/login`, () =>
-    HttpResponse.json({ access_token: "mock-portal-token", token_type: "bearer" })
+    HttpResponse.json({
+      access_token: "mock-portal-identity-token",
+      token_type: "bearer",
+      companies: [
+        { account_id: "c1", name: "Acme Corp", type: "company", role: "owner" },
+      ],
+    })
+  ),
+
+  http.get(`${BASE}/auth/portal/companies`, () =>
+    HttpResponse.json({
+      companies: [
+        { account_id: "c1", name: "Acme Corp", type: "company", role: "owner" },
+        { account_id: "c2", name: "Beta", type: "individual", role: "member" },
+      ],
+    })
+  ),
+
+  http.post(`${BASE}/auth/portal/select`, () =>
+    HttpResponse.json({ access_token: "mock-portal-scoped-token", token_type: "bearer" })
   ),
 
   // ---------------------------------------------------------------------------

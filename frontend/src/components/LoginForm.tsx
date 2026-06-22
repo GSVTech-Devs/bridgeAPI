@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { login, portalLogin } from "@/lib/api";
-import { saveAuth } from "@/lib/auth";
+import { login, portalLogin, selectCompany } from "@/lib/api";
+import { saveAuth, saveAuthFromToken } from "@/lib/auth";
 
 function decodeJwtPayload(token: string): { sub: string; role: string } {
   const base64Url = token.split(".")[1] ?? "";
@@ -29,13 +29,25 @@ export default function LoginForm({
     setLoading(true);
     setError(null);
     try {
-      const res = isAdmin
-        ? await login(email, password)
-        : await portalLogin(email, password);
-      const token = res.access_token;
-      const role = decodeJwtPayload(token).role;
-      saveAuth(token, role);
-      router.push(isAdmin ? "/admin" : "/dashboard");
+      if (isAdmin) {
+        const res = await login(email, password);
+        saveAuth(res.access_token, decodeJwtPayload(res.access_token).role);
+        router.push("/admin");
+        return;
+      }
+      // Portal: o login devolve um token de identidade + as empresas do email.
+      const res = await portalLogin(email, password);
+      // O token de identidade precisa estar salvo para chamar /select e /companies.
+      saveAuth(res.access_token, decodeJwtPayload(res.access_token).role);
+      if (res.companies.length === 1) {
+        // Acesso a uma única empresa: entra direto, sem mostrar o seletor.
+        const scoped = await selectCompany(res.companies[0].account_id);
+        saveAuthFromToken(scoped.access_token);
+        router.push("/dashboard");
+      } else {
+        // Várias empresas: escolhe qual dashboard acessar.
+        router.push("/select-company");
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Credenciais inválidas");
     } finally {

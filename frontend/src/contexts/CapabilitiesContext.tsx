@@ -14,6 +14,7 @@ interface CapabilitiesContextType {
   isCompanyOwner: boolean;
   capabilities: string[];
   logoDataUri: string | null;
+  accountCount: number;
   can: (feature: Capability | string) => boolean;
   refresh: () => Promise<void>;
 }
@@ -28,6 +29,7 @@ const CapabilitiesContext = createContext<CapabilitiesContextType>({
   isCompanyOwner: false,
   capabilities: [],
   logoDataUri: null,
+  accountCount: 0,
   can: () => false,
   refresh: async () => {},
 });
@@ -41,6 +43,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
   const [isOwner, setIsOwner] = useState(false);
   const [capabilities, setCapabilities] = useState<string[]>([]);
   const [logoDataUri, setLogoDataUri] = useState<string | null>(null);
+  const [accountCount, setAccountCount] = useState(0);
 
   const refresh = useCallback(async () => {
     try {
@@ -54,6 +57,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
       setAccountName(me.account_name ?? null);
       setIsOwner(Boolean(me.is_owner));
       setCapabilities(me.capabilities ?? []);
+      setAccountCount(me.account_count ?? 0);
       setLogoDataUri(branding.logo_data_uri ?? null);
     } catch {
       // erros de auth são tratados pelo apiFetch (redireciona no 401)
@@ -85,6 +89,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
         isCompanyOwner,
         capabilities,
         logoDataUri,
+        accountCount,
         can,
         refresh,
       }}

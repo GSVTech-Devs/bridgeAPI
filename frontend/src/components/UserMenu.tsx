@@ -8,10 +8,14 @@ export function UserMenu({
   email,
   accountName,
   logoutHref = "/login",
+  canSwitchAccount = false,
+  switchAccountHref = "/select-company",
 }: {
   email: string;
   accountName?: string | null;
   logoutHref?: string;
+  canSwitchAccount?: boolean;
+  switchAccountHref?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -32,6 +36,11 @@ export function UserMenu({
   function handleLogout() {
     clearAuth();
     router.push(logoutHref);
+  }
+
+  function handleSwitchAccount() {
+    setOpen(false);
+    router.push(switchAccountHref);
   }
 
   return (
@@ -65,6 +74,15 @@ export function UserMenu({
             </p>
           </div>
           <div className="border-t border-outline-variant/15" />
+          {canSwitchAccount && (
+            <button
+              onClick={handleSwitchAccount}
+              className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-on-surface hover:bg-surface-container transition-colors"
+            >
+              <span className="material-symbols-outlined text-[18px]">swap_horiz</span>
+              <span>Trocar empresa</span>
+            </button>
+          )}
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-on-surface hover:bg-surface-container transition-colors"

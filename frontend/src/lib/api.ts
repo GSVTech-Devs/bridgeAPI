@@ -61,14 +61,41 @@ export function getMe() {
     account_type?: string | null;
     account_name?: string | null;
     is_owner: boolean;
+    account_count: number;
   }>("/auth/me");
 }
 
-// Login do portal (usuários de account: responsável/membro).
+// Uma empresa/account acessível pelo email logado (para o seletor de empresa).
+export type CompanyOption = {
+  account_id: string;
+  name: string;
+  type: AccountType;
+  role: string;
+};
+
+// Login do portal: devolve um token de identidade + a lista de empresas
+// acessíveis. A empresa é escolhida em seguida via selectCompany().
 export function portalLogin(email: string, password: string) {
+  return apiFetch<{
+    access_token: string;
+    token_type: string;
+    companies: CompanyOption[];
+  }>("/auth/portal/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+// Empresas que o usuário logado pode acessar (seleção pós-login / troca).
+export function getPortalCompanies() {
+  return apiFetch<{ companies: CompanyOption[] }>("/auth/portal/companies");
+}
+
+// Emite o token escopado à empresa escolhida (sem reentrar a senha).
+export function selectCompany(accountId: string) {
   return apiFetch<{ access_token: string; token_type: string }>(
-    "/auth/portal/login",
-    { method: "POST", body: JSON.stringify({ email, password }) }
+    "/auth/portal/select",
+    { method: "POST", body: JSON.stringify({ account_id: accountId }) }
   );
 }
 

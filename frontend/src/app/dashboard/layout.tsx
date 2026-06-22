@@ -17,8 +17,15 @@ type NavItem = { href: string; label: string; icon: string; show: boolean };
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { email, accountName, can, isCompanyOwner, isOwner, logoDataUri } =
-    useCapabilities();
+  const {
+    email,
+    accountName,
+    can,
+    isCompanyOwner,
+    isOwner,
+    logoDataUri,
+    accountCount,
+  } = useCapabilities();
 
   useEffect(() => {
     if (!getToken()) {
@@ -102,7 +109,11 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
               passwordHref="/dashboard/settings"
               brandingHref={isOwner ? "/dashboard/branding" : undefined}
             />
-            <UserMenu email={email} accountName={accountName} />
+            <UserMenu
+              email={email}
+              accountName={accountName}
+              canSwitchAccount={accountCount > 1}
+            />
           </div>
         </header>
 
