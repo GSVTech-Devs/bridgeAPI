@@ -10,6 +10,7 @@ from app.core.authz import Feature
 from app.core.database import get_db
 from app.domains.auth.router import get_current_user, require_feature
 from app.domains.auth.schemas import MeResponse
+from app.domains.members.service import resolve_user_capabilities
 from app.domains.metrics.schemas import (
     ApiBreakdownResponse,
     ClientApiBreakdownResponse,
@@ -42,6 +43,14 @@ async def client_dashboard(
     db: AsyncSession = Depends(get_db),
 ) -> DashboardResponse:
     data = await get_client_dashboard(db, identity.account_id, since=since, until=until)
+    capabilities = await resolve_user_capabilities(db, identity)
+    if Feature.FINANCIAL.value not in capabilities:
+        data = {
+            **data,
+            "total_cost": None,
+            "billable_requests": None,
+            "non_billable_requests": None,
+        }
     return DashboardResponse(**data)
 
 
@@ -49,12 +58,15 @@ async def client_dashboard(
 async def client_by_api(
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
-    identity: MeResponse = Depends(require_feature(Feature.METRICS)),
+    identity: MeResponse = Depends(require_feature(Feature.CLIENT_USAGE)),
     db: AsyncSession = Depends(get_db),
 ) -> ClientApiBreakdownResponse:
     items = await get_client_api_detail(
         db, str(identity.account_id), since=since, until=until
     )
+    capabilities = await resolve_user_capabilities(db, identity)
+    if Feature.FINANCIAL.value not in capabilities:
+        items = [{**item, "total_cost": None} for item in items]
     return ClientApiBreakdownResponse(items=items)
 
 
@@ -63,7 +75,7 @@ async def client_by_key(
     api_id: Optional[str] = None,
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
-    identity: MeResponse = Depends(require_feature(Feature.METRICS)),
+    identity: MeResponse = Depends(require_feature(Feature.CLIENT_USAGE)),
     db: AsyncSession = Depends(get_db),
 ) -> KeyBreakdownResponse:
     import uuid as _uuid
@@ -79,7 +91,7 @@ async def client_by_key(
 async def client_status_codes(
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
-    identity: MeResponse = Depends(require_feature(Feature.METRICS)),
+    identity: MeResponse = Depends(require_feature(Feature.CLIENT_USAGE)),
     db: AsyncSession = Depends(get_db),
 ) -> ClientStatusCodesResponse:
     items = await get_client_status_codes(

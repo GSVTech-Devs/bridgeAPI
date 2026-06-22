@@ -35,7 +35,7 @@ router = APIRouter(prefix="/keys", tags=["keys"])
 async def create(
     body: APIKeyCreateRequest,
     db: AsyncSession = Depends(get_db),
-    identity: MeResponse = Depends(require_feature(Feature.API_KEYS)),
+    identity: MeResponse = Depends(require_feature(Feature.KEYS_ROTATE)),
 ) -> APIKeyCreateResponse:
     try:
         api_key, plain_secret = await create_api_key(
@@ -78,7 +78,7 @@ async def list_all(
 async def revoke(
     key_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    identity: MeResponse = Depends(require_feature(Feature.API_KEYS)),
+    identity: MeResponse = Depends(require_feature(Feature.KEYS_ROTATE)),
 ) -> APIKeyResponse:
     try:
         api_key = await revoke_api_key(db, identity.account_id, str(key_id))

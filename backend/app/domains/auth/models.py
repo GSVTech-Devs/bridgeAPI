@@ -26,6 +26,10 @@ class User(Base):
     account_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("accounts.id"), nullable=True, index=True
     )
+    # role customizada da empresa (apenas para membros); owner/admin não usam.
+    role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("account_roles.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

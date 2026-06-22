@@ -93,20 +93,28 @@ async def test_get_current_account_user_rejects_owner_without_account_id() -> No
 
 @pytest.mark.asyncio
 async def test_require_feature_allows_when_capability_present() -> None:
+    # owner tem todas as capabilities — short-circuit, sem tocar no banco.
     dep = require_feature(Feature.API_KEYS)
     identity = MeResponse(
         email="o@x.com", role="owner", user_id=uuid.uuid4(), account_id=uuid.uuid4()
     )
-    result = await dep(identity=identity)
+    result = await dep(identity=identity, db=None)
     assert result is identity
 
 
 @pytest.mark.asyncio
-async def test_require_feature_denies_when_capability_missing() -> None:
+async def test_require_feature_denies_when_capability_missing(monkeypatch) -> None:
     dep = require_feature(Feature.MEMBERS)
     identity = MeResponse(
         email="m@x.com", role="member", user_id=uuid.uuid4(), account_id=uuid.uuid4()
     )
+
+    async def fake_resolve(db, ident):
+        return {"api_keys", "logs"}  # capabilities resolvidas, sem MEMBERS
+
+    monkeypatch.setattr(
+        "app.domains.auth.router.resolve_user_capabilities", fake_resolve
+    )
     with pytest.raises(HTTPException) as exc:
-        await dep(identity=identity)
+        await dep(identity=identity, db=None)
     assert exc.value.status_code == 403

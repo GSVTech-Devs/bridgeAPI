@@ -1,35 +1,43 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { clearAuth, getToken } from "@/lib/auth";
-import { getMe } from "@/lib/api";
 import { ThemeDropdown } from "@/components/ThemeDropdown";
+import { CAP } from "@/lib/capabilities";
+import {
+  CapabilitiesProvider,
+  useCapabilities,
+} from "@/contexts/CapabilitiesContext";
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
-  { href: "/dashboard/catalog", label: "Catalog", icon: "api" },
-  { href: "/dashboard/keys", label: "My Keys", icon: "vpn_key" },
-  { href: "/dashboard/metrics", label: "Logs & Métricas", icon: "analytics" },
-];
+type NavItem = { href: string; label: string; icon: string; show: boolean };
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const { email, can, isCompanyOwner, logoDataUri } = useCapabilities();
 
   useEffect(() => {
     if (!getToken()) {
       router.push("/login");
-      return;
     }
-    getMe()
-      .then((me) => setEmail(me.email))
-      .catch(() => {});
   }, [router]);
 
   const initial = email.trim().charAt(0).toUpperCase() || "?";
+
+  const navItems: NavItem[] = [
+    { href: "/dashboard", label: "Dashboard", icon: "dashboard", show: true },
+    { href: "/dashboard/catalog", label: "Catalog", icon: "api", show: true },
+    { href: "/dashboard/keys", label: "My Keys", icon: "vpn_key", show: can(CAP.API_KEYS) },
+    {
+      href: "/dashboard/metrics",
+      label: "Logs & Métricas",
+      icon: "analytics",
+      show: can(CAP.LOGS) || can(CAP.CLIENT_USAGE),
+    },
+    { href: "/dashboard/users", label: "Usuários", icon: "group", show: isCompanyOwner },
+  ];
 
   function handleLogout() {
     clearAuth();
@@ -41,12 +49,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Sidebar */}
       <nav className="fixed left-0 top-0 h-screen w-64 bg-surface-container-low flex flex-col py-8 px-4 z-50">
         <div className="mb-10 px-4">
-          <h1 className="text-xl font-black tracking-tight text-on-surface font-headline">Bridge API</h1>
-          <p className="text-sm text-on-surface-variant mt-1">Developer Console</p>
+          {logoDataUri ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoDataUri}
+              alt="Logo da empresa"
+              className="max-h-12 max-w-full object-contain"
+            />
+          ) : (
+            <h1 className="text-xl font-black tracking-tight text-on-surface font-headline">
+              Bridge API
+            </h1>
+          )}
+          <p className="text-sm text-on-surface-variant mt-1">BridgeAPI by GSV Tech</p>
         </div>
 
         <ul className="flex-1 space-y-2">
-          {navItems.map((item) => {
+          {navItems.filter((item) => item.show).map((item) => {
             const active = pathname === item.href;
             return (
               <li key={item.href}>
@@ -72,13 +91,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </ul>
 
         <div className="mt-auto space-y-2 border-t border-outline-variant/15 pt-4">
-          <a
-            href="#"
-            className="flex items-center gap-3 px-4 py-2 rounded-full text-on-surface-variant hover:bg-surface transition-colors"
-          >
-            {/* <span className="material-symbols-outlined text-[20px]">help_outline</span> */}
-            {/* <span className="text-sm">Help</span> */}
-          </a>
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 px-4 py-2 rounded-full text-on-surface-variant hover:bg-surface transition-colors w-full text-left"
@@ -101,9 +113,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             />
           </div>
           <div className="flex items-center gap-3">
-            {/* <button className="text-on-surface-variant hover:bg-surface-container-low rounded-full p-2 transition-colors">
-              <span className="material-symbols-outlined text-[20px]">notifications</span>
-            </button> */}
             <ThemeDropdown passwordHref="/dashboard/settings" />
             <div
               title={email}
@@ -117,5 +126,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <main className="mt-16 flex-1 p-8">{children}</main>
       </div>
     </div>
+  );
+}
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <CapabilitiesProvider>
+      <DashboardShell>{children}</DashboardShell>
+    </CapabilitiesProvider>
   );
 }

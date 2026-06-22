@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { getClientByApi, getClientByKey, getLogs } from "@/lib/api";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useCapabilities } from "@/contexts/CapabilitiesContext";
+import { CAP } from "@/lib/capabilities";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -13,7 +15,7 @@ type ApiItem = {
   total_requests: number;
   error_count: number;
   success_count: number;
-  total_cost: number;
+  total_cost: number | null;
 };
 
 type LogItem = {
@@ -452,7 +454,12 @@ function getTimeRange(
 
 export default function MetricsPage() {
   const { theme } = useTheme();
+  const { loading: capsLoading, can } = useCapabilities();
+  const canUsage = can(CAP.CLIENT_USAGE);
+  const canFinancial = can(CAP.FINANCIAL);
+  const canLogs = can(CAP.LOGS);
   const [apis, setApis] = useState<ApiItem[]>([]);
+  const [standaloneLogs, setStandaloneLogs] = useState<LogItem[]>([]);
   const [selectedApi, setSelectedApi] = useState<ApiItem | null>(null);
   const [filteredMetrics, setFilteredMetrics] = useState<ApiItem | null>(null);
   const [logs, setLogs] = useState<LogItem[]>([]);
@@ -481,16 +488,27 @@ export default function MetricsPage() {
     : avgLatency < 800 ? "text-yellow-500"
     : "text-error";
 
-  // Initial load — all-time API list (for the top cards)
+  // Initial load — depende das capabilities do usuário.
   useEffect(() => {
-    getClientByApi()
-      .then((data) => {
-        setApis(data.items);
-        if (data.items.length > 0) setSelectedApi(data.items[0]);
-      })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Erro ao carregar"))
-      .finally(() => setLoading(false));
-  }, []);
+    if (capsLoading) return;
+    if (canUsage) {
+      getClientByApi()
+        .then((data) => {
+          setApis(data.items);
+          if (data.items.length > 0) setSelectedApi(data.items[0]);
+        })
+        .catch((err: unknown) => setError(err instanceof Error ? err.message : "Erro ao carregar"))
+        .finally(() => setLoading(false));
+    } else if (canLogs) {
+      // Sem acesso ao uso por API, mas com acesso a logs: visão simples de logs.
+      getLogs(0, 200)
+        .then((data) => setStandaloneLogs(data.items))
+        .catch((err: unknown) => setError(err instanceof Error ? err.message : "Erro ao carregar"))
+        .finally(() => setLoading(false));
+    } else {
+      setLoading(false);
+    }
+  }, [capsLoading, canUsage, canLogs]);
 
   // Re-fetch filtered summary metrics when API selection or time range changes
   useEffect(() => {
@@ -512,7 +530,9 @@ export default function MetricsPage() {
     setLogsLoading(true);
     const { since, until } = getTimeRange(timeFilter, dateFrom, dateTo);
     Promise.all([
-      getLogs(0, 200, selectedApi.api_id, since, until),
+      canLogs
+        ? getLogs(0, 200, selectedApi.api_id, since, until)
+        : Promise.resolve({ items: [] as LogItem[] }),
       getClientByKey({ api_id: selectedApi.api_id, since, until }),
     ])
       .then(([logsData, keyData]) => {
@@ -552,8 +572,8 @@ export default function MetricsPage() {
         <div role="alert" className="p-4 bg-error-container text-on-error-container rounded-xl text-sm">{error}</div>
       )}
 
-      {/* API Cards */}
-      {apis.length === 0 ? (
+      {/* API Cards — apenas para quem tem acesso ao uso por API/chave */}
+      {canUsage && (apis.length === 0 ? (
         <div className="text-center py-16 text-on-surface-variant">
           <span className="material-symbols-outlined text-5xl mb-4 block opacity-40">analytics</span>
           <p>Nenhuma API com dados ainda.</p>
@@ -614,10 +634,12 @@ export default function MetricsPage() {
                         <span className="text-xs text-outline block mb-1">Total Requests</span>
                         <span className="font-headline font-bold text-2xl text-on-surface">{api.total_requests.toLocaleString()}</span>
                       </div>
-                      <div className="text-right">
-                        <span className="text-xs text-outline block mb-1">Custo Total</span>
-                        <span className="font-headline font-semibold text-lg text-on-surface">${api.total_cost.toFixed(4)}</span>
-                      </div>
+                      {canFinancial && (
+                        <div className="text-right">
+                          <span className="text-xs text-outline block mb-1">Custo Total</span>
+                          <span className="font-headline font-semibold text-lg text-on-surface">${(api.total_cost ?? 0).toFixed(4)}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -691,15 +713,17 @@ export default function MetricsPage() {
                       </div>
                     </div>
 
-                    <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/15 flex flex-col justify-between bg-gradient-to-br from-surface-container-lowest to-surface-variant">
-                      <span className="text-sm text-on-surface-variant font-medium mb-4 flex items-center gap-2">
-                        <span className="material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>account_balance_wallet</span>
-                        Total Gasto
-                      </span>
-                      <span className="font-headline text-3xl font-extrabold text-primary tracking-tight">
-                        ${m.total_cost.toFixed(4)}
-                      </span>
-                    </div>
+                    {canFinancial && (
+                      <div className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/15 flex flex-col justify-between bg-gradient-to-br from-surface-container-lowest to-surface-variant">
+                        <span className="text-sm text-on-surface-variant font-medium mb-4 flex items-center gap-2">
+                          <span className="material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>account_balance_wallet</span>
+                          Total Gasto
+                        </span>
+                        <span className="font-headline text-3xl font-extrabold text-primary tracking-tight">
+                          ${(m.total_cost ?? 0).toFixed(4)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -839,6 +863,7 @@ export default function MetricsPage() {
               )}
 
               {/* Logs Table */}
+              {canLogs && (
               <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/15 overflow-hidden">
                 <div className="p-6 border-b border-outline-variant/15 flex justify-between items-center bg-surface/50">
                   <h3 className="font-headline font-bold text-lg text-on-surface">Logs Recentes</h3>
@@ -879,9 +904,45 @@ export default function MetricsPage() {
                   </div>
                 )}
               </div>
+              )}
             </section>
           )}
         </>
+      ))}
+
+      {/* Visão simples de logs para quem tem 'logs' mas não 'uso por API' */}
+      {!canUsage && canLogs && (
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/15 overflow-hidden">
+          <div className="p-6 border-b border-outline-variant/15 flex justify-between items-center bg-surface/50">
+            <h3 className="font-headline font-bold text-lg text-on-surface">Logs Recentes</h3>
+            <span className="text-xs text-on-surface-variant">
+              {standaloneLogs.length} registros · clique na linha para ver resposta
+            </span>
+          </div>
+          {standaloneLogs.length === 0 ? (
+            <p className="p-8 text-sm text-on-surface-variant text-center">Nenhum log encontrado.</p>
+          ) : (
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead className="sticky top-0 z-10 bg-surface text-xs font-semibold text-outline tracking-wider uppercase">
+                  <tr>
+                    <th className="px-6 py-4">Método & Endpoint</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4">Duração</th>
+                    <th className="px-6 py-4">Chave</th>
+                    <th className="px-6 py-4 text-right">Timestamp</th>
+                    <th className="px-6 py-4" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-container-low">
+                  {standaloneLogs.map((log) => (
+                    <LogRow key={log.correlation_id} log={log} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

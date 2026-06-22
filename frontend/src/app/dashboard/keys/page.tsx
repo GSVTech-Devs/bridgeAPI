@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { getCatalog, getKeys, createKey, revokeKey } from "@/lib/api";
+import { useCapabilities } from "@/contexts/CapabilitiesContext";
+import { CAP } from "@/lib/capabilities";
 
 type CatalogEntry = { id: string; name: string; slug?: string; base_url: string; status: string };
 type Key = { id: string; api_id: string | null; name: string; key_prefix: string; api_key: string | null; status: string; created_at: string };
@@ -28,6 +30,8 @@ function CopyButton({ value }: { value: string }) {
 }
 
 export default function KeysPage() {
+  const { can } = useCapabilities();
+  const canRotate = can(CAP.KEYS_ROTATE);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [keys, setKeys] = useState<Key[]>([]);
   const [loading, setLoading] = useState(true);
@@ -141,7 +145,7 @@ export default function KeysPage() {
                       {createErrors[api.id]}
                     </div>
                   )}
-                  {atLimit ? (
+                  {!canRotate ? null : atLimit ? (
                     <div className="flex items-center gap-3 p-3 bg-error-container/40 border border-error/20 rounded-xl text-sm text-on-error-container">
                       <span className="material-symbols-outlined text-[18px]">block</span>
                       Limite de 5 chaves ativas atingido. Revogue uma chave para criar outra.
@@ -210,16 +214,18 @@ export default function KeysPage() {
                                 </button>
                               )}
                               <CopyButton value={copyValue} />
-                              <button
-                                onClick={() => handleRevoke(k.id)}
-                                disabled={actionLoading === k.id}
-                                className="bg-surface-container-highest hover:bg-error-container text-on-surface hover:text-error rounded-lg p-2.5 transition-colors"
-                                title="Revogar chave"
-                              >
-                                <span className="material-symbols-outlined text-[20px]">
-                                  {actionLoading === k.id ? "hourglass_empty" : "delete"}
-                                </span>
-                              </button>
+                              {canRotate && (
+                                <button
+                                  onClick={() => handleRevoke(k.id)}
+                                  disabled={actionLoading === k.id}
+                                  className="bg-surface-container-highest hover:bg-error-container text-on-surface hover:text-error rounded-lg p-2.5 transition-colors"
+                                  title="Revogar chave"
+                                >
+                                  <span className="material-symbols-outlined text-[20px]">
+                                    {actionLoading === k.id ? "hourglass_empty" : "delete"}
+                                  </span>
+                                </button>
+                              )}
                             </div>
                           </div>
                         );

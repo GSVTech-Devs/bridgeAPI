@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { getClientDashboard, getClientByApi, getClientStatusCodes, getLogs } from "@/lib/api";
 import Link from "next/link";
+import { useCapabilities } from "@/contexts/CapabilitiesContext";
+import { CAP } from "@/lib/capabilities";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -12,9 +14,9 @@ type Metrics = {
   total_requests: number;
   error_rate: number;
   avg_latency_ms: number;
-  total_cost: number;
-  billable_requests: number;
-  non_billable_requests: number;
+  total_cost: number | null;
+  billable_requests: number | null;
+  non_billable_requests: number | null;
 };
 
 type ApiBreakdownItem = {
@@ -23,7 +25,7 @@ type ApiBreakdownItem = {
   total_requests: number;
   error_count: number;
   success_count: number;
-  total_cost: number;
+  total_cost: number | null;
 };
 
 type StatusCodeItem = {
@@ -101,26 +103,37 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const { loading: capsLoading, can } = useCapabilities();
+  const canMetrics = can(CAP.METRICS);
+  const canUsage = can(CAP.CLIENT_USAGE);
+  const canFinancial = can(CAP.FINANCIAL);
+  const canLogs = can(CAP.LOGS);
+
   useEffect(() => {
-    Promise.all([
-      getClientDashboard(),
-      getClientByApi(),
-      getClientByApi({ since: since(30) }),
-      getClientByApi({ since: since(15) }),
-      getClientStatusCodes(),
-      getLogs(0, 10),
-    ])
-      .then(([m, all, s30, s15, sc, logs]) => {
+    if (capsLoading) return;
+    (async () => {
+      try {
+        const [m, all, s30, s15, sc, logs] = await Promise.all([
+          canMetrics ? getClientDashboard() : Promise.resolve(null),
+          canUsage ? getClientByApi() : Promise.resolve({ items: [] as ApiBreakdownItem[] }),
+          canUsage ? getClientByApi({ since: since(30) }) : Promise.resolve({ items: [] as ApiBreakdownItem[] }),
+          canUsage ? getClientByApi({ since: since(15) }) : Promise.resolve({ items: [] as ApiBreakdownItem[] }),
+          canUsage ? getClientStatusCodes() : Promise.resolve({ items: [] as StatusCodeItem[] }),
+          canLogs ? getLogs(0, 10) : Promise.resolve({ items: [] as LogItem[] }),
+        ]);
         setMetrics(m);
         setAllTime(all.items);
         setLast30(s30.items);
         setLast15(s15.items);
         setStatusCodes(sc.items);
         setRecentLogs(logs.items as LogItem[]);
-      })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Erro ao carregar"))
-      .finally(() => setLoading(false));
-  }, []);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Erro ao carregar");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [capsLoading, canMetrics, canUsage, canLogs]);
 
   if (loading) {
     return (
@@ -137,8 +150,23 @@ export default function DashboardPage() {
   const barData = metrics
     ? [
         { name: "Total", value: metrics.total_requests },
-        { name: "Faturáveis", value: metrics.billable_requests },
-        { name: "Não faturáveis", value: metrics.non_billable_requests },
+        ...(canFinancial
+          ? [
+              { name: "Faturáveis", value: metrics.billable_requests ?? 0 },
+              { name: "Não faturáveis", value: metrics.non_billable_requests ?? 0 },
+            ]
+          : []),
+      ]
+    : [];
+
+  const statCards = metrics
+    ? [
+        { label: "Total de Solicitações", value: metrics.total_requests.toLocaleString(), icon: "data_usage", color: "text-primary", bg: "bg-primary/10" },
+        { label: "Taxa de Sucesso", value: `${(100 - metrics.error_rate).toFixed(1)}%`, icon: "check_circle", color: "text-emerald-600", bg: "bg-emerald-50" },
+        { label: "Latência Média", value: `${Math.round(metrics.avg_latency_ms)}ms`, icon: "timer", color: "text-tertiary", bg: "bg-tertiary/10" },
+        ...(canFinancial
+          ? [{ label: "Custo Total", value: `$${(metrics.total_cost ?? 0).toFixed(4)}`, icon: "payments", color: "text-primary", bg: "bg-primary/10" }]
+          : []),
       ]
     : [];
 
@@ -176,16 +204,12 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {metrics && (
+      {!loading && (
         <div className="space-y-8">
           {/* Stat cards */}
-          <div className="grid grid-cols-4 gap-5">
-            {[
-              { label: "Total de Solicitações", value: metrics.total_requests.toLocaleString(), icon: "data_usage", color: "text-primary", bg: "bg-primary/10" },
-              { label: "Taxa de Sucesso", value: `${(100 - metrics.error_rate).toFixed(1)}%`, icon: "check_circle", color: "text-emerald-600", bg: "bg-emerald-50" },
-              { label: "Latência Média", value: `${Math.round(metrics.avg_latency_ms)}ms`, icon: "timer", color: "text-tertiary", bg: "bg-tertiary/10" },
-              { label: "Custo Total", value: `$${metrics.total_cost.toFixed(4)}`, icon: "payments", color: "text-primary", bg: "bg-primary/10" },
-            ].map((card) => (
+          {canMetrics && metrics && (
+          <div className={`grid gap-5 ${canFinancial ? "grid-cols-4" : "grid-cols-3"}`}>
+            {statCards.map((card) => (
               <div key={card.label} className="bg-surface-container-lowest rounded-2xl border border-outline-variant/15 p-6 flex flex-col justify-between h-36">
                 <div className="flex justify-between items-start">
                   <span className="text-sm text-on-surface-variant font-medium">{card.label}</span>
@@ -197,8 +221,10 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
+          )}
 
           {/* Charts */}
+          {canMetrics && metrics && (
           <div className="grid grid-cols-3 gap-5">
             <div className="col-span-2">
             <SectionCard icon="bar_chart" title="Visão Geral das Requisições" subtitle="Total, faturáveis e não faturáveis">
@@ -231,10 +257,11 @@ export default function DashboardPage() {
               </div>
             </SectionCard>
           </div>
+          )}
 
           {/* Requests by API */}
-          {apiIds.length > 0 && (
-            <SectionCard icon="api" title="Requisições por API" subtitle="Total, últimos 30 e 15 dias com custo">
+          {canUsage && apiIds.length > 0 && (
+            <SectionCard icon="api" title="Requisições por API" subtitle={canFinancial ? "Total, últimos 30 e 15 dias com custo" : "Total, últimos 30 e 15 dias"}>
               <div className="overflow-auto max-h-[320px]">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 bg-surface-container-lowest z-10">
@@ -243,9 +270,9 @@ export default function DashboardPage() {
                       <th className="text-right px-6 py-3 font-semibold">Total</th>
                       <th className="text-right px-6 py-3 font-semibold">Últimos 30d</th>
                       <th className="text-right px-6 py-3 font-semibold">Últimos 15d</th>
-                      <th className="text-right px-6 py-3 font-semibold">Custo Total</th>
-                      <th className="text-right px-6 py-3 font-semibold">Custo 30d</th>
-                      <th className="text-right px-6 py-3 font-semibold">Custo 15d</th>
+                      {canFinancial && <th className="text-right px-6 py-3 font-semibold">Custo Total</th>}
+                      {canFinancial && <th className="text-right px-6 py-3 font-semibold">Custo 30d</th>}
+                      {canFinancial && <th className="text-right px-6 py-3 font-semibold">Custo 15d</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -266,9 +293,9 @@ export default function DashboardPage() {
                           <td className="px-6 py-4 text-right font-semibold text-on-surface">{row.total_requests.toLocaleString()}</td>
                           <td className="px-6 py-4 text-right text-on-surface-variant">{r30?.total_requests.toLocaleString() ?? "—"}</td>
                           <td className="px-6 py-4 text-right text-on-surface-variant">{r15?.total_requests.toLocaleString() ?? "—"}</td>
-                          <td className="px-6 py-4 text-right font-semibold text-on-surface">${row.total_cost.toFixed(4)}</td>
-                          <td className="px-6 py-4 text-right text-on-surface-variant">{r30 ? `$${r30.total_cost.toFixed(4)}` : "—"}</td>
-                          <td className="px-6 py-4 text-right text-on-surface-variant">{r15 ? `$${r15.total_cost.toFixed(4)}` : "—"}</td>
+                          {canFinancial && <td className="px-6 py-4 text-right font-semibold text-on-surface">${(row.total_cost ?? 0).toFixed(4)}</td>}
+                          {canFinancial && <td className="px-6 py-4 text-right text-on-surface-variant">{r30 ? `$${(r30.total_cost ?? 0).toFixed(4)}` : "—"}</td>}
+                          {canFinancial && <td className="px-6 py-4 text-right text-on-surface-variant">{r15 ? `$${(r15.total_cost ?? 0).toFixed(4)}` : "—"}</td>}
                         </tr>
                       );
                     })}
@@ -279,7 +306,7 @@ export default function DashboardPage() {
           )}
 
           {/* Health + Status Codes */}
-          {apiIds.length > 0 && (
+          {canUsage && apiIds.length > 0 && (
             <div className="grid grid-cols-2 gap-5">
               <SectionCard icon="monitor_heart" title="Saúde por API" subtitle="Sucesso, erros e taxa de erro">
                 <div className="overflow-auto max-h-[320px]">
@@ -349,6 +376,7 @@ export default function DashboardPage() {
           )}
 
           {/* Recent Consults */}
+          {canLogs && (
           <div className="h-[420px] bg-surface-container-lowest rounded-xl border border-outline-variant/10 overflow-hidden flex flex-col">
             <div className="px-5 py-4 border-b border-outline-variant/10 shrink-0 flex items-center justify-between">
               <h4 className="text-xl font-bold tracking-tight font-headline">Consultas Recentes</h4>
@@ -383,6 +411,7 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
+          )}
         </div>
       )}
     </div>

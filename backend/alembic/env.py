@@ -7,6 +7,7 @@ import app.domains.accounts.models  # noqa: F401
 import app.domains.apis.models  # noqa: F401
 import app.domains.auth.models  # noqa: F401
 import app.domains.keys.models  # noqa: F401
+import app.domains.members.models  # noqa: F401
 import app.domains.metrics.models  # noqa: F401
 import app.domains.permissions.models  # noqa: F401
 from alembic import context

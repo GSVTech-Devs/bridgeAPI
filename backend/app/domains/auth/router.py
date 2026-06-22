@@ -5,7 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.authz import Feature, get_user_capabilities
+from app.core.authz import Feature
 from app.core.database import get_db
 from app.core.security import create_access_token, decode_access_token
 from app.domains.accounts.models import AccountStatus
@@ -23,6 +23,7 @@ from app.domains.auth.service import (
     authenticate_user,
     change_user_password,
 )
+from app.domains.members.service import resolve_user_capabilities
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -88,13 +89,17 @@ async def get_current_account_user(
 def require_feature(feature: Feature):
     """Dependency que exige uma capability de dashboard.
 
-    Seam para o RBAC por membro futuro: hoje deriva do papel.
+    As capabilities são resolvidas ao vivo do banco (papel + role do membro),
+    de modo que mudanças nas toggles do owner valem imediatamente e não há
+    como forjar permissões pelo token.
     """
 
     async def _dep(
         identity: MeResponse = Depends(get_current_account_user),
+        db: AsyncSession = Depends(get_db),
     ) -> MeResponse:
-        if feature not in get_user_capabilities(identity.role):
+        capabilities = await resolve_user_capabilities(db, identity)
+        if feature.value not in capabilities:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Feature not allowed: {feature.value}",
@@ -189,5 +194,15 @@ async def change_portal_password(
 @router.get("/me", response_model=MeResponse)
 async def me(
     current: MeResponse = Depends(get_current_identity),
+    db: AsyncSession = Depends(get_db),
 ) -> MeResponse:
+    """Identidade do usuário logado + capabilities efetivas (para a UI)."""
+    current.capabilities = sorted(await resolve_user_capabilities(db, current))
+    current.is_owner = current.role == UserRole.OWNER.value
+    if current.account_id is not None:
+        try:
+            account = await get_account_by_id(db, str(current.account_id))
+            current.account_type = account.type
+        except AccountNotFoundError:
+            current.account_type = None
     return current

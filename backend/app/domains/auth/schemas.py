@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.core.security import validate_password_strength
 
@@ -33,3 +33,7 @@ class MeResponse(BaseModel):
     role: str
     user_id: Optional[uuid.UUID] = None
     account_id: Optional[uuid.UUID] = None
+    # Preenchidos apenas no endpoint /auth/me (para a UI decidir o que mostrar).
+    capabilities: list[str] = Field(default_factory=list)
+    account_type: Optional[str] = None
+    is_owner: bool = False

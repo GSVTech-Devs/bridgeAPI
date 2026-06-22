@@ -177,13 +177,22 @@ async def test_me_with_account_token_returns_account_scope(client: AsyncClient) 
         role="owner",
         extra_claims={"user_id": str(uuid.uuid4()), "account_id": str(account_id)},
     )
-    response = await client.get(
-        "/auth/me", headers={"Authorization": f"Bearer {token}"}
-    )
+    account = Account(id=account_id, name="Acme", type=AccountType.COMPANY)
+    with patch(
+        "app.domains.auth.router.get_account_by_id",
+        new=AsyncMock(return_value=account),
+    ):
+        response = await client.get(
+            "/auth/me", headers={"Authorization": f"Bearer {token}"}
+        )
     assert response.status_code == 200
     body = response.json()
     assert body["role"] == "owner"
     assert body["account_id"] == str(account_id)
+    # owner de empresa: enxerga todas as capabilities e a gestão de usuários
+    assert body["is_owner"] is True
+    assert body["account_type"] == "company"
+    assert "members" in body["capabilities"]
 
 
 # ---------------------------------------------------------------------------

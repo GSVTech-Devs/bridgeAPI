@@ -4,8 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.domains.accounts.router import router as accounts_router
 from app.domains.apis.router import router as apis_router
 from app.domains.auth.router import router as auth_router
+from app.domains.branding.router import router as branding_router
 from app.domains.keys.router import router as keys_router
 from app.domains.logs.router import router as logs_router
+from app.domains.members.router import admin_router as members_admin_router
+from app.domains.members.router import router as members_router
 from app.domains.metrics.router import router as metrics_router
 from app.domains.permissions.router import router as permissions_router
 from app.domains.proxy.router import router as proxy_router
@@ -30,6 +33,9 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(accounts_router)
+app.include_router(members_router)
+app.include_router(members_admin_router)
+app.include_router(branding_router)
 app.include_router(apis_router)
 app.include_router(keys_router)
 app.include_router(permissions_router)

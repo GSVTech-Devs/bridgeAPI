@@ -10,6 +10,7 @@ import {
   updateAccountCredentials,
 } from "@/lib/api";
 import { isValidPassword, PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/password";
+import AccountUsersManager from "@/components/AccountUsersManager";
 
 type Account = {
   id: string;
@@ -230,11 +231,23 @@ function ManageAccountModal({
   onClose: () => void;
   onUpdated: (email: string) => void;
 }) {
+  const isCompany = account.type === "company";
+  const [tab, setTab] = useState<"credentials" | "users">("credentials");
   const [email, setEmail] = useState(account.owner_email ?? "");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Fecha o modal com a tecla ESC. Modais aninhados (roles/usuários) capturam
+  // o ESC antes deste handler, então só este fecha quando nenhum está aberto.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -274,14 +287,57 @@ function ManageAccountModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md bg-surface-container-lowest rounded-2xl p-8 shadow-xl">
-        <h3 className="text-xl font-bold text-on-surface font-headline mb-1">
-          Gerenciar acesso
-        </h3>
-        <p className="text-sm text-on-surface-variant mb-6">
-          {account.name} · {account.type === "company" ? "Empresa" : "Avulso"}
-        </p>
+      <div
+        className={`w-full bg-surface-container-lowest rounded-2xl p-8 shadow-xl max-h-[90vh] overflow-y-auto ${
+          isCompany && tab === "users" ? "max-w-2xl" : "max-w-md"
+        }`}
+      >
+        <div className="flex items-start justify-between gap-4 mb-6">
+          <div>
+            <h3 className="text-xl font-bold text-on-surface font-headline mb-1">
+              {isCompany ? "Gerenciar empresa" : "Gerenciar acesso"}
+            </h3>
+            <p className="text-sm text-on-surface-variant">
+              {account.name} · {isCompany ? "Empresa" : "Avulso"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="-mr-2 -mt-2 p-2 rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors"
+          >
+            <span className="material-symbols-outlined text-[22px]">close</span>
+          </button>
+        </div>
 
+        {isCompany && (
+          <div className="flex gap-2 mb-6 bg-surface-container-low rounded-lg p-1">
+            <button
+              type="button"
+              onClick={() => setTab("credentials")}
+              className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${
+                tab === "credentials" ? "bg-primary text-white" : "text-on-surface-variant"
+              }`}
+            >
+              Credenciais
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("users")}
+              className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${
+                tab === "users" ? "bg-primary text-white" : "text-on-surface-variant"
+              }`}
+            >
+              Usuários
+            </button>
+          </div>
+        )}
+
+        {isCompany && tab === "users" ? (
+          <AccountUsersManager accountId={account.id} />
+        ) : (
+          <>
         {error && (
           <div role="alert" className="mb-4 p-3 bg-error-container rounded-lg text-on-error-container text-sm">
             {error}
@@ -342,6 +398,8 @@ function ManageAccountModal({
             </button>
           </div>
         </form>
+          </>
+        )}
       </div>
     </div>
   );

@@ -1,11 +1,139 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { changePassword, getMe } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { changePassword, deleteLogo, getMe, uploadLogo } from "@/lib/api";
 import { isValidPassword, PASSWORD_REQUIREMENTS_MESSAGE } from "@/lib/password";
+import {
+  LOGO_ACCEPT,
+  LOGO_REQUIREMENTS_MESSAGE,
+  validateLogoFile,
+} from "@/lib/branding";
+import { useCapabilities } from "@/contexts/CapabilitiesContext";
 
 const inputClass =
   "w-full bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-4 py-2.5 text-sm text-on-surface focus:border-primary focus:ring-0 outline-none transition-all";
+
+function BrandingCard() {
+  const { logoDataUri, refresh } = useCapabilities();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setError(null);
+    setSuccess(null);
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite reenviar o mesmo arquivo
+    if (!file) return;
+
+    const validationError = validateLogoFile(file);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await uploadLogo(file);
+      await refresh();
+      setSuccess("Logo atualizada com sucesso.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao enviar a logo");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRemove() {
+    setError(null);
+    setSuccess(null);
+    setLoading(true);
+    try {
+      await deleteLogo();
+      await refresh();
+      setSuccess("Logo removida. Voltamos à marca padrão.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao remover a logo");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/15 p-8 mb-8">
+      <h3 className="font-headline font-bold text-on-surface text-lg mb-1">
+        Identidade visual
+      </h3>
+      <p className="text-sm text-on-surface-variant mb-6">
+        Personalize a logo exibida no topo do painel. Abaixo dela permanece a
+        assinatura “BridgeAPI by GSV Tech”.
+      </p>
+
+      {error && (
+        <div role="alert" className="mb-4 p-3 bg-error-container rounded-lg text-on-error-container text-sm">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div role="status" className="mb-4 p-3 bg-tertiary-container rounded-lg text-on-tertiary-container text-sm">
+          {success}
+        </div>
+      )}
+
+      <div className="flex items-center gap-6">
+        <div className="h-20 w-40 rounded-lg border border-dashed border-outline-variant/40 bg-surface-container-low flex items-center justify-center overflow-hidden shrink-0">
+          {logoDataUri ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoDataUri}
+              alt="Logo atual"
+              className="max-h-16 max-w-full object-contain"
+            />
+          ) : (
+            <span className="text-xs text-on-surface-variant text-center px-2">
+              Sem logo
+            </span>
+          )}
+        </div>
+
+        <div className="flex-1">
+          <div className="flex flex-wrap gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={LOGO_ACCEPT}
+              onChange={handleFileChange}
+              className="hidden"
+              aria-label="Selecionar logo"
+            />
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => fileInputRef.current?.click()}
+              className="px-5 py-2.5 rounded-lg bg-gradient-to-br from-primary to-primary-container text-white font-bold text-sm hover:scale-[1.02] transition-all disabled:opacity-60"
+            >
+              {loading ? "Enviando…" : logoDataUri ? "Trocar logo" : "Enviar logo"}
+            </button>
+            {logoDataUri && (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleRemove}
+                className="px-5 py-2.5 rounded-lg border border-outline-variant/40 text-on-surface font-bold text-sm hover:bg-surface transition-all disabled:opacity-60"
+              >
+                Remover
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-on-surface-variant mt-3">
+            {LOGO_REQUIREMENTS_MESSAGE}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const [email, setEmail] = useState<string>("");
@@ -15,6 +143,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const { isOwner } = useCapabilities();
 
   useEffect(() => {
     getMe()
@@ -60,6 +189,8 @@ export default function SettingsPage() {
           Gerencie as credenciais de acesso da sua conta.
         </p>
       </div>
+
+      {isOwner && <BrandingCard />}
 
       <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/15 p-8">
         <h3 className="font-headline font-bold text-on-surface text-lg mb-1">

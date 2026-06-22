@@ -12,10 +12,15 @@ export async function apiFetch<T>(
       ? localStorage.getItem("bridge_token")
       : null;
 
+  // Em uploads (FormData) deixamos o browser definir o Content-Type com o
+  // boundary correto; forçar application/json quebraria o multipart.
+  const isFormData =
+    typeof FormData !== "undefined" && options?.body instanceof FormData;
+
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options?.headers ?? {}),
     },
@@ -52,6 +57,9 @@ export function getMe() {
     email: string;
     role: string;
     account_id?: string | null;
+    capabilities: string[];
+    account_type?: string | null;
+    is_owner: boolean;
   }>("/auth/me");
 }
 
@@ -71,6 +79,30 @@ export function changePassword(data: {
   return apiFetch<void>("/auth/portal/password", {
     method: "PATCH",
     body: JSON.stringify(data),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Branding (portal)  →  /portal/branding
+// ---------------------------------------------------------------------------
+export function getBranding() {
+  return apiFetch<{ logo_data_uri: string | null }>("/portal/branding");
+}
+
+// Upload/substitui a logo da conta (owner). Validado também no backend.
+export function uploadLogo(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch<{ logo_data_uri: string | null }>("/portal/branding/logo", {
+    method: "PUT",
+    body: form,
+  });
+}
+
+// Remove a logo, voltando à marca padrão (owner).
+export function deleteLogo() {
+  return apiFetch<{ logo_data_uri: string | null }>("/portal/branding/logo", {
+    method: "DELETE",
   });
 }
 
@@ -489,4 +521,143 @@ export function getLogs(skip = 0, limit = 20, api_id?: string, since?: string, u
     }[];
     total: number;
   }>(`/logs?${qs}`);
+}
+
+// ---------------------------------------------------------------------------
+// Roles & Members (portal — owner de empresa)  →  /portal/*
+// ---------------------------------------------------------------------------
+export type Role = {
+  id: string;
+  name: string;
+  capabilities: string[];
+  member_count: number;
+  created_at: string;
+};
+
+export type Member = {
+  id: string;
+  email: string;
+  role_id: string | null;
+  role_name: string | null;
+  created_at: string;
+};
+
+export function getRoles() {
+  return apiFetch<{ items: Role[] }>("/portal/roles");
+}
+
+export function createRole(data: { name: string; capabilities: string[] }) {
+  return apiFetch<Role>("/portal/roles", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateRole(
+  id: string,
+  data: { name?: string; capabilities?: string[] }
+) {
+  return apiFetch<Role>(`/portal/roles/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteRole(id: string) {
+  return apiFetch<void>(`/portal/roles/${id}`, { method: "DELETE" });
+}
+
+export function getMembers() {
+  return apiFetch<{ items: Member[] }>("/portal/members");
+}
+
+export function createMember(data: {
+  email: string;
+  password: string;
+  role_id: string;
+}) {
+  return apiFetch<Member>("/portal/members", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateMember(
+  id: string,
+  data: { email?: string; password?: string; role_id?: string }
+) {
+  return apiFetch<Member>(`/portal/members/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteMember(id: string) {
+  return apiFetch<void>(`/portal/members/${id}`, { method: "DELETE" });
+}
+
+// ---------------------------------------------------------------------------
+// Roles & Members (admin — qualquer empresa)  →  /admin/accounts/{id}/*
+// Espelham as funções do portal, mas escopadas por accountId na URL.
+// ---------------------------------------------------------------------------
+export function adminGetRoles(accountId: string) {
+  return apiFetch<{ items: Role[] }>(`/admin/accounts/${accountId}/roles`);
+}
+
+export function adminCreateRole(
+  accountId: string,
+  data: { name: string; capabilities: string[] }
+) {
+  return apiFetch<Role>(`/admin/accounts/${accountId}/roles`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function adminUpdateRole(
+  accountId: string,
+  roleId: string,
+  data: { name?: string; capabilities?: string[] }
+) {
+  return apiFetch<Role>(`/admin/accounts/${accountId}/roles/${roleId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function adminDeleteRole(accountId: string, roleId: string) {
+  return apiFetch<void>(`/admin/accounts/${accountId}/roles/${roleId}`, {
+    method: "DELETE",
+  });
+}
+
+export function adminGetMembers(accountId: string) {
+  return apiFetch<{ items: Member[] }>(`/admin/accounts/${accountId}/members`);
+}
+
+export function adminCreateMember(
+  accountId: string,
+  data: { email: string; password: string; role_id: string }
+) {
+  return apiFetch<Member>(`/admin/accounts/${accountId}/members`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function adminUpdateMember(
+  accountId: string,
+  memberId: string,
+  data: { email?: string; password?: string; role_id?: string }
+) {
+  return apiFetch<Member>(`/admin/accounts/${accountId}/members/${memberId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function adminDeleteMember(accountId: string, memberId: string) {
+  return apiFetch<void>(`/admin/accounts/${accountId}/members/${memberId}`, {
+    method: "DELETE",
+  });
 }

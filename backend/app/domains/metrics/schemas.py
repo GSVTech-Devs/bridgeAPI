@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -7,9 +9,11 @@ class DashboardResponse(BaseModel):
     total_requests: int
     error_rate: float
     avg_latency_ms: float
-    total_cost: float
-    billable_requests: int
-    non_billable_requests: int
+    # Campos de custo/faturamento: ficam ``None`` quando o usuário não tem a
+    # capability ``financial`` (não vazamos custo via API).
+    total_cost: Optional[float] = None
+    billable_requests: Optional[int] = None
+    non_billable_requests: Optional[int] = None
 
 
 class ApiMetricItem(BaseModel):
@@ -73,7 +77,8 @@ class ClientApiBreakdownItem(BaseModel):
     total_requests: int
     error_count: int
     success_count: int
-    total_cost: float
+    # ``None`` quando o usuário não tem a capability ``financial``.
+    total_cost: Optional[float] = None
 
 
 class ClientApiBreakdownResponse(BaseModel):
