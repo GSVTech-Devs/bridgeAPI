@@ -78,10 +78,15 @@ async def ingest_status(
 async def ingest_proxies(
     api: ExternalAPI = Depends(require_service_token),
     db: AsyncSession = Depends(get_db),
+    x_bridge_client: str | None = Header(default=None),
 ) -> ProxyConfigResponse:
     """Config do pool de proxies da API (credenciais inclusas) — a SDK consome
-    isto com cache curto, então a troca de proxy na plataforma reflete sem deploy."""
-    return await get_pool_config_for_api(db, api)
+    isto com cache curto, então a troca de proxy na plataforma reflete sem deploy.
+
+    ``X-Bridge-Client`` (o cliente da chamada, propagado pela Bridge) habilita a
+    resolução híbrida: usa o pool que o cliente configurou para esta API, senão
+    o default da API."""
+    return await get_pool_config_for_api(db, api, client_id=x_bridge_client)
 
 
 @router.post("/ingest/proxies/report")
@@ -89,10 +94,11 @@ async def ingest_proxy_report(
     body: ProxyReportRequest,
     api: ExternalAPI = Depends(require_service_token),
     db: AsyncSession = Depends(get_db),
+    x_bridge_client: str | None = Header(default=None),
 ) -> dict:
     """A SDK reporta falha de um proxy → marca como failing/inactive na plataforma."""
     try:
-        proxy = await report_proxy_failure(db, api, body)
+        proxy = await report_proxy_failure(db, api, body, client_id=x_bridge_client)
     except ProxyNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Proxy not in this API's pool"

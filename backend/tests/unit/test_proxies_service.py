@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -11,9 +11,12 @@ from app.domains.proxies.models import Proxy, ProxyPool, ProxyStatus
 from app.domains.proxies.schemas import ProxyCreate, ProxyReportRequest
 from app.domains.proxies.service import (
     ProxyNotFoundError,
+    ProxyPoolNotFoundError,
     create_proxy,
     get_pool_config_for_api,
     report_proxy_failure,
+    resolve_pool_id_for_client,
+    set_client_override,
     to_response,
 )
 
@@ -139,3 +142,149 @@ async def test_report_rejects_proxy_from_another_pool() -> None:
     data = ProxyReportRequest(proxy_id=proxy.id)
     with pytest.raises(ProxyNotFoundError):
         await report_proxy_failure(db, api, data)
+
+
+# ------------------------------------------- resolução híbrida (override cliente)
+@pytest.mark.asyncio
+async def test_resolve_no_client_uses_api_default() -> None:
+    api = MagicMock(proxy_pool_id=uuid.uuid4())
+    db = AsyncMock()
+    out = await resolve_pool_id_for_client(db, api, client_id=None)
+    assert out == api.proxy_pool_id
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_resolve_uses_client_override_when_present() -> None:
+    api = MagicMock(id=uuid.uuid4(), proxy_pool_id=uuid.uuid4())
+    override_pool = uuid.uuid4()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = override_pool
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=result)
+    out = await resolve_pool_id_for_client(db, api, client_id=uuid.uuid4())
+    assert out == override_pool
+
+
+@pytest.mark.asyncio
+async def test_resolve_falls_back_when_no_override() -> None:
+    api = MagicMock(id=uuid.uuid4(), proxy_pool_id=uuid.uuid4())
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=result)
+    out = await resolve_pool_id_for_client(db, api, client_id=uuid.uuid4())
+    assert out == api.proxy_pool_id
+
+
+@pytest.mark.asyncio
+async def test_pool_config_uses_client_override() -> None:
+    client_pool = uuid.uuid4()
+    api = MagicMock(id=uuid.uuid4(), proxy_pool_id=uuid.uuid4())
+    pool = ProxyPool(name="client-pool")
+    pool.id = client_pool
+
+    override_result = MagicMock()
+    override_result.scalar_one_or_none.return_value = client_pool
+    pool_result = MagicMock()
+    pool_result.scalar_one_or_none.return_value = pool
+    proxies_result = MagicMock()
+    proxies_result.scalars.return_value.all.return_value = [
+        make_proxy(pool_id=client_pool, priority=1)
+    ]
+
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[override_result, pool_result, proxies_result])
+
+    cfg = await get_pool_config_for_api(db, api, client_id=uuid.uuid4())
+    assert cfg.pool_id == client_pool
+    assert cfg.pool_name == "client-pool"
+    assert len(cfg.proxies) == 1
+
+
+@pytest.mark.asyncio
+async def test_report_honors_client_override_pool() -> None:
+    client_pool = uuid.uuid4()
+    api = MagicMock(id=uuid.uuid4(), proxy_pool_id=uuid.uuid4())
+    proxy = make_proxy(pool_id=client_pool)  # pertence ao pool do cliente
+
+    override_result = MagicMock()
+    override_result.scalar_one_or_none.return_value = client_pool
+    proxy_result = MagicMock()
+    proxy_result.scalar_one_or_none.return_value = proxy
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[override_result, proxy_result])
+
+    data = ProxyReportRequest(proxy_id=proxy.id, message="dead")
+    updated = await report_proxy_failure(db, api, data, client_id=uuid.uuid4())
+    assert updated.status == ProxyStatus.FAILING.value
+
+
+# ------------------------------------------------- set_client_override (cliente)
+@pytest.mark.asyncio
+async def test_set_client_override_creates_row() -> None:
+    aid = uuid.uuid4()
+    api = MagicMock(id=uuid.uuid4())
+    pool = ProxyPool(name="mine")
+    pool.id = uuid.uuid4()
+    pool.account_id = aid
+
+    lookup = MagicMock()
+    lookup.scalar_one_or_none.return_value = None  # ainda não existe override
+    pool_res = MagicMock()
+    pool_res.scalar_one_or_none.return_value = pool
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.execute = AsyncMock(side_effect=[lookup, pool_res])
+
+    with patch(
+        "app.domains.proxies.service.get_api_by_id",
+        new=AsyncMock(return_value=api),
+    ):
+        out = await set_client_override(db, str(api.id), aid, str(pool.id))
+
+    assert out == pool.id
+    db.add.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_set_client_override_rejects_foreign_pool() -> None:
+    aid = uuid.uuid4()
+    api = MagicMock(id=uuid.uuid4())
+    pool = ProxyPool(name="someone-elses")
+    pool.id = uuid.uuid4()
+    pool.account_id = uuid.uuid4()  # pertence a outra conta
+
+    lookup = MagicMock()
+    lookup.scalar_one_or_none.return_value = None
+    pool_res = MagicMock()
+    pool_res.scalar_one_or_none.return_value = pool
+    db = AsyncMock()
+    db.execute = AsyncMock(side_effect=[lookup, pool_res])
+
+    with patch(
+        "app.domains.proxies.service.get_api_by_id",
+        new=AsyncMock(return_value=api),
+    ):
+        with pytest.raises(ProxyPoolNotFoundError):
+            await set_client_override(db, str(api.id), aid, str(pool.id))
+
+
+@pytest.mark.asyncio
+async def test_set_client_override_clears_existing() -> None:
+    aid = uuid.uuid4()
+    api = MagicMock(id=uuid.uuid4())
+    row = MagicMock()
+    lookup = MagicMock()
+    lookup.scalar_one_or_none.return_value = row
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=lookup)
+
+    with patch(
+        "app.domains.proxies.service.get_api_by_id",
+        new=AsyncMock(return_value=api),
+    ):
+        out = await set_client_override(db, str(api.id), aid, None)
+
+    assert out is None
+    db.delete.assert_awaited_with(row)

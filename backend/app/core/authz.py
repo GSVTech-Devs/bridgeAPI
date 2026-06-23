@@ -27,6 +27,7 @@ class Feature(str, Enum):
     CLIENT_USAGE = "client_usage"  # detalhamento por API/chave da conta
     FINANCIAL = "financial"  # dados de custo/financeiros
     MEMBERS = "members"  # gestão de usuários da empresa pelo responsável
+    PROXIES = "proxies"  # autosserviço de proxies do cliente
 
 
 # Todas as features de dashboard — o responsável (owner) tem acesso total.
@@ -41,6 +42,7 @@ ASSIGNABLE_FEATURES: set[Feature] = {
     Feature.METRICS,
     Feature.CLIENT_USAGE,
     Feature.FINANCIAL,
+    Feature.PROXIES,
 }
 
 # Features que todo membro de account tem por padrão, independente da role.

@@ -70,7 +70,9 @@ async def _dispatch(
         )
 
     incoming_headers = {k.lower(): v for k, v in request.headers.items()}
-    upstream_headers = build_upstream_headers(api, incoming_headers, correlation_id)
+    upstream_headers = build_upstream_headers(
+        api, incoming_headers, correlation_id, client_id=str(account.id)
+    )
     params = dict(request.query_params)
     body = await request.body()
 

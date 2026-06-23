@@ -53,6 +53,25 @@ async def test_ingest_proxies_returns_pool_config(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_ingest_proxies_forwards_client_header(client: AsyncClient) -> None:
+    spy = AsyncMock(
+        return_value=ProxyConfigResponse(pool_id=None, pool_name=None, proxies=[])
+    )
+    with patch(
+        "app.domains.ingest.router.authenticate_service_token",
+        new=AsyncMock(return_value=fake_api()),
+    ), patch(
+        "app.domains.ingest.router.get_pool_config_for_api", new=spy
+    ):
+        resp = await client.get(
+            "/ingest/proxies",
+            headers={"X-Service-Token": "brgsvc_good", "X-Bridge-Client": "acc-123"},
+        )
+    assert resp.status_code == 200
+    assert spy.await_args.kwargs["client_id"] == "acc-123"
+
+
+@pytest.mark.asyncio
 async def test_ingest_proxy_report(client: AsyncClient) -> None:
     proxy = MagicMock()
     proxy.id = uuid.uuid4()

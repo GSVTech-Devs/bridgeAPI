@@ -12,6 +12,7 @@ from app.domains.members.router import admin_router as members_admin_router
 from app.domains.members.router import router as members_router
 from app.domains.metrics.router import router as metrics_router
 from app.domains.permissions.router import router as permissions_router
+from app.domains.proxies.client_router import router as proxies_client_router
 from app.domains.proxies.router import router as proxies_router
 from app.domains.proxy.router import router as proxy_router
 from app.domains.status.router import router as status_router
@@ -47,6 +48,7 @@ app.include_router(metrics_router)
 app.include_router(ingest_router)
 app.include_router(status_router)
 app.include_router(proxies_router)
+app.include_router(proxies_client_router)
 app.include_router(proxy_router)
 
 

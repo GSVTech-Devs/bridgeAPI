@@ -23,6 +23,7 @@ class ProxyPoolCreate(BaseModel):
 
 class ProxyPoolResponse(BaseModel):
     id: uuid.UUID
+    account_id: Optional[uuid.UUID] = None
     name: str
     description: Optional[str] = None
     proxy_count: int = 0
@@ -70,6 +71,7 @@ class ProxyUpdate(BaseModel):
 
 class ProxyResponse(BaseModel):
     id: uuid.UUID
+    account_id: Optional[uuid.UUID] = None
     pool_id: Optional[uuid.UUID] = None
     name: str
     provider: Optional[str] = None
@@ -97,6 +99,17 @@ class ProxyListResponse(BaseModel):
 # ---------------------------------------------------- atribuição pool ↔ API
 class APIPoolAssignRequest(BaseModel):
     proxy_pool_id: Optional[uuid.UUID] = None
+
+
+# ------------------------- override do cliente: API → pool (resolução híbrida)
+class ClientAssignmentItem(BaseModel):
+    api_id: uuid.UUID
+    api_name: str
+    proxy_pool_id: Optional[uuid.UUID] = None  # override do cliente (se houver)
+
+
+class ClientAssignmentListResponse(BaseModel):
+    items: list[ClientAssignmentItem]
 
 
 # --------------------------------------------------- config consumida pela SDK

@@ -51,8 +51,8 @@ async def create_pool_route(
     except DuplicatePoolNameError:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pool name already in use")
     return ProxyPoolResponse(
-        id=pool.id, name=pool.name, description=pool.description,
-        proxy_count=0, created_at=pool.created_at,
+        id=pool.id, account_id=pool.account_id, name=pool.name,
+        description=pool.description, proxy_count=0, created_at=pool.created_at,
     )
 
 
@@ -64,8 +64,8 @@ async def list_pools_route(
     pools = await list_pools(db)
     items = [
         ProxyPoolResponse(
-            id=p.id, name=p.name, description=p.description,
-            proxy_count=count, created_at=p.created_at,
+            id=p.id, account_id=p.account_id, name=p.name,
+            description=p.description, proxy_count=count, created_at=p.created_at,
         )
         for p, count in pools
     ]
