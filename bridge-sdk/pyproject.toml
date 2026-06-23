@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bridge-sdk"
+version = "0.1.0"
+description = "SDK interna das APIs downstream da Bridge — correlation_id, logging estruturado e erros padronizados."
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.24",
+]
+
+[project.optional-dependencies]
+# Integração pronta com apps FastAPI (middleware de correlation_id + lifecycle).
+fastapi = ["fastapi>=0.100", "starlette>=0.27"]
+# Para rodar a suíte de testes da própria SDK.
+dev = ["pytest>=7", "pytest-asyncio>=0.23"]
+
+[tool.setuptools.packages.find]
+include = ["bridge_sdk*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
