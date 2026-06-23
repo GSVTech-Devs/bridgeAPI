@@ -130,10 +130,10 @@ Containers: `bridge_backend`, `bridge_frontend`, `bridge_postgres`, `bridge_redi
 A imagem do backend (`bridgeapi-backend`) tem todas as deps (inclusive p/ a SDK).
 
 ```bash
-# Backend (421 testes)
+# Backend (475 testes)
 docker exec bridge_backend pytest tests/unit/ -q --no-cov
 
-# Migrations (head atual: s9b0c1d2e3f4)
+# Migrations (head atual: t0c1d2e3f4a5)
 docker exec bridge_backend alembic upgrade head
 
 # bridge-sdk (53 testes) — montada na imagem do backend
@@ -144,7 +144,7 @@ docker exec bridge_frontend npm test
 docker exec bridge_frontend npx tsc --noEmit      # erros pré-existentes só em __tests__ (sem @types/jest)
 docker exec bridge_frontend npx eslint src/...
 ```
-Estado atual dos testes: **backend 465 · sdk 75 · frontend 89** — todos verdes.
+Estado atual dos testes: **backend 475 · sdk 75 · frontend 89** — todos verdes.
 
 ---
 
@@ -161,14 +161,28 @@ Estado atual dos testes: **backend 465 · sdk 75 · frontend 89** — todos verd
 
 ---
 
-## Onde paramos — Fase 5b (PRÓXIMA): entrega assíncrona (SSE/webhook) + admin
+## Onde paramos — Fase 6 (PRÓXIMA): histórico/replay + alertas
 
-A **5a (núcleo da execução híbrida)** está pronta. Falta a **5b**:
-- **SSE** `GET /jobs/{id}/stream` (espelha `status/stream`: auth por `?key=`/`?token=`).
-- **Webhook**: cliente registra `callback_url`; a Bridge faz `POST` ao concluir, com
-  assinatura **HMAC**. (Coluna `callback_url` em `proxy_jobs` + entrega best-effort com retry.)
-- **Admin UI** `/admin/jobs` (lista + detalhe do job; usa `GET /jobs`).
-- (Opcional) limpeza por TTL/cron usando `expires_at`.
+A **5a** (núcleo híbrido) e a **5b** (entrega assíncrona SSE/webhook + admin) estão prontas.
+Próxima é a **Fase 6** (histórico/replay de jobs + alertas de status/saldo).
+
+### Fase 5b — Entrega assíncrona (SSE/webhook) + admin ✅
+- **SSE** `GET /jobs/{id}/stream` (`jobs/router.py`): autoriza pela `X-Bridge-Key` via `?key=`
+  (EventSource não manda header), faz poll de `job_stream_interval_seconds` (2s) e emite o
+  `JobResponse` até o estado terminal ou `job_stream_max_seconds` (600s).
+- **Webhook** (`jobs/webhook.py`): se a request trouxe `X-Bridge-Callback` (validado http(s)
+  no `proxy/router.py::_dispatch`), o `runner.finalize_job` faz `POST` assinado **HMAC-SHA256**
+  (header `X-Bridge-Signature: sha256=<hex>`, segredo `webhook_signing_secret` ou `app_secret_key`)
+  com retry (`webhook_max_attempts`=3, `webhook_timeout_s`=10). Estado em
+  `proxy_jobs.webhook_status` (pending→delivered/failed). Colunas `callback_url`+`webhook_status`
+  (migration `t0c1d2e3f4a5`). Best-effort: o resultado fica sempre por polling/SSE.
+- **Admin**: `GET /admin/jobs` (lista paginada) e `GET /admin/jobs/{id}` (detalhe). *(Renomeou o
+  antigo `GET /jobs` admin da 5a para `/admin/jobs`; `GET /jobs/{id}` cliente segue por X-Bridge-Key.)*
+  Schemas expõem `webhook_status` (lista) e `callback_url`/`webhook_status` (detalhe).
+- **Frontend**: `/admin/jobs` — tabela paginada (status, correlation_id, HTTP, webhook, custo,
+  datas) + drawer de detalhe (corpo da resposta, callback, latência). Nav em `admin/layout.tsx`.
+- **Pendente (opcional)**: limpeza por TTL/cron usando `expires_at`. *Idempotência só cobre o
+  caminho que virou job (síncrono não cria job) — herdado da 5a.*
 
 ### Fase 5a — Execução híbrida (núcleo) ✅
 Timeout configurável + fork síncrono→assíncrono + jobs + polling + idempotência + billing.
@@ -233,8 +247,8 @@ do `api_id` salvo) — ao criar, salva-se a API e reabre-se para configurar. As 
 | 4d API **POST**: `request_method` + `request_body_template` ({query}/{token}) no gateway | ✅ feito |
 | 4e Import de OpenAPI/Swagger p/ pré-preencher o body template | ✅ feito |
 | 5a Execução híbrida núcleo (timeout, 202+job, polling, idempotência, billing) | ✅ feito |
-| 5b Entrega assíncrona (SSE/webhook) + `/admin/jobs` | ⬜ próxima |
-| 6 Histórico/replay + alertas | ⬜ |
+| 5b Entrega assíncrona (SSE/webhook) + `/admin/jobs` | ✅ feito |
+| 6 Histórico/replay + alertas | ⬜ próxima |
 
 ---
 
