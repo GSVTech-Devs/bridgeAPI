@@ -144,7 +144,7 @@ docker exec bridge_frontend npm test
 docker exec bridge_frontend npx tsc --noEmit      # erros pré-existentes só em __tests__ (sem @types/jest)
 docker exec bridge_frontend npx eslint src/...
 ```
-Estado atual dos testes: **backend 445 · sdk 75 · frontend 89** — todos verdes.
+Estado atual dos testes: **backend 454 · sdk 75 · frontend 89** — todos verdes.
 
 ---
 
@@ -161,10 +161,11 @@ Estado atual dos testes: **backend 445 · sdk 75 · frontend 89** — todos verd
 
 ---
 
-## Onde paramos — Fase 4e (PRÓXIMA): import de OpenAPI/Swagger
+## Onde paramos — Fase 5 (PRÓXIMA): execução híbrida / jobs
 
-**4a–4d prontas, testadas e documentadas.** Falta a 4e (pré-preencher o body template a
-partir da doc OpenAPI da API) — e depois a Fase 5.
+**Toda a Fase 4 (4a–4e) está pronta, testada e documentada.** A próxima é a **Fase 5**:
+execução híbrida — síncrono até ~90s, depois job assíncrono (202 + job id), idempotência e
+billing. (Detalhes em `REQUISITOS_REFATORACAO_APIS.md`.)
 
 ### 4d — API POST ✅
 `external_apis.request_method` (NULL = repassa o método do cliente; legado intacto) e
@@ -174,10 +175,12 @@ do cliente; quando há `request_body_template`, monta o body renderizado (+ `con
 se ausente), senão repassa o body do cliente. Migration `r8a9b0c1d2e3`. No form de `/admin/apis`:
 select "Método na API original" + textarea "Body template". GET/passthrough seguem funcionando.
 
-### 4e — Import de OpenAPI/Swagger (próxima)
-Parsear a doc (URL ou upload do JSON/YAML) e, por endpoint, sugerir `request_method` e um
-`request_body_template` a partir do schema do request body. Provavelmente um endpoint admin
-`POST /apis/import` (ou client-side parse) que devolve campos pré-preenchidos pro form.
+### 4e — Import de OpenAPI/Swagger ✅
+`apis/openapi.py` parseia JSON **ou** YAML colado (resolve `$ref` locais, suporta OpenAPI 3 e
+Swagger 2) e, por operação, gera um `request_body_template` de exemplo a partir do schema do
+request body. Endpoint admin `POST /apis/import` (`OpenAPIImportResponse`). No `/admin/apis`,
+botão **"Importar OpenAPI"** abre um modal: cola o spec → lista as operações → escolher uma
+pré-preenche o cadastro (base URL = servidor + path, método e body template). Sem migration.
 
 ### Histórico (não reabrir)
 
@@ -205,8 +208,8 @@ do `api_id` salvo) — ao criar, salva-se a API e reabre-se para configurar. As 
 | 4b Captcha POR API (mesmo padrão + saldo) | ✅ feito |
 | 4c Embutir proxy/captcha no formulário de cadastro da API | ✅ feito |
 | 4d API **POST**: `request_method` + `request_body_template` ({query}/{token}) no gateway | ✅ feito |
-| 4e Import de OpenAPI/Swagger p/ pré-preencher o body template | ⬜ próxima |
-| 5 Execução híbrida / jobs (timeout, 202+job, idempotência, billing) | ⬜ |
+| 4e Import de OpenAPI/Swagger p/ pré-preencher o body template | ✅ feito |
+| 5 Execução híbrida / jobs (timeout, 202+job, idempotência, billing) | ⬜ próxima |
 | 6 Histórico/replay + alertas | ⬜ |
 
 ---
