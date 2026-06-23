@@ -25,10 +25,13 @@ from ..status_reporter import StatusReporter
 class CorrelationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         cid = context.correlation_id_from_headers(request.headers)
+        client = context.client_from_headers(request.headers)
         token = context.set_correlation_id(cid)
+        client_token = context.set_client(client)
         try:
             response = await call_next(request)
         finally:
+            context.reset_client(client_token)
             context.reset_correlation_id(token)
         response.headers[context.CORRELATION_HEADER] = cid
         return response

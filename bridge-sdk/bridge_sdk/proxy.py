@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 import httpx
 
-from . import errors, events
+from . import context, errors, events
 from .config import SDKConfig
 
 T = TypeVar("T")
@@ -60,43 +60,65 @@ class ProxyClient:
         self._client = client if client is not None else httpx.AsyncClient(
             timeout=config.timeout
         )
-        self._cache: Optional[list[ProxyEndpoint]] = None
-        self._cache_at: float = 0.0
-        self._failed: set[str] = set()
+        # Cache e failed-set são por cliente: a resolução é híbrida (o pool de um
+        # cliente difere do default), então não dá para compartilhar entre eles.
+        self._cache: dict[str, list[ProxyEndpoint]] = {}
+        self._cache_at: dict[str, float] = {}
+        self._failed: dict[str, set[str]] = {}
 
     async def aclose(self) -> None:
         await self._client.aclose()
 
+    # ------------------------------------------------------------------ helpers
+    @staticmethod
+    def _key() -> str:
+        """Chave de cache = cliente atual (ou "" quando não há)."""
+        return context.get_client() or ""
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"X-Service-Token": self._config.service_token}
+        client = context.get_client()
+        if client:
+            headers["X-Bridge-Client"] = client
+        return headers
+
+    def _failed_set(self) -> set[str]:
+        return self._failed.setdefault(self._key(), set())
+
     # ------------------------------------------------------------ config fetch
     async def get_proxies(self, *, force: bool = False) -> list[ProxyEndpoint]:
+        key = self._key()
+        cached = self._cache.get(key)
         fresh = (
-            self._cache is not None
-            and (time.monotonic() - self._cache_at) < self._config.proxy_cache_ttl
+            cached is not None
+            and (time.monotonic() - self._cache_at.get(key, 0.0))
+            < self._config.proxy_cache_ttl
         )
         if fresh and not force:
-            return self._cache  # type: ignore[return-value]
+            return cached  # type: ignore[return-value]
         try:
             resp = await self._client.get(
                 f"{self._config.platform_url.rstrip('/')}/ingest/proxies",
-                headers={"X-Service-Token": self._config.service_token},
+                headers=self._headers(),
             )
             resp.raise_for_status()
             data = resp.json()
             proxies = [ProxyEndpoint(**item) for item in data.get("proxies", [])]
         except Exception:
-            if self._cache is not None:
-                return self._cache  # degrada para cache antigo
+            if cached is not None:
+                return cached  # degrada para cache antigo
             raise errors.ProxyUnavailable("não foi possível obter o pool de proxies")
-        self._cache = proxies
-        self._cache_at = time.monotonic()
-        self._failed.clear()  # config nova → reavalia todos
+        self._cache[key] = proxies
+        self._cache_at[key] = time.monotonic()
+        self._failed[key] = set()  # config nova → reavalia todos
         return proxies
 
     # --------------------------------------------------------------- seleção
     async def acquire(self) -> Optional[ProxyEndpoint]:
         """Retorna o proxy de maior prioridade ainda não marcado como falho."""
+        failed = self._failed_set()
         for proxy in await self.get_proxies():
-            if proxy.id not in self._failed:
+            if proxy.id not in failed:
                 if self._logger is not None:
                     self._logger.info(events.PROXY_ACQUIRED, proxy_id=proxy.id)
                 return proxy
@@ -110,7 +132,7 @@ class ProxyClient:
         message: Optional[str] = None,
     ) -> None:
         """Marca o proxy como falho localmente, loga e avisa a plataforma."""
-        self._failed.add(proxy.id)
+        self._failed_set().add(proxy.id)
         if self._logger is not None:
             self._logger.error(
                 events.PROXY_FAILED,
@@ -121,7 +143,7 @@ class ProxyClient:
         try:
             await self._client.post(
                 f"{self._config.platform_url.rstrip('/')}/ingest/proxies/report",
-                headers={"X-Service-Token": self._config.service_token},
+                headers=self._headers(),
                 json={
                     "proxy_id": proxy.id,
                     "status": "failing",
@@ -143,7 +165,8 @@ class ProxyClient:
         """Executa ``fn(proxy)`` tentando cada proxy por prioridade até um dar
         certo. Em falha (exceção em ``retry_on``), reporta o proxy e tenta o
         próximo. Esgotados, levanta ``ProxyUnavailable``."""
-        proxies = [p for p in await self.get_proxies() if p.id not in self._failed]
+        failed = self._failed_set()
+        proxies = [p for p in await self.get_proxies() if p.id not in failed]
         if not proxies:
             raise errors.ProxyUnavailable("nenhum proxy disponível no pool")
         if max_attempts is not None:

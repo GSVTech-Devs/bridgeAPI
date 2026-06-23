@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from bridge_sdk import errors
+from bridge_sdk import context, errors
 from bridge_sdk.config import SDKConfig
 from bridge_sdk.proxy import ProxyClient, ProxyEndpoint
+
+
+def setup_function() -> None:
+    # isola cada teste — limpa o client do contexto (default = cache key "")
+    context.set_client(None)
 
 
 class FakeResponse:
@@ -24,14 +29,18 @@ class FakeHttp:
         self.reports: list[dict] = []
         self.get_calls = 0
         self.fail_get = False
+        self.last_get_headers: dict | None = None
+        self.last_post_headers: dict | None = None
 
     async def get(self, url, headers=None):
         self.get_calls += 1
+        self.last_get_headers = headers
         if self.fail_get:
             raise RuntimeError("network down")
         return FakeResponse({"pool_name": "main", "proxies": self._proxies})
 
     async def post(self, url, headers=None, json=None):
+        self.last_post_headers = headers
         self.reports.append(json)
         return FakeResponse({"ok": True})
 
@@ -188,3 +197,45 @@ async def test_failover_raises_when_no_proxies() -> None:
 
     with pytest.raises(errors.ProxyUnavailable):
         await client.with_failover(fn)
+
+
+# --------------------------------------------------- client (resolução híbrida)
+@pytest.mark.asyncio
+async def test_sends_service_token_and_no_client_header_by_default() -> None:
+    client, http = client_with([proxy_dict("a", 1)])
+    await client.get_proxies()
+    assert http.last_get_headers["X-Service-Token"] == "brgsvc_x"
+    assert "X-Bridge-Client" not in http.last_get_headers
+
+
+@pytest.mark.asyncio
+async def test_sends_client_header_when_set() -> None:
+    context.set_client("acc-7")
+    client, http = client_with([proxy_dict("a", 1)])
+    await client.get_proxies()
+    assert http.last_get_headers["X-Bridge-Client"] == "acc-7"
+    await client.report_failure(ProxyEndpoint(id="a", name="a", scheme="http", host="h", port=80))
+    assert http.last_post_headers["X-Bridge-Client"] == "acc-7"
+
+
+@pytest.mark.asyncio
+async def test_cache_is_keyed_by_client() -> None:
+    client, http = client_with([proxy_dict("a", 1)])
+    context.set_client("c1")
+    await client.get_proxies()
+    await client.get_proxies()  # mesmo cliente → cache
+    assert http.get_calls == 1
+    context.set_client("c2")
+    await client.get_proxies()  # outro cliente → refetch (pool pode diferir)
+    assert http.get_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_failed_set_is_per_client() -> None:
+    client, _ = client_with([proxy_dict("a", 1), proxy_dict("b", 2)])
+    context.set_client("c1")
+    first = await client.acquire()
+    await client.report_failure(first)
+    assert (await client.acquire()).id == "b"  # 'a' falhou para c1
+    context.set_client("c2")
+    assert (await client.acquire()).id == "a"  # c2 não herda a falha de c1

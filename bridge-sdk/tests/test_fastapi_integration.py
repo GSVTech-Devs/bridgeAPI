@@ -29,7 +29,7 @@ def make_app() -> FastAPI:
 
     @app.get("/echo")
     async def echo() -> dict:
-        return {"seen": context.get_correlation_id()}
+        return {"seen": context.get_correlation_id(), "client": context.get_client()}
 
     return app
 
@@ -48,6 +48,18 @@ def test_middleware_generates_when_absent() -> None:
     generated = resp.json()["seen"]
     assert uuid.UUID(generated)
     assert resp.headers["x-correlation-id"] == generated
+
+
+def test_middleware_propagates_client() -> None:
+    with TestClient(make_app()) as client:
+        resp = client.get("/echo", headers={"X-Bridge-Client": "acc-42"})
+    assert resp.json()["client"] == "acc-42"
+
+
+def test_middleware_client_none_when_absent() -> None:
+    with TestClient(make_app()) as client:
+        resp = client.get("/echo")
+    assert resp.json()["client"] is None
 
 
 def test_health_route_installed() -> None:

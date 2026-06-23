@@ -13,10 +13,15 @@ from contextvars import ContextVar
 from typing import Iterator, Optional
 
 CORRELATION_HEADER = "x-correlation-id"
+CLIENT_HEADER = "x-bridge-client"
 
 _correlation_id: ContextVar[Optional[str]] = ContextVar(
     "bridge_correlation_id", default=None
 )
+
+# Cliente (account_id) da chamada atual. A Bridge o injeta via X-Bridge-Client,
+# análogo ao correlation_id. Usado para resolver proxy/captcha do cliente.
+_client: ContextVar[Optional[str]] = ContextVar("bridge_client", default=None)
 
 
 def new_correlation_id() -> str:
@@ -66,3 +71,44 @@ def use_correlation_id(correlation_id: str) -> Iterator[str]:
         yield correlation_id
     finally:
         reset_correlation_id(token)
+
+
+# --------------------------------------------------------------------- client
+def set_client(client: Optional[str]):
+    """Define o cliente atual. Retorna o token para reset posterior."""
+    return _client.set(client)
+
+
+def get_client() -> Optional[str]:
+    return _client.get()
+
+
+def reset_client(token) -> None:
+    _client.reset(token)
+
+
+def client_from_headers(headers) -> Optional[str]:
+    """Extrai o cliente (X-Bridge-Client) de um mapa de headers, case-insensitive.
+
+    Diferente do correlation_id, NÃO gera valor quando ausente: chamadas que não
+    vieram da Bridge (testes, health checks) simplesmente não têm cliente."""
+    try:
+        client = headers.get(CLIENT_HEADER)
+    except AttributeError:
+        client = None
+    if not client and isinstance(headers, dict):
+        for key, value in headers.items():
+            if key.lower() == CLIENT_HEADER:
+                client = value
+                break
+    return client or None
+
+
+@contextlib.contextmanager
+def use_client(client: str) -> Iterator[str]:
+    """Context manager que define o cliente e o reseta ao sair."""
+    token = set_client(client)
+    try:
+        yield client
+    finally:
+        reset_client(token)
