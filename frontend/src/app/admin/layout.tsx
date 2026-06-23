@@ -18,6 +18,7 @@ const navItems = [
   { href: "/admin/proxies", label: "Proxies", icon: "lan" },
   { href: "/admin/captcha", label: "Captcha", icon: "verified_user" },
   { href: "/admin/status", label: "Status", icon: "monitor_heart" },
+  { href: "/admin/jobs", label: "Jobs", icon: "schedule" },
   { href: "/admin/logs", label: "Logs de Erro", icon: "error" },
   { href: "/admin/debug", label: "Debug", icon: "bug_report" },
 ];

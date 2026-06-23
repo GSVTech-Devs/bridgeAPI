@@ -1093,3 +1093,36 @@ export function adminDeleteMember(accountId: string, memberId: string) {
     method: "DELETE",
   });
 }
+
+// ---------------------------------------------------------------------------
+// Jobs (execução híbrida assíncrona)  →  /admin/jobs (admin)
+// ---------------------------------------------------------------------------
+export type JobListItem = {
+  id: string;
+  status: string;            // running | done | failed | timeout
+  correlation_id: string;
+  account_id: string;
+  api_id: string;
+  result_status_code: number | null;
+  error_code: string | null;
+  cost: number | null;
+  webhook_status: string | null;   // pending | delivered | failed | null
+  created_at: string;
+  completed_at: string | null;
+};
+
+export type JobDetail = JobListItem & {
+  result_body: string | null;
+  latency_ms: number | null;
+  callback_url: string | null;
+};
+
+export function getJobs(page = 1, perPage = 20) {
+  return apiFetch<{ items: JobListItem[]; total: number }>(
+    `/admin/jobs?page=${page}&per_page=${perPage}`
+  );
+}
+
+export function getJob(id: string) {
+  return apiFetch<JobDetail>(`/admin/jobs/${id}`);
+}
