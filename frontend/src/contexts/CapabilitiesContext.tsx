@@ -3,6 +3,11 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { getBranding, getMe } from "@/lib/api";
 import type { Capability } from "@/lib/capabilities";
+import {
+  type BrandTheme,
+  EMPTY_BRAND_THEME,
+  EMPTY_MODE_COLORS,
+} from "@/lib/brandColor";
 
 interface CapabilitiesContextType {
   loading: boolean;
@@ -14,6 +19,7 @@ interface CapabilitiesContextType {
   isCompanyOwner: boolean;
   capabilities: string[];
   logoDataUri: string | null;
+  brandTheme: BrandTheme;
   accountCount: number;
   can: (feature: Capability | string) => boolean;
   refresh: () => Promise<void>;
@@ -29,6 +35,7 @@ const CapabilitiesContext = createContext<CapabilitiesContextType>({
   isCompanyOwner: false,
   capabilities: [],
   logoDataUri: null,
+  brandTheme: EMPTY_BRAND_THEME,
   accountCount: 0,
   can: () => false,
   refresh: async () => {},
@@ -43,13 +50,14 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
   const [isOwner, setIsOwner] = useState(false);
   const [capabilities, setCapabilities] = useState<string[]>([]);
   const [logoDataUri, setLogoDataUri] = useState<string | null>(null);
+  const [brandTheme, setBrandTheme] = useState<BrandTheme>(EMPTY_BRAND_THEME);
   const [accountCount, setAccountCount] = useState(0);
 
   const refresh = useCallback(async () => {
     try {
       const [me, branding] = await Promise.all([
         getMe(),
-        getBranding().catch(() => ({ logo_data_uri: null })),
+        getBranding().catch(() => null),
       ]);
       setEmail(me.email);
       setRole(me.role);
@@ -58,7 +66,16 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
       setIsOwner(Boolean(me.is_owner));
       setCapabilities(me.capabilities ?? []);
       setAccountCount(me.account_count ?? 0);
-      setLogoDataUri(branding.logo_data_uri ?? null);
+      setLogoDataUri(branding?.logo_data_uri ?? null);
+      const t = branding?.brand_theme;
+      setBrandTheme(
+        t
+          ? {
+              light: { ...EMPTY_MODE_COLORS, ...t.light },
+              dark: { ...EMPTY_MODE_COLORS, ...t.dark },
+            }
+          : EMPTY_BRAND_THEME
+      );
     } catch {
       // erros de auth são tratados pelo apiFetch (redireciona no 401)
     } finally {
@@ -89,6 +106,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
         isCompanyOwner,
         capabilities,
         logoDataUri,
+        brandTheme,
         accountCount,
         can,
         refresh,

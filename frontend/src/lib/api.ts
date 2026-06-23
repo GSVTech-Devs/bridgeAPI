@@ -113,15 +113,27 @@ export function changePassword(data: {
 // ---------------------------------------------------------------------------
 // Branding (portal)  →  /portal/branding
 // ---------------------------------------------------------------------------
+export type BrandModeColors = {
+  primary: string | null;
+  secondary: string | null;
+  tertiary: string | null;
+  background: string | null;
+};
+
+export type Branding = {
+  logo_data_uri: string | null;
+  brand_theme: { light: BrandModeColors; dark: BrandModeColors } | null;
+};
+
 export function getBranding() {
-  return apiFetch<{ logo_data_uri: string | null }>("/portal/branding");
+  return apiFetch<Branding>("/portal/branding");
 }
 
 // Upload/substitui a logo da conta (owner). Validado também no backend.
 export function uploadLogo(file: File) {
   const form = new FormData();
   form.append("file", file);
-  return apiFetch<{ logo_data_uri: string | null }>("/portal/branding/logo", {
+  return apiFetch<Branding>("/portal/branding/logo", {
     method: "PUT",
     body: form,
   });
@@ -129,7 +141,26 @@ export function uploadLogo(file: File) {
 
 // Remove a logo, voltando à marca padrão (owner).
 export function deleteLogo() {
-  return apiFetch<{ logo_data_uri: string | null }>("/portal/branding/logo", {
+  return apiFetch<Branding>("/portal/branding/logo", {
+    method: "DELETE",
+  });
+}
+
+// Define o tema de marca da conta (owner). Cores hex #RRGGBB por modo;
+// cada slot é opcional (omitido/null = cor padrão). Validado no backend.
+export function updateBrandTheme(theme: {
+  light: Partial<BrandModeColors>;
+  dark: Partial<BrandModeColors>;
+}) {
+  return apiFetch<Branding>("/portal/branding/colors", {
+    method: "PUT",
+    body: JSON.stringify(theme),
+  });
+}
+
+// Remove o tema de marca, voltando ao tema padrão (owner).
+export function deleteBrandTheme() {
+  return apiFetch<Branding>("/portal/branding/colors", {
     method: "DELETE",
   });
 }

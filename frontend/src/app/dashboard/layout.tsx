@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { getToken } from "@/lib/auth";
 import { ThemeDropdown } from "@/components/ThemeDropdown";
 import { UserMenu } from "@/components/UserMenu";
+import { BrandThemeStyle } from "@/components/BrandThemeStyle";
 import { CAP } from "@/lib/capabilities";
 import {
   CapabilitiesProvider,
@@ -24,6 +25,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     isCompanyOwner,
     isOwner,
     logoDataUri,
+    brandTheme,
     accountCount,
   } = useCapabilities();
 
@@ -48,6 +50,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-surface text-on-surface font-body">
+      <BrandThemeStyle theme={brandTheme} />
       {/* Sidebar */}
       <nav className="fixed left-0 top-0 h-screen w-64 bg-surface-container-low flex flex-col py-8 px-4 z-50">
         <div className="mb-10 px-4">
