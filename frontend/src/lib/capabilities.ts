@@ -9,6 +9,7 @@ export const CAP = {
   METRICS: "metrics",
   CLIENT_USAGE: "client_usage",
   FINANCIAL: "financial",
+  PROXIES: "proxies",
 } as const;
 
 export type Capability = (typeof CAP)[keyof typeof CAP];
@@ -55,5 +56,11 @@ export const ASSIGNABLE_CAPABILITIES: {
     label: "Dados financeiros",
     description: "Ver custos e valores de faturamento.",
     icon: "account_balance_wallet",
+  },
+  {
+    value: CAP.PROXIES,
+    label: "Proxies",
+    description: "Gerenciar os próprios proxies e escolher o pool por API.",
+    icon: "lan",
   },
 ];

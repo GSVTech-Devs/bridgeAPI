@@ -529,6 +529,7 @@ export function statusStreamUrl(token: string) {
 // ---------------------------------------------------------------------------
 export type ProxyPool = {
   id: string;
+  account_id: string | null;
   name: string;
   description: string | null;
   proxy_count: number;
@@ -537,6 +538,7 @@ export type ProxyPool = {
 
 export type Proxy = {
   id: string;
+  account_id: string | null;
   pool_id: string | null;
   name: string;
   provider: string | null;
@@ -613,6 +615,73 @@ export function deleteProxy(proxyId: string) {
 export function assignProxyPool(apiId: string, proxyPoolId: string | null) {
   return apiFetch<{ api_id: string; proxy_pool_id: string | null }>(
     `/proxies/assignments/${apiId}`,
+    { method: "PUT", body: JSON.stringify({ proxy_pool_id: proxyPoolId }) }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Proxies do cliente (autosserviço)  →  /client/proxies/*
+// Mesmos tipos do admin, mas escopados à conta do usuário logado.
+// ---------------------------------------------------------------------------
+export type ClientProxyAssignment = {
+  api_id: string;
+  api_name: string;
+  proxy_pool_id: string | null;
+};
+
+export function getClientProxyPools() {
+  return apiFetch<{ items: ProxyPool[]; total: number }>("/client/proxies/pools");
+}
+
+export function createClientProxyPool(name: string, description?: string) {
+  return apiFetch<ProxyPool>("/client/proxies/pools", {
+    method: "POST",
+    body: JSON.stringify({ name, description }),
+  });
+}
+
+export function deleteClientProxyPool(poolId: string) {
+  return apiFetch<void>(`/client/proxies/pools/${poolId}`, { method: "DELETE" });
+}
+
+export function getClientProxies(poolId?: string) {
+  const qs = poolId ? `?pool_id=${poolId}` : "";
+  return apiFetch<{ items: Proxy[]; total: number }>(`/client/proxies${qs}`);
+}
+
+export function createClientProxy(body: ProxyInput) {
+  return apiFetch<Proxy>("/client/proxies", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateClientProxy(
+  proxyId: string,
+  body: Partial<ProxyInput> & { status?: string }
+) {
+  return apiFetch<Proxy>(`/client/proxies/${proxyId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteClientProxy(proxyId: string) {
+  return apiFetch<void>(`/client/proxies/${proxyId}`, { method: "DELETE" });
+}
+
+export function getClientProxyAssignments() {
+  return apiFetch<{ items: ClientProxyAssignment[] }>(
+    "/client/proxies/assignments"
+  );
+}
+
+export function setClientProxyAssignment(
+  apiId: string,
+  proxyPoolId: string | null
+) {
+  return apiFetch<{ api_id: string; proxy_pool_id: string | null }>(
+    `/client/proxies/assignments/${apiId}`,
     { method: "PUT", body: JSON.stringify({ proxy_pool_id: proxyPoolId }) }
   );
 }
