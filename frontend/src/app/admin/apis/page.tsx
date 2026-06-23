@@ -18,6 +18,7 @@ type Api = {
   auth_type: string;
   cost_per_query?: number;
   uses_proxy?: boolean;
+  uses_captcha?: boolean;
 };
 
 const initialForm = {
@@ -29,6 +30,7 @@ const initialForm = {
   master_key: "",
   cost_per_query: "",
   uses_proxy: false,
+  uses_captcha: false,
   description: "",
 };
 
@@ -255,6 +257,7 @@ export default function ApisPage() {
       master_key: "",
       cost_per_query: api.cost_per_query != null ? String(api.cost_per_query) : "",
       uses_proxy: api.uses_proxy ?? false,
+      uses_captcha: api.uses_captcha ?? false,
       description: "",
     });
     setFieldErrors({});
@@ -322,6 +325,7 @@ export default function ApisPage() {
         auth_type: form.auth_type || undefined,
         cost_per_query: costValue && !isNaN(costValue) ? costValue : undefined,
         uses_proxy: form.uses_proxy,
+        uses_captcha: form.uses_captcha,
       };
       if (form.master_key) payload.master_key = form.master_key;
       const updated = await updateApi(editingId, payload);
@@ -533,6 +537,22 @@ export default function ApisPage() {
                   Esta API usa proxy
                   <span className="block text-xs text-on-surface-variant">
                     Os proxies são configurados em “Proxies”, por API.
+                  </span>
+                </span>
+              </label>
+
+              {/* Usa captcha? */}
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={form.uses_captcha}
+                  onChange={(e) => setForm((f) => ({ ...f, uses_captcha: e.target.checked }))}
+                  className="h-5 w-5 rounded accent-primary"
+                />
+                <span className="text-sm text-on-surface">
+                  Esta API usa captcha
+                  <span className="block text-xs text-on-surface-variant">
+                    Os provedores são configurados em “Captcha”, por API.
                   </span>
                 </span>
               </label>

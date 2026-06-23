@@ -46,6 +46,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       show: can(CAP.LOGS) || can(CAP.CLIENT_USAGE),
     },
     { href: "/dashboard/proxies", label: "Proxies", icon: "lan", show: can(CAP.PROXIES) },
+    { href: "/dashboard/captcha", label: "Captcha", icon: "verified_user", show: can(CAP.CAPTCHA) },
     { href: "/dashboard/users", label: "Usuários", icon: "group", show: isCompanyOwner },
   ];
 

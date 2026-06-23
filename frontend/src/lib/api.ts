@@ -247,6 +247,7 @@ export function getApis() {
       status: string;
       auth_type: string;
       uses_proxy?: boolean;
+      uses_captcha?: boolean;
     }[];
     total: number;
   }>("/apis");
@@ -261,9 +262,10 @@ export function createApi(data: {
   master_key: string;
   cost_per_query?: number;
   uses_proxy?: boolean;
+  uses_captcha?: boolean;
   description?: string;
 }) {
-  return apiFetch<{ id: string; name: string; slug?: string; base_url: string; url_template?: string; status: string; auth_type: string; cost_per_query?: number; uses_proxy?: boolean }>(
+  return apiFetch<{ id: string; name: string; slug?: string; base_url: string; url_template?: string; status: string; auth_type: string; cost_per_query?: number; uses_proxy?: boolean; uses_captcha?: boolean }>(
     "/apis",
     { method: "POST", body: JSON.stringify(data) }
   );
@@ -278,8 +280,9 @@ export function updateApi(id: string, data: {
   master_key?: string;
   cost_per_query?: number;
   uses_proxy?: boolean;
+  uses_captcha?: boolean;
 }) {
-  return apiFetch<{ id: string; name: string; slug?: string; base_url: string; url_template?: string; status: string; auth_type: string; cost_per_query?: number; uses_proxy?: boolean }>(
+  return apiFetch<{ id: string; name: string; slug?: string; base_url: string; url_template?: string; status: string; auth_type: string; cost_per_query?: number; uses_proxy?: boolean; uses_captcha?: boolean }>(
     `/apis/${id}`,
     { method: "PATCH", body: JSON.stringify(data) }
   );
@@ -306,6 +309,7 @@ export function getPermissions() {
       api_name: string;
       status: string;
       proxy_managed_by_client: boolean;
+      captcha_managed_by_client: boolean;
     }[];
     total: number;
   }>("/permissions");
@@ -642,6 +646,100 @@ export function getProxyMonitor() {
 }
 
 // ---------------------------------------------------------------------------
+// Captcha por API  →  /apis/{id}/captchas (admin) · /client/apis/{id}/captchas
+// Espelha o proxy: provedor pertence a uma API + dono; saldo p/ monitorar.
+// ---------------------------------------------------------------------------
+export type Captcha = {
+  id: string;
+  api_id: string;
+  account_id: string | null;
+  name: string;
+  provider: string | null;
+  has_api_key: boolean;
+  balance_usd: number | null;
+  priority: number;
+  status: string;
+  last_error: string | null;
+  last_error_at: string | null;
+  created_at: string;
+};
+
+export type CaptchaInput = {
+  name: string;
+  provider?: string | null;
+  api_key?: string | null;
+  balance_usd?: number | null;
+  priority?: number;
+};
+
+export type CaptchaPatch = Partial<CaptchaInput> & { status?: string };
+
+// ---- admin ----
+export function getApiCaptchas(apiId: string) {
+  return apiFetch<{ items: Captcha[]; total: number }>(`/apis/${apiId}/captchas`);
+}
+
+export function createApiCaptcha(apiId: string, body: CaptchaInput) {
+  return apiFetch<Captcha>(`/apis/${apiId}/captchas`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateApiCaptcha(apiId: string, captchaId: string, body: CaptchaPatch) {
+  return apiFetch<Captcha>(`/apis/${apiId}/captchas/${captchaId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteApiCaptcha(apiId: string, captchaId: string) {
+  return apiFetch<void>(`/apis/${apiId}/captchas/${captchaId}`, { method: "DELETE" });
+}
+
+// ---- cliente ----
+export function getClientApiCaptchas(apiId: string) {
+  return apiFetch<{ items: Captcha[]; total: number }>(`/client/apis/${apiId}/captchas`);
+}
+
+export function createClientApiCaptcha(apiId: string, body: CaptchaInput) {
+  return apiFetch<Captcha>(`/client/apis/${apiId}/captchas`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateClientApiCaptcha(apiId: string, captchaId: string, body: CaptchaPatch) {
+  return apiFetch<Captcha>(`/client/apis/${apiId}/captchas/${captchaId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteClientApiCaptcha(apiId: string, captchaId: string) {
+  return apiFetch<void>(`/client/apis/${apiId}/captchas/${captchaId}`, { method: "DELETE" });
+}
+
+// ---- monitoramento ----
+export type CaptchaMonitorItem = {
+  id: string;
+  api_id: string;
+  api_name: string;
+  account_id: string | null;
+  name: string;
+  provider: string | null;
+  balance_usd: number | null;
+  status: string;
+  priority: number;
+  last_error: string | null;
+  last_error_at: string | null;
+};
+
+export function getCaptchaMonitor() {
+  return apiFetch<{ items: CaptchaMonitorItem[]; total: number }>("/monitoring/captchas");
+}
+
+// ---------------------------------------------------------------------------
 // Permissions (admin)  →  /permissions/*
 // ---------------------------------------------------------------------------
 export function grantPermission(
@@ -677,6 +775,18 @@ export function setPermissionProxyManaged(
   });
 }
 
+// Liga/desliga o autosserviço de captcha do cliente para uma API.
+export function setPermissionCaptchaManaged(
+  accountId: string,
+  apiId: string,
+  captchaManagedByClient: boolean
+) {
+  return apiFetch(`/permissions/${accountId}/${apiId}/config`, {
+    method: "PATCH",
+    body: JSON.stringify({ captcha_managed_by_client: captchaManagedByClient }),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Catalog (client)  →  /catalog
 // ---------------------------------------------------------------------------
@@ -690,6 +800,7 @@ export function getCatalog() {
       url_template?: string;
       status: string;
       uses_proxy?: boolean;
+      uses_captcha?: boolean;
     }[];
     total: number;
   }>("/catalog");

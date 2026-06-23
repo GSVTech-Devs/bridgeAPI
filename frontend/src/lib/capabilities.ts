@@ -10,6 +10,7 @@ export const CAP = {
   CLIENT_USAGE: "client_usage",
   FINANCIAL: "financial",
   PROXIES: "proxies",
+  CAPTCHA: "captcha",
 } as const;
 
 export type Capability = (typeof CAP)[keyof typeof CAP];
@@ -60,7 +61,13 @@ export const ASSIGNABLE_CAPABILITIES: {
   {
     value: CAP.PROXIES,
     label: "Proxies",
-    description: "Gerenciar os próprios proxies e escolher o pool por API.",
+    description: "Gerenciar os próprios proxies por API.",
     icon: "lan",
+  },
+  {
+    value: CAP.CAPTCHA,
+    label: "Captcha",
+    description: "Gerenciar os próprios provedores de captcha por API.",
+    icon: "verified_user",
   },
 ];

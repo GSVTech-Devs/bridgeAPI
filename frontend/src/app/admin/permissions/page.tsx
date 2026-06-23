@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAccounts, getApis, getPermissions, grantPermission, revokePermission, setPermissionProxyManaged } from "@/lib/api";
+import { getAccounts, getApis, getPermissions, grantPermission, revokePermission, setPermissionProxyManaged, setPermissionCaptchaManaged } from "@/lib/api";
 
 type Client = { id: string; name: string; type: string; status: string };
-type Api = { id: string; name: string; base_url: string; status: string; auth_type: string; uses_proxy?: boolean };
-type Permission = { account_id: string; api_id: string; account_name: string; api_name: string; status: string; proxy_managed_by_client: boolean };
+type Api = { id: string; name: string; base_url: string; status: string; auth_type: string; uses_proxy?: boolean; uses_captcha?: boolean };
+type Permission = { account_id: string; api_id: string; account_name: string; api_name: string; status: string; proxy_managed_by_client: boolean; captcha_managed_by_client: boolean };
 
 const apiIcons = ["payments", "analytics", "cloud_sync", "shield_lock", "dataset", "monitoring"];
 
@@ -83,6 +83,25 @@ export default function PermissionsPage() {
         prev.map((p) =>
           p.account_id === clientId && p.api_id === apiId
             ? { ...p, proxy_managed_by_client: value }
+            : p
+        )
+      );
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao atualizar");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleToggleCaptcha(clientId: string, apiId: string, value: boolean) {
+    const key = `cap-${clientId}-${apiId}`;
+    setActionLoading(key);
+    try {
+      await setPermissionCaptchaManaged(clientId, apiId, value);
+      setPermissions((prev) =>
+        prev.map((p) =>
+          p.account_id === clientId && p.api_id === apiId
+            ? { ...p, captcha_managed_by_client: value }
             : p
         )
       );
@@ -219,6 +238,7 @@ export default function PermissionsPage() {
                   const perm = activePerms.find((p) => p.account_id === selectedClient && p.api_id === api.id);
                   const hasAccess = perm !== undefined;
                   const managed = perm?.proxy_managed_by_client ?? false;
+                  const managedCaptcha = perm?.captcha_managed_by_client ?? false;
                   return (
                     <div key={api.id} className="grid grid-cols-12 items-center bg-surface-container-lowest p-6 rounded-3xl hover:bg-white transition-all shadow-sm">
                       <div className="col-span-6 flex items-center gap-4">
@@ -251,6 +271,20 @@ export default function PermissionsPage() {
                             }`}
                           >
                             {managed ? "PROXY: CLIENTE" : "PROXY: ADMIN"}
+                          </button>
+                        )}
+                        {hasAccess && api.uses_captcha && (
+                          <button
+                            onClick={() => handleToggleCaptcha(selectedClient, api.id, !managedCaptcha)}
+                            disabled={actionLoading === `cap-${permKey}`}
+                            title="Cliente configura o próprio captcha desta API"
+                            className={`px-3 py-2 rounded-xl text-[10px] font-bold transition-all disabled:opacity-50 ${
+                              managedCaptcha
+                                ? "bg-primary/15 text-primary"
+                                : "bg-surface-container-high text-on-surface-variant"
+                            }`}
+                          >
+                            {managedCaptcha ? "CAPTCHA: CLIENTE" : "CAPTCHA: ADMIN"}
                           </button>
                         )}
                         {hasAccess ? (
