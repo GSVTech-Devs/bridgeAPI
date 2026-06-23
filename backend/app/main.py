@@ -5,6 +5,9 @@ from app.domains.accounts.router import router as accounts_router
 from app.domains.apis.router import router as apis_router
 from app.domains.auth.router import router as auth_router
 from app.domains.branding.router import router as branding_router
+from app.domains.captcha.client_router import router as captcha_client_router
+from app.domains.captcha.router import monitor_router as captcha_monitor_router
+from app.domains.captcha.router import router as captcha_router
 from app.domains.ingest.router import router as ingest_router
 from app.domains.keys.router import router as keys_router
 from app.domains.logs.router import router as logs_router
@@ -51,6 +54,9 @@ app.include_router(status_router)
 app.include_router(proxies_router)
 app.include_router(proxies_client_router)
 app.include_router(proxies_monitor_router)
+app.include_router(captcha_router)
+app.include_router(captcha_client_router)
+app.include_router(captcha_monitor_router)
 app.include_router(proxy_router)
 
 

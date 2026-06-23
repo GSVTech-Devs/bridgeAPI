@@ -21,6 +21,7 @@ class APICreateRequest(BaseModel):
     auth_type: APIAuthType = APIAuthType.NONE
     cost_per_query: Optional[float] = None
     uses_proxy: bool = False
+    uses_captcha: bool = False
 
     @field_validator("slug")
     @classmethod
@@ -53,6 +54,7 @@ class APIUpdateRequest(BaseModel):
     auth_type: Optional[APIAuthType] = None
     cost_per_query: Optional[float] = None
     uses_proxy: Optional[bool] = None
+    uses_captcha: Optional[bool] = None
 
     @field_validator("slug")
     @classmethod
@@ -81,6 +83,7 @@ class APIResponse(BaseModel):
     status: str
     cost_per_query: Optional[float] = None
     uses_proxy: bool = False
+    uses_captcha: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -121,6 +124,7 @@ class APIDetailResponse(BaseModel):
     status: str
     cost_per_query: Optional[float] = None
     uses_proxy: bool = False
+    uses_captcha: bool = False
     created_at: datetime
     endpoints: list[EndpointResponse] = Field(default_factory=list)
 

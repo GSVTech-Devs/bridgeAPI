@@ -11,10 +11,12 @@ class PermissionCreateRequest(BaseModel):
     account_id: uuid.UUID
     api_id: uuid.UUID
     proxy_managed_by_client: bool = False
+    captcha_managed_by_client: bool = False
 
 
 class PermissionConfigRequest(BaseModel):
-    proxy_managed_by_client: bool
+    proxy_managed_by_client: Optional[bool] = None
+    captcha_managed_by_client: Optional[bool] = None
 
 
 class PermissionResponse(BaseModel):
@@ -24,6 +26,7 @@ class PermissionResponse(BaseModel):
     granted_at: datetime
     revoked_at: Optional[datetime]
     proxy_managed_by_client: bool = False
+    captcha_managed_by_client: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -35,6 +38,7 @@ class PermissionListItem(BaseModel):
     api_name: str
     status: str
     proxy_managed_by_client: bool = False
+    captcha_managed_by_client: bool = False
 
 
 class PermissionListResponse(BaseModel):

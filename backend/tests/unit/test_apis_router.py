@@ -38,6 +38,7 @@ def make_api(
         status=status,
         cost_per_query=cost_per_query,
         uses_proxy=False,
+        uses_captcha=False,
         created_at=datetime.now(timezone.utc),
     )
 

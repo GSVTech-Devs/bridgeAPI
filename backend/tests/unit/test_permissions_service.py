@@ -43,6 +43,7 @@ def make_permission(
         granted_at=datetime.now(timezone.utc),
         revoked_at=revoked_at,
         proxy_managed_by_client=False,
+        captcha_managed_by_client=False,
     )
 
 
@@ -166,6 +167,7 @@ async def test_list_permissions_returns_formatted_rows_with_status() -> None:
         api_name="Stripe API",
         revoked_at=None,
         proxy_managed_by_client=True,
+        captcha_managed_by_client=False,
     )
     revoked_row = MagicMock(
         account_id=other_id,
@@ -174,6 +176,7 @@ async def test_list_permissions_returns_formatted_rows_with_status() -> None:
         api_name="GitHub API",
         revoked_at=datetime.now(timezone.utc),
         proxy_managed_by_client=False,
+        captcha_managed_by_client=True,
     )
 
     db = AsyncMock()
@@ -190,5 +193,6 @@ async def test_list_permissions_returns_formatted_rows_with_status() -> None:
         "api_name": "Stripe API",
         "status": "active",
         "proxy_managed_by_client": True,
+        "captcha_managed_by_client": False,
     }
     assert result[1]["status"] == "revoked"

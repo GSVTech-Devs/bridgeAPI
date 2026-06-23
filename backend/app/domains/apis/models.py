@@ -58,6 +58,10 @@ class ExternalAPI(Base):
     uses_proxy: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )
+    # Esta API usa captcha? Os provedores ficam em `captcha_providers`.
+    uses_captcha: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     auth_type: Mapped[str] = mapped_column(String(20), default=APIAuthType.NONE)
     status: Mapped[str] = mapped_column(
         String(20), default=APIStatus.ACTIVE, index=True

@@ -19,6 +19,12 @@ from app.domains.ingest.service import (
     generate_service_token,
     write_app_logs,
 )
+from app.domains.captcha.schemas import CaptchaConfigResponse, CaptchaReportRequest
+from app.domains.captcha.service import (
+    CaptchaNotFoundError,
+    get_captcha_config_for_api,
+    report_captcha_failure,
+)
 from app.domains.proxies.schemas import ProxyConfigResponse, ProxyReportRequest
 from app.domains.proxies.service import (
     ProxyNotFoundError,
@@ -104,6 +110,35 @@ async def ingest_proxy_report(
             status_code=status.HTTP_404_NOT_FOUND, detail="Proxy not in this API's pool"
         )
     return {"ok": True, "proxy_id": str(proxy.id), "status": proxy.status}
+
+
+@router.get("/ingest/captcha", response_model=CaptchaConfigResponse)
+async def ingest_captcha(
+    api: ExternalAPI = Depends(require_service_token),
+    db: AsyncSession = Depends(get_db),
+    x_bridge_client: str | None = Header(default=None),
+) -> CaptchaConfigResponse:
+    """Provedores de captcha da API (chave + saldo) — resolvidos de forma híbrida
+    pelo cliente da chamada (X-Bridge-Client), igual ao proxy."""
+    return await get_captcha_config_for_api(db, api, client_id=x_bridge_client)
+
+
+@router.post("/ingest/captcha/report")
+async def ingest_captcha_report(
+    body: CaptchaReportRequest,
+    api: ExternalAPI = Depends(require_service_token),
+    db: AsyncSession = Depends(get_db),
+    x_bridge_client: str | None = Header(default=None),
+) -> dict:
+    """A SDK reporta falha/saldo de um provedor de captcha."""
+    try:
+        captcha = await report_captcha_failure(db, api, body, client_id=x_bridge_client)
+    except CaptchaNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Captcha provider not in this API/owner scope",
+        )
+    return {"ok": True, "provider_id": str(captcha.id), "status": captcha.status}
 
 
 @router.post(

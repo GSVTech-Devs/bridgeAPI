@@ -32,3 +32,7 @@ class Permission(Base):
     proxy_managed_by_client: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )
+    # Idem para captcha: cliente configura o próprio provedor desta API?
+    captcha_managed_by_client: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )

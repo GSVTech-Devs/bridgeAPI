@@ -24,6 +24,7 @@ async def grant_permission(
     account_id: str,
     api_id: str,
     proxy_managed_by_client: bool = False,
+    captcha_managed_by_client: bool = False,
 ) -> Permission:
     result = await db.execute(
         select(Permission).where(
@@ -40,6 +41,7 @@ async def grant_permission(
         existing.revoked_at = None
         existing.granted_at = datetime.now(timezone.utc)
         existing.proxy_managed_by_client = proxy_managed_by_client
+        existing.captcha_managed_by_client = captcha_managed_by_client
         await db.commit()
         await db.refresh(existing)
         return existing
@@ -49,6 +51,7 @@ async def grant_permission(
         api_id=uuid.UUID(api_id),
         granted_at=datetime.now(timezone.utc),
         proxy_managed_by_client=proxy_managed_by_client,
+        captcha_managed_by_client=captcha_managed_by_client,
     )
     db.add(permission)
     await db.commit()
@@ -86,6 +89,7 @@ async def list_permissions(db: AsyncSession) -> list[dict]:
             ExternalAPI.name.label("api_name"),
             Permission.revoked_at,
             Permission.proxy_managed_by_client,
+            Permission.captcha_managed_by_client,
         )
         .join(Account, Account.id == Permission.account_id)
         .join(ExternalAPI, ExternalAPI.id == Permission.api_id)
@@ -99,6 +103,7 @@ async def list_permissions(db: AsyncSession) -> list[dict]:
             "api_name": r.api_name,
             "status": "revoked" if r.revoked_at is not None else "active",
             "proxy_managed_by_client": r.proxy_managed_by_client,
+            "captcha_managed_by_client": r.captcha_managed_by_client,
         }
         for r in rows
     ]
@@ -124,8 +129,9 @@ async def set_permission_management(
     api_id: str,
     *,
     proxy_managed_by_client: bool | None = None,
+    captcha_managed_by_client: bool | None = None,
 ) -> Permission:
-    """Liga/desliga o autosserviço de proxy do cliente para uma API."""
+    """Liga/desliga o autosserviço de proxy/captcha do cliente para uma API."""
     permission = await get_permission(db, account_id, api_id)
     if permission is None:
         raise PermissionNotFoundError(
@@ -133,6 +139,8 @@ async def set_permission_management(
         )
     if proxy_managed_by_client is not None:
         permission.proxy_managed_by_client = proxy_managed_by_client
+    if captcha_managed_by_client is not None:
+        permission.captcha_managed_by_client = captcha_managed_by_client
     await db.commit()
     await db.refresh(permission)
     return permission

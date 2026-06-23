@@ -35,6 +35,7 @@ async def register_api(
     slug: str | None = None,
     cost_per_query: float | None = None,
     uses_proxy: bool = False,
+    uses_captcha: bool = False,
 ) -> ExternalAPI:
     existing = await db.execute(select(ExternalAPI).where(ExternalAPI.name == name))
     if existing.scalar_one_or_none() is not None:
@@ -57,6 +58,7 @@ async def register_api(
         auth_type=auth_type,
         cost_per_query=cost_per_query,
         uses_proxy=uses_proxy,
+        uses_captcha=uses_captcha,
     )
     db.add(api)
     await db.commit()
@@ -123,6 +125,7 @@ async def update_api(
     auth_type: APIAuthType | None = None,
     cost_per_query: float | None = None,
     uses_proxy: bool | None = None,
+    uses_captcha: bool | None = None,
 ) -> ExternalAPI:
     api = await get_api_by_id(db, api_id)
 
@@ -148,6 +151,8 @@ async def update_api(
         api.cost_per_query = cost_per_query
     if uses_proxy is not None:
         api.uses_proxy = uses_proxy
+    if uses_captcha is not None:
+        api.uses_captcha = uses_captcha
     if master_key:
         from app.core.security import encrypt_value
         api.master_key_encrypted = encrypt_value(master_key)

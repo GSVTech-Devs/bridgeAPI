@@ -55,6 +55,7 @@ async def grant(
             str(body.account_id),
             str(body.api_id),
             proxy_managed_by_client=body.proxy_managed_by_client,
+            captcha_managed_by_client=body.captcha_managed_by_client,
         )
     except DuplicatePermissionError:
         raise HTTPException(
@@ -95,13 +96,14 @@ async def configure(
     db: AsyncSession = Depends(get_db),
     current_user: MeResponse = Depends(get_current_user),
 ) -> PermissionResponse:
-    """Liga/desliga o autosserviço de proxy do cliente para esta API."""
+    """Liga/desliga o autosserviço de proxy/captcha do cliente para esta API."""
     try:
         permission = await set_permission_management(
             db,
             str(account_id),
             str(api_id),
             proxy_managed_by_client=body.proxy_managed_by_client,
+            captcha_managed_by_client=body.captcha_managed_by_client,
         )
     except PermissionNotFoundError:
         raise HTTPException(

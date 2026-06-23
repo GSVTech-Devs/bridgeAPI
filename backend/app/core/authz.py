@@ -28,6 +28,7 @@ class Feature(str, Enum):
     FINANCIAL = "financial"  # dados de custo/financeiros
     MEMBERS = "members"  # gestão de usuários da empresa pelo responsável
     PROXIES = "proxies"  # autosserviço de proxies do cliente
+    CAPTCHA = "captcha"  # autosserviço de captcha do cliente
 
 
 # Todas as features de dashboard — o responsável (owner) tem acesso total.
@@ -43,6 +44,7 @@ ASSIGNABLE_FEATURES: set[Feature] = {
     Feature.CLIENT_USAGE,
     Feature.FINANCIAL,
     Feature.PROXIES,
+    Feature.CAPTCHA,
 }
 
 # Features que todo membro de account tem por padrão, independente da role.
