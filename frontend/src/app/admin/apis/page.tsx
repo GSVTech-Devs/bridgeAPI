@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { getApis, createApi, updateApi, enableApi, disableApi, deleteApi } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  getApis, createApi, updateApi, enableApi, disableApi, deleteApi,
+  getApiProxies, createApiProxy, updateApiProxy, deleteApiProxy,
+  getApiCaptchas, createApiCaptcha, updateApiCaptcha, deleteApiCaptcha,
+  type Proxy, type ProxyInput, type Captcha, type CaptchaInput,
+} from "@/lib/api";
 
 const BRIDGE_BASE =
   process.env.NEXT_PUBLIC_BRIDGE_URL ??
@@ -570,6 +575,21 @@ export default function ApisPage() {
                 </button>
               </div>
             </form>
+
+            {/* Proxy/captcha da API — só em edição (precisa do api_id salvo) */}
+            {editingId && (form.uses_proxy || form.uses_captcha) && (
+              <div className="mt-10 space-y-8 border-t border-outline-variant/15 pt-8">
+                {form.uses_proxy && <ApiProxyPanel apiId={editingId} />}
+                {form.uses_captcha && <ApiCaptchaPanel apiId={editingId} />}
+              </div>
+            )}
+            {!editingId && (form.uses_proxy || form.uses_captcha) && (
+              <p className="mt-6 text-xs text-on-surface-variant max-w-4xl mx-auto">
+                Salve a API para configurar {form.uses_proxy ? "proxies" : ""}
+                {form.uses_proxy && form.uses_captcha ? " e " : ""}
+                {form.uses_captcha ? "captcha" : ""} aqui.
+              </p>
+            )}
           </div>
           <div className="absolute -top-24 -right-24 w-64 h-64 bg-primary/5 rounded-full blur-3xl" />
         </section>
@@ -685,6 +705,281 @@ export default function ApisPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Painéis embutidos no cadastro da API: proxies e captchas desta API (admin).
+// ---------------------------------------------------------------------------
+function statusPill(s: string): string {
+  switch (s) {
+    case "active": return "bg-green-600 text-white";
+    case "failing": return "bg-error text-on-error";
+    default: return "bg-surface-container-high text-on-surface-variant";
+  }
+}
+
+const PROXY_SCHEMES = ["http", "https", "socks5"];
+const PROXY_TYPES = ["datacenter", "residential", "mobile"];
+const PROXY_ROTATIONS = ["sticky", "rotating"];
+
+const EMPTY_PROXY: ProxyInput = {
+  name: "", host: "", port: 8080, scheme: "http", type: "datacenter",
+  provider: "", username: "", password: "", rotation: "sticky", priority: 100,
+};
+
+function ApiProxyPanel({ apiId }: { apiId: string }) {
+  const [items, setItems] = useState<Proxy[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState<ProxyInput>(EMPTY_PROXY);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await getApiProxies(apiId);
+      setItems(r.items);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erro ao carregar proxies");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiId]);
+  useEffect(() => { load(); }, [load]);
+
+  const field = (k: keyof ProxyInput, v: string | number | null) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true); setErr(null);
+    try {
+      await createApiProxy(apiId, {
+        ...form,
+        provider: form.provider || null,
+        username: form.username || null,
+        password: form.password || null,
+      });
+      setForm(EMPTY_PROXY); setShowAdd(false); await load();
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : "Falha ao criar proxy");
+    } finally { setSaving(false); }
+  }
+
+  async function toggle(p: Proxy) {
+    await updateApiProxy(apiId, p.id, { status: p.status === "active" ? "inactive" : "active" });
+    await load();
+  }
+  async function remove(id: string) {
+    if (!confirm("Remover este proxy?")) return;
+    await deleteApiProxy(apiId, id); await load();
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-lg font-bold text-on-surface flex items-center gap-2">
+          <span className="material-symbols-outlined text-[20px]">lan</span> Proxies desta API
+        </h4>
+        <button type="button" onClick={() => { setForm(EMPTY_PROXY); setShowAdd((v) => !v); }}
+          className="px-4 py-2 rounded-lg bg-surface-container-high text-on-surface font-bold text-xs hover:bg-surface-container-highest">
+          {showAdd ? "Cancelar" : "+ Adicionar proxy"}
+        </button>
+      </div>
+      {err && <p className="text-xs text-error">{err}</p>}
+
+      {showAdd && (
+        <form onSubmit={add} className="bg-surface-container-low rounded-xl p-4 grid grid-cols-3 gap-3">
+          <PInput label="Nome" value={form.name} onChange={(v) => field("name", v)} required />
+          <PInput label="Host" value={form.host} onChange={(v) => field("host", v)} required />
+          <PInput label="Porta" type="number" value={String(form.port)} onChange={(v) => field("port", Number(v))} required />
+          <PSelect label="Scheme" value={form.scheme!} options={PROXY_SCHEMES} onChange={(v) => field("scheme", v)} />
+          <PSelect label="Tipo" value={form.type!} options={PROXY_TYPES} onChange={(v) => field("type", v)} />
+          <PSelect label="Rotação" value={form.rotation!} options={PROXY_ROTATIONS} onChange={(v) => field("rotation", v)} />
+          <PInput label="Usuário" value={form.username ?? ""} onChange={(v) => field("username", v)} />
+          <PInput label="Senha" value={form.password ?? ""} onChange={(v) => field("password", v)} />
+          <PInput label="Prioridade" type="number" value={String(form.priority)} onChange={(v) => field("priority", Number(v))} />
+          <div className="col-span-3 flex justify-end">
+            <button type="submit" disabled={saving}
+              className="px-5 py-2 rounded-lg bg-primary text-white font-bold text-xs hover:opacity-90 disabled:opacity-50">
+              {saving ? "Salvando…" : "Criar proxy"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 overflow-hidden">
+        {loading ? (
+          <p className="py-6 text-center text-on-surface-variant text-sm">Carregando…</p>
+        ) : items.length === 0 ? (
+          <p className="py-6 text-center text-on-surface-variant text-sm">Nenhum proxy nesta API.</p>
+        ) : (
+          <div className="divide-y divide-outline-variant/10">
+            {items.map((p) => (
+              <div key={p.id} className="grid grid-cols-[80px_1fr_120px_80px_44px] items-center gap-2 px-4 py-2.5 text-sm">
+                <span className={`text-center text-[10px] font-black uppercase rounded-md py-1 ${statusPill(p.status)}`}>{p.status}</span>
+                <div className="min-w-0">
+                  <p className="font-bold text-on-surface truncate">{p.name}</p>
+                  <p className="text-xs text-on-surface-variant font-mono truncate">{p.scheme}://{p.host}:{p.port} · {p.type}</p>
+                  {p.last_error && <p className="text-xs text-error truncate">⚠ {p.last_error}</p>}
+                </div>
+                <span className="text-xs text-on-surface-variant">prio {p.priority} · {p.rotation}</span>
+                <button type="button" onClick={() => toggle(p)} className="text-xs font-bold text-primary hover:underline justify-self-start">
+                  {p.status === "active" ? "Desativar" : "Ativar"}
+                </button>
+                <button type="button" onClick={() => remove(p.id)} className="text-on-surface-variant hover:text-error justify-self-end">
+                  <span className="material-symbols-outlined text-[18px]">delete</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const EMPTY_CAPTCHA: CaptchaInput = {
+  name: "", provider: "", api_key: "", balance_usd: null, priority: 100,
+};
+
+function ApiCaptchaPanel({ apiId }: { apiId: string }) {
+  const [items, setItems] = useState<Captcha[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState<CaptchaInput>(EMPTY_CAPTCHA);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await getApiCaptchas(apiId);
+      setItems(r.items);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erro ao carregar captchas");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiId]);
+  useEffect(() => { load(); }, [load]);
+
+  const field = (k: keyof CaptchaInput, v: string | number | null) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true); setErr(null);
+    try {
+      await createApiCaptcha(apiId, {
+        ...form,
+        provider: form.provider || null,
+        api_key: form.api_key || null,
+        balance_usd: form.balance_usd ?? null,
+      });
+      setForm(EMPTY_CAPTCHA); setShowAdd(false); await load();
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : "Falha ao criar provedor");
+    } finally { setSaving(false); }
+  }
+
+  async function toggle(c: Captcha) {
+    await updateApiCaptcha(apiId, c.id, { status: c.status === "active" ? "inactive" : "active" });
+    await load();
+  }
+  async function remove(id: string) {
+    if (!confirm("Remover este provedor?")) return;
+    await deleteApiCaptcha(apiId, id); await load();
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-lg font-bold text-on-surface flex items-center gap-2">
+          <span className="material-symbols-outlined text-[20px]">verified_user</span> Captcha desta API
+        </h4>
+        <button type="button" onClick={() => { setForm(EMPTY_CAPTCHA); setShowAdd((v) => !v); }}
+          className="px-4 py-2 rounded-lg bg-surface-container-high text-on-surface font-bold text-xs hover:bg-surface-container-highest">
+          {showAdd ? "Cancelar" : "+ Adicionar provedor"}
+        </button>
+      </div>
+      {err && <p className="text-xs text-error">{err}</p>}
+
+      {showAdd && (
+        <form onSubmit={add} className="bg-surface-container-low rounded-xl p-4 grid grid-cols-3 gap-3">
+          <PInput label="Nome" value={form.name} onChange={(v) => field("name", v)} required />
+          <PInput label="Provedor" value={form.provider ?? ""} onChange={(v) => field("provider", v)} />
+          <PInput label="API key" value={form.api_key ?? ""} onChange={(v) => field("api_key", v)} />
+          <PInput label="Saldo (US$)" type="number" value={form.balance_usd != null ? String(form.balance_usd) : ""} onChange={(v) => field("balance_usd", v === "" ? null : Number(v))} />
+          <PInput label="Prioridade" type="number" value={String(form.priority)} onChange={(v) => field("priority", Number(v))} />
+          <div className="col-span-3 flex justify-end">
+            <button type="submit" disabled={saving}
+              className="px-5 py-2 rounded-lg bg-primary text-white font-bold text-xs hover:opacity-90 disabled:opacity-50">
+              {saving ? "Salvando…" : "Criar provedor"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 overflow-hidden">
+        {loading ? (
+          <p className="py-6 text-center text-on-surface-variant text-sm">Carregando…</p>
+        ) : items.length === 0 ? (
+          <p className="py-6 text-center text-on-surface-variant text-sm">Nenhum provedor nesta API.</p>
+        ) : (
+          <div className="divide-y divide-outline-variant/10">
+            {items.map((c) => (
+              <div key={c.id} className="grid grid-cols-[80px_1fr_120px_80px_44px] items-center gap-2 px-4 py-2.5 text-sm">
+                <span className={`text-center text-[10px] font-black uppercase rounded-md py-1 ${statusPill(c.status)}`}>{c.status}</span>
+                <div className="min-w-0">
+                  <p className="font-bold text-on-surface truncate">{c.name}</p>
+                  <p className="text-xs text-on-surface-variant truncate">{c.provider ?? "—"} · {c.has_api_key ? "chave ✓" : "sem chave"}</p>
+                  {c.last_error && <p className="text-xs text-error truncate">⚠ {c.last_error}</p>}
+                </div>
+                <span className="text-xs text-on-surface-variant">
+                  {c.balance_usd != null ? `US$ ${c.balance_usd.toFixed(2)}` : "saldo —"} · prio {c.priority}
+                </span>
+                <button type="button" onClick={() => toggle(c)} className="text-xs font-bold text-primary hover:underline justify-self-start">
+                  {c.status === "active" ? "Desativar" : "Ativar"}
+                </button>
+                <button type="button" onClick={() => remove(c.id)} className="text-on-surface-variant hover:text-error justify-self-end">
+                  <span className="material-symbols-outlined text-[18px]">delete</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PInput({ label, value, onChange, type = "text", required = false }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string; required?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-bold text-on-surface-variant">{label}</label>
+      <input
+        type={type} value={value} required={required}
+        onChange={(e) => onChange(e.target.value)}
+        className="px-3 py-2 rounded-lg bg-surface-container border border-outline-variant/20 text-sm text-on-surface focus:outline-none focus:border-primary"
+      />
+    </div>
+  );
+}
+
+function PSelect({ label, value, options, onChange }: {
+  label: string; value: string; options: string[]; onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-bold text-on-surface-variant">{label}</label>
+      <select value={value} onChange={(e) => onChange(e.target.value)}
+        className="px-3 py-2 rounded-lg bg-surface-container border border-outline-variant/20 text-sm text-on-surface">
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
     </div>
   );
 }
