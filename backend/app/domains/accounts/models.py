@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import DateTime, LargeBinary, String
+from sqlalchemy import JSON, DateTime, LargeBinary, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -44,6 +44,11 @@ class Account(Base):
     logo_content_type: Mapped[Optional[str]] = mapped_column(
         String(100), nullable=True
     )
+    # Tema de marca do portal: paleta por modo (claro/escuro), cada um com
+    # primary/secondary/tertiary/background em hex ``#rrggbb`` (cada slot
+    # opcional → cor padrão). Estrutura: ``{"light": {...}, "dark": {...}}``.
+    # ``None`` mantém o tema padrão. O frontend deriva os tons a partir daqui.
+    brand_theme: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

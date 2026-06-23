@@ -8,15 +8,24 @@ from app.domains.accounts.service import AccountNotFoundError, get_account_by_id
 from app.domains.auth.models import UserRole
 from app.domains.auth.router import get_current_account_user
 from app.domains.auth.schemas import MeResponse
-from app.domains.branding.schemas import BrandingResponse
+from app.domains.branding.schemas import BrandThemeRequest, BrandingResponse
 from app.domains.branding.service import (
     MAX_LOGO_BYTES,
     InvalidLogoError,
+    clear_account_brand_theme,
     clear_account_logo,
     logo_data_uri,
+    set_account_brand_theme,
     set_account_logo,
     validate_logo,
 )
+
+
+def _branding(account) -> BrandingResponse:
+    return BrandingResponse(
+        logo_data_uri=logo_data_uri(account),
+        brand_theme=account.brand_theme,
+    )
 
 router = APIRouter(prefix="/portal/branding", tags=["branding"])
 
@@ -46,8 +55,8 @@ async def get_account_branding(
     try:
         account = await get_account_by_id(db, str(identity.account_id))
     except AccountNotFoundError:
-        return BrandingResponse(logo_data_uri=None)
-    return BrandingResponse(logo_data_uri=logo_data_uri(account))
+        return BrandingResponse()
+    return _branding(account)
 
 
 @router.put("/logo", response_model=BrandingResponse)
@@ -77,7 +86,7 @@ async def upload_account_logo(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Account not found"
         )
-    return BrandingResponse(logo_data_uri=logo_data_uri(account))
+    return _branding(account)
 
 
 @router.delete("/logo", response_model=BrandingResponse)
@@ -92,4 +101,37 @@ async def delete_account_logo(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Account not found"
         )
-    return BrandingResponse(logo_data_uri=logo_data_uri(account))
+    return _branding(account)
+
+
+@router.put("/colors", response_model=BrandingResponse)
+async def update_account_colors(
+    payload: BrandThemeRequest,
+    db: AsyncSession = Depends(get_db),
+    identity: MeResponse = Depends(get_current_account_owner),
+) -> BrandingResponse:
+    """Define o tema de marca da conta (owner). O tema é derivado no frontend."""
+    try:
+        account = await set_account_brand_theme(
+            db, str(identity.account_id), theme=payload.model_dump()
+        )
+    except AccountNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Account not found"
+        )
+    return _branding(account)
+
+
+@router.delete("/colors", response_model=BrandingResponse)
+async def delete_account_colors(
+    db: AsyncSession = Depends(get_db),
+    identity: MeResponse = Depends(get_current_account_owner),
+) -> BrandingResponse:
+    """Remove o tema de marca, voltando ao tema padrão."""
+    try:
+        account = await clear_account_brand_theme(db, str(identity.account_id))
+    except AccountNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Account not found"
+        )
+    return _branding(account)

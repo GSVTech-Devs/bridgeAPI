@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import re
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,9 +18,16 @@ LOGO_REQUIREMENTS_MESSAGE = (
     "(recomendado ~320×80 px, fundo transparente)."
 )
 
+# Cor de marca: hex ``#rrggbb`` (a paleta do tema é derivada no frontend).
+BRAND_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
 
 class InvalidLogoError(Exception):
     """Upload de logo rejeitado pela validação (formato/tamanho/conteúdo)."""
+
+
+class InvalidBrandColorError(Exception):
+    """Cor de marca rejeitada pela validação (formato hex inválido)."""
 
 
 def _content_matches(content_type: str, data: bytes) -> bool:
@@ -80,6 +88,58 @@ async def clear_account_logo(db: AsyncSession, account_id: str) -> Account:
     account = await get_account_by_id(db, account_id)
     account.logo_data = None
     account.logo_content_type = None
+    await db.commit()
+    await db.refresh(account)
+    return account
+
+
+def validate_brand_color(color: str | None) -> str:
+    """Valida e normaliza a cor de marca para o formato ``#rrggbb`` minúsculo.
+
+    Levanta ``InvalidBrandColorError`` quando não for um hex de 6 dígitos.
+    """
+    normalized = (color or "").strip().lower()
+    if not BRAND_COLOR_RE.match(normalized):
+        raise InvalidBrandColorError(
+            "Cor inválida. Use um hexadecimal no formato #RRGGBB."
+        )
+    return normalized
+
+
+_BRAND_SLOTS: tuple[str, ...] = ("primary", "secondary", "tertiary", "background")
+
+
+def normalize_brand_theme(theme: dict) -> dict:
+    """Normaliza um tema de marca: valida/minúscula cada hex; descarta vazios.
+
+    Aceita ``{"light": {...}, "dark": {...}}`` (slots opcionais) e devolve a
+    mesma forma só com os slots preenchidos e hex normalizados.
+    """
+    out: dict[str, dict[str, str]] = {}
+    for mode in ("light", "dark"):
+        colors = (theme or {}).get(mode) or {}
+        clean: dict[str, str] = {}
+        for slot in _BRAND_SLOTS:
+            value = colors.get(slot)
+            if value:
+                clean[slot] = validate_brand_color(value)
+        out[mode] = clean
+    return out
+
+
+async def set_account_brand_theme(
+    db: AsyncSession, account_id: str, *, theme: dict
+) -> Account:
+    account = await get_account_by_id(db, account_id)
+    account.brand_theme = normalize_brand_theme(theme)
+    await db.commit()
+    await db.refresh(account)
+    return account
+
+
+async def clear_account_brand_theme(db: AsyncSession, account_id: str) -> Account:
+    account = await get_account_by_id(db, account_id)
+    account.brand_theme = None
     await db.commit()
     await db.refresh(account)
     return account
