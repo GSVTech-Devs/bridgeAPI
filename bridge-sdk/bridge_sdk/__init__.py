@@ -17,6 +17,7 @@ from .context import (
     set_correlation_id,
     use_correlation_id,
 )
+from .captcha import CaptchaClient, CaptchaProvider
 from .errors import BridgeError
 from .events import LogLevel
 from .logging import BridgeLogger
@@ -30,6 +31,8 @@ __all__ = [
     "StatusRegistry",
     "ProxyClient",
     "ProxyEndpoint",
+    "CaptchaClient",
+    "CaptchaProvider",
     "HEALTHY",
     "DEGRADED",
     "DOWN",

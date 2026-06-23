@@ -30,7 +30,9 @@ class SDKConfig:
     status_interval: float = 30.0  # segundos entre relatórios de status
 
     # Cliente de proxy → GET /ingest/proxies
-    proxy_cache_ttl: float = 60.0  # segundos de cache da config do pool
+    proxy_cache_ttl: float = 60.0  # segundos de cache da config de proxy
+    # Cliente de captcha → GET /ingest/captcha
+    captcha_cache_ttl: float = 60.0  # segundos de cache da config de captcha
 
     @classmethod
     def from_env(cls, **overrides) -> "SDKConfig":
