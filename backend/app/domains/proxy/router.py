@@ -104,6 +104,14 @@ async def _dispatch(
         if existing is not None:
             return _job_http_response(existing)
 
+    # Webhook opcional: cliente pode pedir POST de callback quando o job concluir.
+    callback_url = request.headers.get("x-bridge-callback")
+    if callback_url and not callback_url.startswith(("http://", "https://")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Bridge-Callback must be an http(s) URL",
+        )
+
     incoming_headers = {k.lower(): v for k, v in request.headers.items()}
     upstream_headers = build_upstream_headers(
         api, incoming_headers, correlation_id, client_id=str(account.id)
@@ -203,6 +211,7 @@ async def _dispatch(
         key_id=api_key_obj.id,
         idempotency_key=idempotency_key,
         request_snapshot=snapshot,
+        callback_url=callback_url,
     )
     meta = {
         "account_id": account.id,
@@ -211,6 +220,8 @@ async def _dispatch(
         "path": path,
         "method": request.method,
         "cost_per_query": api.cost_per_query,
+        "correlation_id": correlation_id,
+        "callback_url": callback_url,
         "start": start,
         "log_base": {
             "correlation_id": correlation_id,

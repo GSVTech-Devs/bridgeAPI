@@ -47,6 +47,9 @@ class ProxyJob(Base):
     error_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     latency_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Webhook (5b): URL de callback do cliente + estado da entrega.
+    callback_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    webhook_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

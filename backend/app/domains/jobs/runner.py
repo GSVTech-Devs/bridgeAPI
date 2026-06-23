@@ -13,6 +13,7 @@ from app.core.database import get_session_factory
 from app.core.mongo_client import mongo_database
 from app.domains.jobs.models import JobStatus
 from app.domains.jobs.service import complete_job
+from app.domains.jobs.webhook import deliver as deliver_webhook
 from app.domains.logs.service import write_request_log
 from app.domains.metrics.service import record_metric
 
@@ -63,6 +64,26 @@ async def _persist(
             pass  # log é best-effort
 
 
+async def _maybe_webhook(
+    job_id: str, meta: dict[str, Any], *, status: str,
+    result_status_code: int | None = None, error_code: str | None = None,
+) -> None:
+    callback_url = meta.get("callback_url")
+    if not callback_url:
+        return
+    await deliver_webhook(
+        job_id, callback_url,
+        {
+            "job_id": job_id,
+            "status": status,
+            "result_status_code": result_status_code,
+            "error_code": error_code,
+            "correlation_id": meta.get("correlation_id"),
+            "status_url": f"/jobs/{job_id}",
+        },
+    )
+
+
 async def finalize_job(job_id: str, task, meta: dict[str, Any], bg_client: httpx.AsyncClient) -> None:
     latency_ms = (time.monotonic() - meta["start"]) * 1000
     try:
@@ -73,12 +94,14 @@ async def finalize_job(job_id: str, task, meta: dict[str, Any], bg_client: httpx
                 job_id, meta, status=JobStatus.TIMEOUT, metric_status_code=504,
                 error_code="TARGET_TIMEOUT", latency_ms=latency_ms,
             )
+            await _maybe_webhook(job_id, meta, status="timeout", error_code="TARGET_TIMEOUT")
             return
         except Exception as exc:  # noqa: BLE001
             await _persist(
                 job_id, meta, status=JobStatus.FAILED, metric_status_code=502,
                 error_code="BRIDGE_ERROR", result_body=str(exc)[:512], latency_ms=latency_ms,
             )
+            await _maybe_webhook(job_id, meta, status="failed", error_code="BRIDGE_ERROR")
             return
 
         status_code = resp.status_code
@@ -97,6 +120,9 @@ async def finalize_job(job_id: str, task, meta: dict[str, Any], bg_client: httpx
                 "response_headers": dict(resp.headers),
                 "response_body": resp.text[:4096],
             },
+        )
+        await _maybe_webhook(
+            job_id, meta, status="done", result_status_code=status_code
         )
     finally:
         await bg_client.aclose()

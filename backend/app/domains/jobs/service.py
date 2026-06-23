@@ -26,6 +26,8 @@ def to_response(job: ProxyJob) -> JobResponse:
         error_code=job.error_code,
         cost=job.cost,
         latency_ms=job.latency_ms,
+        callback_url=job.callback_url,
+        webhook_status=job.webhook_status,
         created_at=job.created_at,
         completed_at=job.completed_at,
     )
@@ -40,6 +42,7 @@ async def create_job(
     key_id: uuid.UUID | None,
     idempotency_key: str | None,
     request_snapshot: dict,
+    callback_url: str | None = None,
 ) -> ProxyJob:
     now = datetime.now(timezone.utc)
     job = ProxyJob(
@@ -50,6 +53,8 @@ async def create_job(
         idempotency_key=idempotency_key,
         status=JobStatus.RUNNING.value,
         request_snapshot=request_snapshot,
+        callback_url=callback_url,
+        webhook_status="pending" if callback_url else None,
         created_at=now,
         expires_at=now + timedelta(hours=settings.job_retention_hours),
     )
@@ -105,6 +110,12 @@ async def complete_job(
     return job
 
 
+async def set_webhook_status(db: AsyncSession, job_id: str, status: str) -> None:
+    job = await get_job(db, job_id)
+    job.webhook_status = status
+    await db.commit()
+
+
 async def list_jobs(
     db: AsyncSession, page: int = 1, per_page: int = 20
 ) -> tuple[list[JobListItem], int]:
@@ -125,6 +136,7 @@ async def list_jobs(
             result_status_code=j.result_status_code,
             error_code=j.error_code,
             cost=j.cost,
+            webhook_status=j.webhook_status,
             created_at=j.created_at,
             completed_at=j.completed_at,
         )

@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     upstream_timeout_s: float = 300.0
     # Retenção de um job (define expires_at); limpeza pode ser feita por TTL/cron.
     job_retention_hours: int = 168  # 7 dias
+    # Entrega assíncrona (5b)
+    job_stream_interval_seconds: float = 2.0   # poll do SSE GET /jobs/{id}/stream
+    job_stream_max_seconds: float = 600.0      # corta o stream após este tempo
+    webhook_max_attempts: int = 3              # tentativas de POST no callback
+    webhook_timeout_s: float = 10.0
+    # Segredo p/ assinar o webhook (HMAC-SHA256). Default: app_secret_key.
+    webhook_signing_secret: str = ""
 
     # Encryption
     encryption_key: str = "0" * 64

@@ -17,6 +17,8 @@ class JobResponse(BaseModel):
     error_code: Optional[str] = None
     cost: Optional[float] = None
     latency_ms: Optional[float] = None
+    callback_url: Optional[str] = None
+    webhook_status: Optional[str] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
 
@@ -30,6 +32,7 @@ class JobListItem(BaseModel):
     result_status_code: Optional[int] = None
     error_code: Optional[str] = None
     cost: Optional[float] = None
+    webhook_status: Optional[str] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
 
