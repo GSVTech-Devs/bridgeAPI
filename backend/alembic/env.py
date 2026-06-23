@@ -4,6 +4,7 @@ from logging.config import fileConfig
 from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.domains.accounts.models  # noqa: F401
+import app.domains.alerts.models  # noqa: F401
 import app.domains.apis.models  # noqa: F401
 import app.domains.auth.models  # noqa: F401
 import app.domains.keys.models  # noqa: F401

@@ -130,10 +130,10 @@ Containers: `bridge_backend`, `bridge_frontend`, `bridge_postgres`, `bridge_redi
 A imagem do backend (`bridgeapi-backend`) tem todas as deps (inclusive p/ a SDK).
 
 ```bash
-# Backend (475 testes)
+# Backend (489 testes)
 docker exec bridge_backend pytest tests/unit/ -q --no-cov
 
-# Migrations (head atual: t0c1d2e3f4a5)
+# Migrations (head atual: u1d2e3f4a5b6)
 docker exec bridge_backend alembic upgrade head
 
 # bridge-sdk (53 testes) — montada na imagem do backend
@@ -144,7 +144,7 @@ docker exec bridge_frontend npm test
 docker exec bridge_frontend npx tsc --noEmit      # erros pré-existentes só em __tests__ (sem @types/jest)
 docker exec bridge_frontend npx eslint src/...
 ```
-Estado atual dos testes: **backend 475 · sdk 75 · frontend 89** — todos verdes.
+Estado atual dos testes: **backend 489 · sdk 75 · frontend 89** — todos verdes.
 
 ---
 
@@ -161,10 +161,36 @@ Estado atual dos testes: **backend 475 · sdk 75 · frontend 89** — todos verd
 
 ---
 
-## Onde paramos — Fase 6 (PRÓXIMA): histórico/replay + alertas
+## Onde paramos — Fase 6: falta a metade de **histórico/replay**
 
-A **5a** (núcleo híbrido) e a **5b** (entrega assíncrona SSE/webhook + admin) estão prontas.
-Próxima é a **Fase 6** (histórico/replay de jobs + alertas de status/saldo).
+A Fase 6 tem duas metades. A de **alertas** está pronta (abaixo). Falta a de
+**histórico/replay** (§8 dos requisitos):
+- **Retenção estendida** do `request_logs` (config separada do TTL de 24h — ex. 7–30 dias) p/ debug.
+- **Replay** `POST /logs/admin/{correlation_id}/replay` — **admin-only, sem billing** (decisão do
+  dono): reexecuta a consulta a partir do snapshot, reusando o caminho do `_dispatch`, marcando o
+  request como replay (não cobra nem grava métrica de billing).
+- **Mascaramento/PII** no body + política de expurgo (LGPD).
+
+### Fase 6 (metade) — Alertas in-app escopados por dono ✅
+Decisões do dono: **in-app** (sem email/webhook externo); aparece no painel do **admin** E no
+painel do **cliente que gerencia o próprio proxy/captcha** (escopo por dono).
+
+- **Backend**: novo domínio `app/domains/alerts/`. Tabela `alerts` (`account_id` NULL=plataforma/
+  admin · preenchido=cliente dono; `api_id`, `resource_id`, `type`, `severity`, `status`,
+  `message`, `context`, timestamps; migration `u1d2e3f4a5b6`). `service` com `raise_alert`
+  (**dedup**: não duplica alerta aberto p/ mesmo conta+api+tipo+recurso), `resolve_alerts`
+  (**auto-resolve** quando a condição limpa), `list_alerts` (admin vê tudo; cliente só os da própria
+  conta; devolve `active_count` p/ o sino) e `acknowledge_alert` (escopado).
+- **Tipos/gatilhos**: `api_down`/`api_degraded` (escopo plataforma) disparados em
+  `status/service.record_status` (que passou a expor a transição) via `ingest_status`;
+  `captcha_low_balance` (limiar `captcha_low_balance_threshold_usd`=5.0) e `captcha_failing`
+  em `report_captcha_failure`; `proxy_failing` em `report_proxy_failure` — todos escopados ao
+  `account_id` do recurso.
+- **Endpoints**: admin `GET /admin/alerts` + `POST /admin/alerts/{id}/ack`; cliente
+  `GET /client/alerts` + `POST /client/alerts/{id}/ack` (escopado à conta).
+- **Frontend**: componente `AlertsPanel` (lista + ack + filtro ativos/histórico) usado por
+  `/admin/alerts` e `/dashboard/alerts`; componente `AlertBell` (sino com contador, polling 30s)
+  no header de ambos os painéis. Nav nos dois layouts (cliente gated por `CAP.PROXIES||CAP.CAPTCHA`).
 
 ### Fase 5b — Entrega assíncrona (SSE/webhook) + admin ✅
 - **SSE** `GET /jobs/{id}/stream` (`jobs/router.py`): autoriza pela `X-Bridge-Key` via `?key=`
@@ -248,7 +274,8 @@ do `api_id` salvo) — ao criar, salva-se a API e reabre-se para configurar. As 
 | 4e Import de OpenAPI/Swagger p/ pré-preencher o body template | ✅ feito |
 | 5a Execução híbrida núcleo (timeout, 202+job, polling, idempotência, billing) | ✅ feito |
 | 5b Entrega assíncrona (SSE/webhook) + `/admin/jobs` | ✅ feito |
-| 6 Histórico/replay + alertas | ⬜ próxima |
+| 6a Alertas in-app (status/saldo/proxy) escopados por dono + sino | ✅ feito |
+| 6b Histórico/replay (retenção estendida + replay admin-only + PII) | ⬜ próxima |
 
 ---
 

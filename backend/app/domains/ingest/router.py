@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.mongo_client import get_mongo_db
+from app.domains.alerts.service import sync_api_status_alert
 from app.domains.apis.models import ExternalAPI
 from app.domains.apis.service import APINotFoundError
 from app.domains.auth.router import get_current_user
@@ -74,9 +75,14 @@ async def ingest_status(
     body: StatusReportIn,
     api: ExternalAPI = Depends(require_service_token),
     mongo_db=Depends(get_mongo_db),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     if mongo_db is not None:
-        await record_status(mongo_db, str(api.id), body.model_dump())
+        result = await record_status(mongo_db, str(api.id), body.model_dump())
+        transition = result.get("transition")
+        if transition is not None:
+            # A saúde mudou: abre/resolve alerta da plataforma (escopo admin).
+            await sync_api_status_alert(db, api.id, transition["to"])
     return {"ok": True, "status": body.status}
 
 

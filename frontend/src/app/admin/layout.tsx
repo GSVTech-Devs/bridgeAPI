@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getToken } from "@/lib/auth";
-import { getMe } from "@/lib/api";
+import { getMe, getAdminAlerts } from "@/lib/api";
 import { ThemeDropdown } from "@/components/ThemeDropdown";
 import { UserMenu } from "@/components/UserMenu";
+import { AlertBell } from "@/components/AlertBell";
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: "dashboard" },
@@ -18,6 +19,7 @@ const navItems = [
   { href: "/admin/proxies", label: "Proxies", icon: "lan" },
   { href: "/admin/captcha", label: "Captcha", icon: "verified_user" },
   { href: "/admin/status", label: "Status", icon: "monitor_heart" },
+  { href: "/admin/alerts", label: "Alertas", icon: "notifications" },
   { href: "/admin/jobs", label: "Jobs", icon: "schedule" },
   { href: "/admin/logs", label: "Logs de Erro", icon: "error" },
   { href: "/admin/debug", label: "Debug", icon: "bug_report" },
@@ -84,6 +86,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             {/* <button className="p-2 rounded-full hover:bg-surface-container-low transition-colors">
               <span className="material-symbols-outlined text-on-surface-variant text-[20px]">notifications</span>
             </button> */}
+            <AlertBell href="/admin/alerts" getAlerts={getAdminAlerts} />
             <ThemeDropdown />
             <UserMenu email={email} logoutHref="/admin/login" />
           </div>

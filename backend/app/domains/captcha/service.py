@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decrypt_value, encrypt_value
+from app.domains.alerts.service import sync_captcha_alert
 from app.domains.apis.models import ExternalAPI
 from app.domains.apis.service import get_api_by_id
 from app.domains.captcha.models import CaptchaProvider, CaptchaStatus
@@ -203,6 +204,13 @@ async def report_captcha_failure(
         captcha.balance_usd = data.balance_usd
     await db.commit()
     await db.refresh(captcha)
+
+    # Alertas (Fase 6): abre/resolve saldo baixo e falha, escopados ao dono.
+    await sync_captcha_alert(
+        db, api_id=captcha.api_id, account_id=captcha.account_id,
+        resource_id=captcha.id, name=captcha.name, status=captcha.status,
+        balance_usd=captcha.balance_usd,
+    )
     return captcha
 
 

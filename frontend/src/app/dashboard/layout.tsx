@@ -6,7 +6,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { getToken } from "@/lib/auth";
 import { ThemeDropdown } from "@/components/ThemeDropdown";
 import { UserMenu } from "@/components/UserMenu";
+import { AlertBell } from "@/components/AlertBell";
 import { BrandThemeStyle } from "@/components/BrandThemeStyle";
+import { getClientAlerts } from "@/lib/api";
 import { CAP } from "@/lib/capabilities";
 import {
   CapabilitiesProvider,
@@ -47,6 +49,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     },
     { href: "/dashboard/proxies", label: "Proxies", icon: "lan", show: can(CAP.PROXIES) },
     { href: "/dashboard/captcha", label: "Captcha", icon: "verified_user", show: can(CAP.CAPTCHA) },
+    { href: "/dashboard/alerts", label: "Alertas", icon: "notifications", show: can(CAP.PROXIES) || can(CAP.CAPTCHA) },
     { href: "/dashboard/users", label: "Usuários", icon: "group", show: isCompanyOwner },
   ];
 
@@ -110,6 +113,9 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
             />
           </div>
           <div className="flex items-center gap-3">
+            {(can(CAP.PROXIES) || can(CAP.CAPTCHA)) && (
+              <AlertBell href="/dashboard/alerts" getAlerts={getClientAlerts} />
+            )}
             <ThemeDropdown
               passwordHref="/dashboard/settings"
               brandingHref={isOwner ? "/dashboard/branding" : undefined}

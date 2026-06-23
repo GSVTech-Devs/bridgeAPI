@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decrypt_value, encrypt_value
+from app.domains.alerts.service import sync_proxy_alert
 from app.domains.apis.models import ExternalAPI
 from app.domains.apis.service import get_api_by_id
 from app.domains.permissions.service import get_permission
@@ -233,6 +234,12 @@ async def report_proxy_failure(
     proxy.last_error_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(proxy)
+
+    # Alertas (Fase 6): abre/resolve proxy falhando, escopado ao dono.
+    await sync_proxy_alert(
+        db, api_id=proxy.api_id, account_id=proxy.account_id,
+        resource_id=proxy.id, name=proxy.name, status=proxy.status,
+    )
     return proxy
 
 

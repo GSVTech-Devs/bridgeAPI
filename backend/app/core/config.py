@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     # Segredo p/ assinar o webhook (HMAC-SHA256). Default: app_secret_key.
     webhook_signing_secret: str = ""
 
+    # Alertas (Fase 6): limiar de saldo de captcha p/ alerta de saldo baixo.
+    captcha_low_balance_threshold_usd: float = 5.0
+
     # Encryption
     encryption_key: str = "0" * 64
 

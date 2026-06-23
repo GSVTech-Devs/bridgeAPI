@@ -63,18 +63,22 @@ async def record_status(
     await mongo_db[HISTORY].insert_one({**doc, "expires_at": expires_at})
     await mongo_db[LATEST].replace_one({"api_id": api_id}, doc, upsert=True)
 
+    transition: dict[str, str] | None = None
     if previous is not None and previous.get("status") != new_status:
+        from_status = previous.get("status", UNKNOWN)
         await mongo_db[EVENTS].insert_one(
             {
                 "api_id": api_id,
-                "from_status": previous.get("status", UNKNOWN),
+                "from_status": from_status,
                 "to_status": new_status,
                 "at": now,
                 "expires_at": expires_at,
             }
         )
+        transition = {"from": from_status, "to": new_status}
 
-    return doc
+    # `transition` é efêmero (não persistido): sinaliza ao chamador p/ disparar alertas.
+    return {**doc, "transition": transition}
 
 
 async def get_overview(mongo_db: Any, db: AsyncSession) -> list[dict[str, Any]]:

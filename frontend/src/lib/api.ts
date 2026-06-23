@@ -1126,3 +1126,52 @@ export function getJobs(page = 1, perPage = 20) {
 export function getJob(id: string) {
   return apiFetch<JobDetail>(`/admin/jobs/${id}`);
 }
+
+// ---------------------------------------------------------------------------
+// Alertas (Fase 6)  →  /admin/alerts (admin, vê tudo) · /client/alerts (cliente)
+// ---------------------------------------------------------------------------
+export type Alert = {
+  id: string;
+  account_id: string | null;     // null = alerta da plataforma (só admin)
+  api_id: string | null;
+  api_name: string | null;
+  resource_id: string | null;
+  type: string;                  // api_down | api_degraded | captcha_low_balance | captcha_failing | proxy_failing
+  severity: string;              // warning | critical
+  status: string;                // active | acknowledged | resolved
+  message: string;
+  context: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+};
+
+export type AlertListResponse = {
+  items: Alert[];
+  total: number;
+  active_count: number;
+};
+
+function alertQuery(status?: string, page = 1, perPage = 50): string {
+  const p = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+  if (status) p.set("status", status);
+  return p.toString();
+}
+
+// Admin — vê todos os alertas (plataforma + clientes)
+export function getAdminAlerts(status?: string, page = 1, perPage = 50) {
+  return apiFetch<AlertListResponse>(`/admin/alerts?${alertQuery(status, page, perPage)}`);
+}
+
+export function ackAdminAlert(id: string) {
+  return apiFetch<Alert>(`/admin/alerts/${id}/ack`, { method: "POST" });
+}
+
+// Cliente — só os alertas da própria conta (proxy/captcha que ele gerencia)
+export function getClientAlerts(status?: string, page = 1, perPage = 50) {
+  return apiFetch<AlertListResponse>(`/client/alerts?${alertQuery(status, page, perPage)}`);
+}
+
+export function ackClientAlert(id: string) {
+  return apiFetch<Alert>(`/client/alerts/${id}/ack`, { method: "POST" });
+}
