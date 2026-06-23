@@ -23,11 +23,8 @@ async def test_ingest_proxies_requires_service_token(client: AsyncClient) -> Non
 
 
 @pytest.mark.asyncio
-async def test_ingest_proxies_returns_pool_config(client: AsyncClient) -> None:
-    pool_id = uuid.uuid4()
+async def test_ingest_proxies_returns_config(client: AsyncClient) -> None:
     cfg = ProxyConfigResponse(
-        pool_id=pool_id,
-        pool_name="main",
         proxies=[
             ProxyConfigItem(
                 id=uuid.uuid4(), name="p1", scheme="http", host="1.2.3.4",
@@ -40,7 +37,7 @@ async def test_ingest_proxies_returns_pool_config(client: AsyncClient) -> None:
         "app.domains.ingest.router.authenticate_service_token",
         new=AsyncMock(return_value=fake_api()),
     ), patch(
-        "app.domains.ingest.router.get_pool_config_for_api",
+        "app.domains.ingest.router.get_proxy_config_for_api",
         new=AsyncMock(return_value=cfg),
     ):
         resp = await client.get(
@@ -48,20 +45,17 @@ async def test_ingest_proxies_returns_pool_config(client: AsyncClient) -> None:
         )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["pool_name"] == "main"
     assert body["proxies"][0]["password"] == "pw"  # SDK precisa das credenciais
 
 
 @pytest.mark.asyncio
 async def test_ingest_proxies_forwards_client_header(client: AsyncClient) -> None:
-    spy = AsyncMock(
-        return_value=ProxyConfigResponse(pool_id=None, pool_name=None, proxies=[])
-    )
+    spy = AsyncMock(return_value=ProxyConfigResponse(proxies=[]))
     with patch(
         "app.domains.ingest.router.authenticate_service_token",
         new=AsyncMock(return_value=fake_api()),
     ), patch(
-        "app.domains.ingest.router.get_pool_config_for_api", new=spy
+        "app.domains.ingest.router.get_proxy_config_for_api", new=spy
     ):
         resp = await client.get(
             "/ingest/proxies",

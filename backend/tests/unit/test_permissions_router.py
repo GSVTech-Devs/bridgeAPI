@@ -24,6 +24,7 @@ def make_permission(
         api_id=api_id or uuid.uuid4(),
         granted_at=datetime.now(timezone.utc),
         revoked_at=revoked_at,
+        proxy_managed_by_client=False,
     )
 
 
@@ -35,6 +36,7 @@ def make_api() -> ExternalAPI:
         master_key_encrypted="encrypted-key",
         auth_type=APIAuthType.API_KEY,
         status=APIStatus.ACTIVE,
+        uses_proxy=False,
         created_at=datetime.now(timezone.utc),
     )
 

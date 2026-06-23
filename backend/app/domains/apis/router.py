@@ -51,6 +51,7 @@ async def create_api(
             auth_type=body.auth_type,
             url_template=body.url_template,
             cost_per_query=body.cost_per_query,
+            uses_proxy=body.uses_proxy,
         )
     except DuplicateAPINameError:
         raise HTTPException(
@@ -95,9 +96,13 @@ async def get_api(
     return APIDetailResponse(
         id=api.id,
         name=api.name,
+        slug=api.slug,
         base_url=api.base_url,
+        url_template=api.url_template,
         auth_type=api.auth_type,
         status=api.status,
+        cost_per_query=api.cost_per_query,
+        uses_proxy=api.uses_proxy,
         created_at=api.created_at,
         endpoints=[EndpointResponse.model_validate(e) for e in endpoints],
     )
@@ -147,6 +152,7 @@ async def update(
             master_key=body.master_key,
             auth_type=body.auth_type,
             cost_per_query=body.cost_per_query,
+            uses_proxy=body.uses_proxy,
         )
     except APINotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API not found")

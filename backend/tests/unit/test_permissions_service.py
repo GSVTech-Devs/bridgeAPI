@@ -42,6 +42,7 @@ def make_permission(
         api_id=api_id or uuid.uuid4(),
         granted_at=datetime.now(timezone.utc),
         revoked_at=revoked_at,
+        proxy_managed_by_client=False,
     )
 
 
@@ -164,6 +165,7 @@ async def test_list_permissions_returns_formatted_rows_with_status() -> None:
         account_name="Acme Corp",
         api_name="Stripe API",
         revoked_at=None,
+        proxy_managed_by_client=True,
     )
     revoked_row = MagicMock(
         account_id=other_id,
@@ -171,6 +173,7 @@ async def test_list_permissions_returns_formatted_rows_with_status() -> None:
         account_name="Other Inc",
         api_name="GitHub API",
         revoked_at=datetime.now(timezone.utc),
+        proxy_managed_by_client=False,
     )
 
     db = AsyncMock()
@@ -186,5 +189,6 @@ async def test_list_permissions_returns_formatted_rows_with_status() -> None:
         "account_name": "Acme Corp",
         "api_name": "Stripe API",
         "status": "active",
+        "proxy_managed_by_client": True,
     }
     assert result[1]["status"] == "revoked"

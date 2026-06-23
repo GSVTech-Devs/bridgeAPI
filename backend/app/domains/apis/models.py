@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import DateTime, Float, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -53,10 +53,10 @@ class ExternalAPI(Base):
     service_token_hash: Mapped[Optional[str]] = mapped_column(
         String(255), nullable=True
     )
-    # Pool de proxies que esta API usa (a SDK busca a config do pool). A troca de
-    # proxy é feita repontando o pool ou alterando seus membros — sem deploy.
-    proxy_pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        ForeignKey("proxy_pools.id", ondelete="SET NULL"), nullable=True, index=True
+    # Esta API usa proxy? Nem toda usa. Quando True, a lista de proxies vive em
+    # `proxies` (do admin e/ou do cliente, conforme a permissão).
+    uses_proxy: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
     )
     auth_type: Mapped[str] = mapped_column(String(20), default=APIAuthType.NONE)
     status: Mapped[str] = mapped_column(

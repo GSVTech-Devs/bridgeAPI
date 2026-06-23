@@ -12,6 +12,7 @@ from app.domains.auth.router import get_current_user, require_feature
 from app.domains.auth.schemas import MeResponse
 from app.domains.permissions.schemas import (
     CatalogResponse,
+    PermissionConfigRequest,
     PermissionCreateRequest,
     PermissionListResponse,
     PermissionResponse,
@@ -23,6 +24,7 @@ from app.domains.permissions.service import (
     grant_permission,
     list_permissions,
     revoke_permission,
+    set_permission_management,
 )
 
 router = APIRouter(tags=["permissions"])
@@ -48,7 +50,12 @@ async def grant(
     current_user: MeResponse = Depends(get_current_user),
 ) -> PermissionResponse:
     try:
-        permission = await grant_permission(db, str(body.account_id), str(body.api_id))
+        permission = await grant_permission(
+            db,
+            str(body.account_id),
+            str(body.api_id),
+            proxy_managed_by_client=body.proxy_managed_by_client,
+        )
     except DuplicatePermissionError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -69,6 +76,33 @@ async def revoke(
 ) -> PermissionResponse:
     try:
         permission = await revoke_permission(db, str(account_id), str(api_id))
+    except PermissionNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Active permission not found",
+        )
+    return PermissionResponse.model_validate(permission)
+
+
+@router.patch(
+    "/permissions/{account_id}/{api_id}/config",
+    response_model=PermissionResponse,
+)
+async def configure(
+    account_id: uuid.UUID,
+    api_id: uuid.UUID,
+    body: PermissionConfigRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: MeResponse = Depends(get_current_user),
+) -> PermissionResponse:
+    """Liga/desliga o autosserviço de proxy do cliente para esta API."""
+    try:
+        permission = await set_permission_management(
+            db,
+            str(account_id),
+            str(api_id),
+            proxy_managed_by_client=body.proxy_managed_by_client,
+        )
     except PermissionNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

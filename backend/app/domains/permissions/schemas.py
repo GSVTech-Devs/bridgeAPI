@@ -10,6 +10,11 @@ from pydantic import BaseModel
 class PermissionCreateRequest(BaseModel):
     account_id: uuid.UUID
     api_id: uuid.UUID
+    proxy_managed_by_client: bool = False
+
+
+class PermissionConfigRequest(BaseModel):
+    proxy_managed_by_client: bool
 
 
 class PermissionResponse(BaseModel):
@@ -18,6 +23,7 @@ class PermissionResponse(BaseModel):
     api_id: uuid.UUID
     granted_at: datetime
     revoked_at: Optional[datetime]
+    proxy_managed_by_client: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -28,6 +34,7 @@ class PermissionListItem(BaseModel):
     account_name: str
     api_name: str
     status: str
+    proxy_managed_by_client: bool = False
 
 
 class PermissionListResponse(BaseModel):

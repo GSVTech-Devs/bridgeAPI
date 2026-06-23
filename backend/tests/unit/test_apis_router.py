@@ -37,6 +37,7 @@ def make_api(
         auth_type=APIAuthType.API_KEY,
         status=status,
         cost_per_query=cost_per_query,
+        uses_proxy=False,
         created_at=datetime.now(timezone.utc),
     )
 

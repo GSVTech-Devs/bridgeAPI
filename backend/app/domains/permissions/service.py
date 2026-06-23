@@ -20,7 +20,10 @@ class PermissionNotFoundError(Exception):
 
 
 async def grant_permission(
-    db: AsyncSession, account_id: str, api_id: str
+    db: AsyncSession,
+    account_id: str,
+    api_id: str,
+    proxy_managed_by_client: bool = False,
 ) -> Permission:
     result = await db.execute(
         select(Permission).where(
@@ -36,6 +39,7 @@ async def grant_permission(
             )
         existing.revoked_at = None
         existing.granted_at = datetime.now(timezone.utc)
+        existing.proxy_managed_by_client = proxy_managed_by_client
         await db.commit()
         await db.refresh(existing)
         return existing
@@ -44,6 +48,7 @@ async def grant_permission(
         account_id=uuid.UUID(account_id),
         api_id=uuid.UUID(api_id),
         granted_at=datetime.now(timezone.utc),
+        proxy_managed_by_client=proxy_managed_by_client,
     )
     db.add(permission)
     await db.commit()
@@ -80,6 +85,7 @@ async def list_permissions(db: AsyncSession) -> list[dict]:
             Account.name.label("account_name"),
             ExternalAPI.name.label("api_name"),
             Permission.revoked_at,
+            Permission.proxy_managed_by_client,
         )
         .join(Account, Account.id == Permission.account_id)
         .join(ExternalAPI, ExternalAPI.id == Permission.api_id)
@@ -92,9 +98,44 @@ async def list_permissions(db: AsyncSession) -> list[dict]:
             "account_name": r.account_name,
             "api_name": r.api_name,
             "status": "revoked" if r.revoked_at is not None else "active",
+            "proxy_managed_by_client": r.proxy_managed_by_client,
         }
         for r in rows
     ]
+
+
+async def get_permission(
+    db: AsyncSession, account_id: str, api_id: str
+) -> Permission | None:
+    """Permissão ativa de uma conta para uma API (ou None)."""
+    result = await db.execute(
+        select(Permission).where(
+            Permission.account_id == uuid.UUID(str(account_id)),
+            Permission.api_id == uuid.UUID(str(api_id)),
+            Permission.revoked_at.is_(None),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def set_permission_management(
+    db: AsyncSession,
+    account_id: str,
+    api_id: str,
+    *,
+    proxy_managed_by_client: bool | None = None,
+) -> Permission:
+    """Liga/desliga o autosserviço de proxy do cliente para uma API."""
+    permission = await get_permission(db, account_id, api_id)
+    if permission is None:
+        raise PermissionNotFoundError(
+            f"Active permission not found for account {account_id} and api {api_id}"
+        )
+    if proxy_managed_by_client is not None:
+        permission.proxy_managed_by_client = proxy_managed_by_client
+    await db.commit()
+    await db.refresh(permission)
+    return permission
 
 
 async def get_account_authorized_apis(

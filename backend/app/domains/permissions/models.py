@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -26,4 +26,9 @@ class Permission(Base):
     )
     revoked_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
+    )
+    # Admin liberou o cliente a configurar o PRÓPRIO proxy desta API? Se sim, a
+    # Bridge usa os proxies do cliente (ele começa sem nenhum e configura os dele).
+    proxy_managed_by_client: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
     )

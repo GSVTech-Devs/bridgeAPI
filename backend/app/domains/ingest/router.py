@@ -22,7 +22,7 @@ from app.domains.ingest.service import (
 from app.domains.proxies.schemas import ProxyConfigResponse, ProxyReportRequest
 from app.domains.proxies.service import (
     ProxyNotFoundError,
-    get_pool_config_for_api,
+    get_proxy_config_for_api,
     report_proxy_failure,
 )
 from app.domains.status.schemas import StatusReportIn
@@ -86,7 +86,7 @@ async def ingest_proxies(
     ``X-Bridge-Client`` (o cliente da chamada, propagado pela Bridge) habilita a
     resolução híbrida: usa o pool que o cliente configurou para esta API, senão
     o default da API."""
-    return await get_pool_config_for_api(db, api, client_id=x_bridge_client)
+    return await get_proxy_config_for_api(db, api, client_id=x_bridge_client)
 
 
 @router.post("/ingest/proxies/report")
