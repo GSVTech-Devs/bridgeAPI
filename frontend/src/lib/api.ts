@@ -258,6 +258,8 @@ export function createApi(data: {
   slug?: string;
   base_url: string;
   url_template?: string;
+  request_method?: string;
+  request_body_template?: string;
   auth_type: string;
   master_key: string;
   cost_per_query?: number;
@@ -276,6 +278,8 @@ export function updateApi(id: string, data: {
   slug?: string;
   base_url?: string;
   url_template?: string;
+  request_method?: string;
+  request_body_template?: string;
   auth_type?: string;
   master_key?: string;
   cost_per_query?: number;

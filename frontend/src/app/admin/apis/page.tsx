@@ -19,6 +19,8 @@ type Api = {
   slug?: string;
   base_url: string;
   url_template?: string;
+  request_method?: string | null;
+  request_body_template?: string | null;
   status: string;
   auth_type: string;
   cost_per_query?: number;
@@ -34,6 +36,8 @@ const initialForm = {
   auth_type: "api_key",
   master_key: "",
   cost_per_query: "",
+  request_method: "",
+  request_body_template: "",
   uses_proxy: false,
   uses_captcha: false,
   description: "",
@@ -261,6 +265,8 @@ export default function ApisPage() {
       auth_type: api.auth_type,
       master_key: "",
       cost_per_query: api.cost_per_query != null ? String(api.cost_per_query) : "",
+      request_method: api.request_method ?? "",
+      request_body_template: api.request_body_template ?? "",
       uses_proxy: api.uses_proxy ?? false,
       uses_captcha: api.uses_captcha ?? false,
       description: "",
@@ -329,6 +335,8 @@ export default function ApisPage() {
         url_template: form.url_template || undefined,
         auth_type: form.auth_type || undefined,
         cost_per_query: costValue && !isNaN(costValue) ? costValue : undefined,
+        request_method: form.request_method,
+        request_body_template: form.request_body_template,
         uses_proxy: form.uses_proxy,
         uses_captcha: form.uses_captcha,
       };
@@ -493,6 +501,45 @@ export default function ApisPage() {
                   onChange={(v) => { setForm((f) => ({ ...f, url_template: v })); setFieldErrors((fe) => ({ ...fe, url_template: undefined })); }}
                 />
                 {fieldErrors.url_template && <p className="text-xs text-error">{fieldErrors.url_template}</p>}
+              </div>
+
+              {/* Método na API original + body template (API POST) */}
+              <div className="grid grid-cols-2 gap-x-10">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="block text-sm font-bold text-on-surface-variant">Método na API original</label>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">opcional</span>
+                  </div>
+                  <select
+                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
+                    value={form.request_method}
+                    onChange={(e) => setForm((f) => ({ ...f, request_method: e.target.value }))}
+                  >
+                    <option value="">Repassar o método do cliente</option>
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="PATCH">PATCH</option>
+                    <option value="DELETE">DELETE</option>
+                  </select>
+                  <p className="text-xs text-on-surface-variant">
+                    Vazio = a Bridge chama a API original com o mesmo método do cliente.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-bold text-on-surface-variant">Body template (API POST)</label>
+                  <textarea
+                    rows={3}
+                    className="w-full bg-surface-container-low border-none rounded-xl py-3 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container transition-all outline-none font-mono text-xs"
+                    placeholder={'{"q": "{query}", "key": "{token}"}'}
+                    value={form.request_body_template}
+                    onChange={(e) => setForm((f) => ({ ...f, request_body_template: e.target.value }))}
+                  />
+                  <p className="text-xs text-on-surface-variant">
+                    Renderiza <code className="font-mono">{"{query}"}</code> e <code className="font-mono">{"{token}"}</code>.
+                    Vazio = repassa o body do cliente.
+                  </p>
+                </div>
               </div>
 
               {/* Row: cost_per_query + description */}
