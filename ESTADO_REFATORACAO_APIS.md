@@ -161,18 +161,19 @@ Estado atual dos testes: **backend 442 · sdk 75 · frontend 89** — todos verd
 
 ---
 
-## Onde paramos — Fase 4c (PRÓXIMA): polish + API POST
+## Onde paramos — Fase 4d (PRÓXIMA): API POST
 
-**4a (proxy) e 4b (captcha) por API estão prontas, testadas e documentadas acima.**
-As próximas duas fatias:
+**4a (proxy), 4b (captcha) e 4c (embed no cadastro) estão prontas, testadas e documentadas.**
 
-### 4c — Embutir no formulário de cadastro da API
-Hoje proxy/captcha são gerenciados em `/admin/proxies` e `/admin/captcha` (escolhendo a API).
-O pedido do dono é configurar **dentro do cadastro da API**. Falta mover as listas (add/editar/
-toggle/excluir) para dentro do form de `/admin/apis` (modo edição), reaproveitando as funções
-`*ApiProxy*` / `*ApiCaptcha*` de `lib/api.ts`. Sem mudança de backend.
+### 4c — Embutir no formulário de cadastro da API ✅
+O cadastro de API (`/admin/apis`, modo edição) agora mostra, abaixo do form, painéis
+**Proxies desta API** e **Captcha desta API** (add/editar-status/excluir), gated pelas
+checkboxes `uses_proxy`/`uses_captcha`, reusando as funções `*ApiProxy*`/`*ApiCaptcha*` de
+`lib/api.ts` (componentes `ApiProxyPanel`/`ApiCaptchaPanel`). Só aparecem em edição (precisam
+do `api_id` salvo) — ao criar, salva-se a API e reabre-se para configurar. As telas
+`/admin/proxies` e `/admin/captcha` seguem existindo como **monitoramento agregado**.
 
-### 4d — API POST
+### 4d — API POST (próxima)
 Adicionar `external_apis.request_method` (GET/POST) e `request_body_template` (com `{query}`/
 `{token}`). No gateway (`proxy/service.py`): quando POST + template, montar o body a partir da
 requisição do cliente (`forward_to_upstream`/`_build_url_from_template` já lidam com `{query}`/
@@ -193,8 +194,8 @@ template. GET segue funcionando.
 | 1 Observabilidade · 2 Health/Status · 3 Proxies | ✅ feito |
 | 4a Proxy POR API (admin + cliente, monitoramento) | ✅ feito |
 | 4b Captcha POR API (mesmo padrão + saldo) | ✅ feito |
-| 4c Polish: embutir proxy/captcha no formulário de cadastro da API | ⬜ próxima |
-| 4d API **POST**: `request_method` + `request_body_template` ({query}/{token}) no gateway | ⬜ |
+| 4c Embutir proxy/captcha no formulário de cadastro da API | ✅ feito |
+| 4d API **POST**: `request_method` + `request_body_template` ({query}/{token}) no gateway | ⬜ próxima |
 | 4e Import de OpenAPI/Swagger p/ pré-preencher o body template | ⬜ |
 | 5 Execução híbrida / jobs (timeout, 202+job, idempotência, billing) | ⬜ |
 | 6 Histórico/replay + alertas | ⬜ |
