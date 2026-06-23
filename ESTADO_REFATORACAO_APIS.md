@@ -133,7 +133,7 @@ A imagem do backend (`bridgeapi-backend`) tem todas as deps (inclusive p/ a SDK)
 # Backend (421 testes)
 docker exec bridge_backend pytest tests/unit/ -q --no-cov
 
-# Migrations (head atual: q7f8a9b0c1d2)
+# Migrations (head atual: r8a9b0c1d2e3)
 docker exec bridge_backend alembic upgrade head
 
 # bridge-sdk (53 testes) — montada na imagem do backend
@@ -144,7 +144,7 @@ docker exec bridge_frontend npm test
 docker exec bridge_frontend npx tsc --noEmit      # erros pré-existentes só em __tests__ (sem @types/jest)
 docker exec bridge_frontend npx eslint src/...
 ```
-Estado atual dos testes: **backend 442 · sdk 75 · frontend 89** — todos verdes.
+Estado atual dos testes: **backend 445 · sdk 75 · frontend 89** — todos verdes.
 
 ---
 
@@ -161,9 +161,25 @@ Estado atual dos testes: **backend 442 · sdk 75 · frontend 89** — todos verd
 
 ---
 
-## Onde paramos — Fase 4d (PRÓXIMA): API POST
+## Onde paramos — Fase 4e (PRÓXIMA): import de OpenAPI/Swagger
 
-**4a (proxy), 4b (captcha) e 4c (embed no cadastro) estão prontas, testadas e documentadas.**
+**4a–4d prontas, testadas e documentadas.** Falta a 4e (pré-preencher o body template a
+partir da doc OpenAPI da API) — e depois a Fase 5.
+
+### 4d — API POST ✅
+`external_apis.request_method` (NULL = repassa o método do cliente; legado intacto) e
+`request_body_template` (renderiza `{query}`/`{token}`). No gateway
+(`proxy/service.py::forward_to_upstream`): usa `request_method` quando setado, senão o método
+do cliente; quando há `request_body_template`, monta o body renderizado (+ `content-type: application/json`
+se ausente), senão repassa o body do cliente. Migration `r8a9b0c1d2e3`. No form de `/admin/apis`:
+select "Método na API original" + textarea "Body template". GET/passthrough seguem funcionando.
+
+### 4e — Import de OpenAPI/Swagger (próxima)
+Parsear a doc (URL ou upload do JSON/YAML) e, por endpoint, sugerir `request_method` e um
+`request_body_template` a partir do schema do request body. Provavelmente um endpoint admin
+`POST /apis/import` (ou client-side parse) que devolve campos pré-preenchidos pro form.
+
+### Histórico (não reabrir)
 
 ### 4c — Embutir no formulário de cadastro da API ✅
 O cadastro de API (`/admin/apis`, modo edição) agora mostra, abaixo do form, painéis
@@ -172,13 +188,6 @@ checkboxes `uses_proxy`/`uses_captcha`, reusando as funções `*ApiProxy*`/`*Api
 `lib/api.ts` (componentes `ApiProxyPanel`/`ApiCaptchaPanel`). Só aparecem em edição (precisam
 do `api_id` salvo) — ao criar, salva-se a API e reabre-se para configurar. As telas
 `/admin/proxies` e `/admin/captcha` seguem existindo como **monitoramento agregado**.
-
-### 4d — API POST (próxima)
-Adicionar `external_apis.request_method` (GET/POST) e `request_body_template` (com `{query}`/
-`{token}`). No gateway (`proxy/service.py`): quando POST + template, montar o body a partir da
-requisição do cliente (`forward_to_upstream`/`_build_url_from_template` já lidam com `{query}`/
-`{token}` no URL — replicar para o body). No form de cadastro, escolher GET vs POST e editar o
-template. GET segue funcionando.
 
 ### Decisões já tomadas (não reabrir)
 - Proxy/captcha **dentro da API**, sem pools/fornecedores à parte. Vários por API.
@@ -195,8 +204,8 @@ template. GET segue funcionando.
 | 4a Proxy POR API (admin + cliente, monitoramento) | ✅ feito |
 | 4b Captcha POR API (mesmo padrão + saldo) | ✅ feito |
 | 4c Embutir proxy/captcha no formulário de cadastro da API | ✅ feito |
-| 4d API **POST**: `request_method` + `request_body_template` ({query}/{token}) no gateway | ⬜ próxima |
-| 4e Import de OpenAPI/Swagger p/ pré-preencher o body template | ⬜ |
+| 4d API **POST**: `request_method` + `request_body_template` ({query}/{token}) no gateway | ✅ feito |
+| 4e Import de OpenAPI/Swagger p/ pré-preencher o body template | ⬜ próxima |
 | 5 Execução híbrida / jobs (timeout, 202+job, idempotência, billing) | ⬜ |
 | 6 Histórico/replay + alertas | ⬜ |
 
