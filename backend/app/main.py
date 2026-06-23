@@ -9,6 +9,7 @@ from app.domains.captcha.client_router import router as captcha_client_router
 from app.domains.captcha.router import monitor_router as captcha_monitor_router
 from app.domains.captcha.router import router as captcha_router
 from app.domains.ingest.router import router as ingest_router
+from app.domains.jobs.router import router as jobs_router
 from app.domains.keys.router import router as keys_router
 from app.domains.logs.router import router as logs_router
 from app.domains.members.router import admin_router as members_admin_router
@@ -57,6 +58,7 @@ app.include_router(proxies_monitor_router)
 app.include_router(captcha_router)
 app.include_router(captcha_client_router)
 app.include_router(captcha_monitor_router)
+app.include_router(jobs_router)
 app.include_router(proxy_router)
 
 

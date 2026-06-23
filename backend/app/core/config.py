@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     # Intervalo de atualização do stream SSE do painel de status.
     status_stream_interval_seconds: int = 5
 
+    # Execução híbrida do proxy (Fase 5)
+    # Limite síncrono: se a upstream responder dentro disso, retorna 200 normal;
+    # acima, a Bridge devolve 202 + job_id e termina em background.
+    sync_timeout_s: float = 90.0
+    # Timeout duro da chamada à upstream (mesmo no caminho assíncrono).
+    upstream_timeout_s: float = 300.0
+    # Retenção de um job (define expires_at); limpeza pode ser feita por TTL/cron.
+    job_retention_hours: int = 168  # 7 dias
+
     # Encryption
     encryption_key: str = "0" * 64
 

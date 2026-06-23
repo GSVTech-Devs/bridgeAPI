@@ -20,3 +20,9 @@ def _get_client() -> AsyncIOMotorClient:
 async def get_mongo_db() -> AsyncGenerator[AsyncIOMotorDatabase, None]:
     """FastAPI dependency que fornece o banco MongoDB."""
     yield _get_client()[settings.mongo_db]
+
+
+def mongo_database() -> AsyncIOMotorDatabase:
+    """Acesso direto ao banco Mongo (fora do ciclo de request — ex.: jobs em
+    background, que não têm a dependency injetada)."""
+    return _get_client()[settings.mongo_db]
