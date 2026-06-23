@@ -164,3 +164,21 @@ class APIDetailResponse(BaseModel):
 class APIListResponse(BaseModel):
     items: list[APIResponse]
     total: int
+
+
+# ------------------------------------------------ import de OpenAPI/Swagger
+class OpenAPIImportRequest(BaseModel):
+    spec: str  # JSON ou YAML colado da doc da API
+
+
+class ImportedOperation(BaseModel):
+    method: str
+    path: str
+    summary: Optional[str] = None
+    request_body_template: Optional[str] = None
+
+
+class OpenAPIImportResponse(BaseModel):
+    title: Optional[str] = None
+    base_url: Optional[str] = None
+    operations: list[ImportedOperation]

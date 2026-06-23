@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.domains.apis.openapi import InvalidSpecError, parse_text
 from app.domains.apis.schemas import (
     APICreateRequest,
     APIDetailResponse,
@@ -14,6 +15,9 @@ from app.domains.apis.schemas import (
     APIUpdateRequest,
     EndpointCreateRequest,
     EndpointResponse,
+    ImportedOperation,
+    OpenAPIImportRequest,
+    OpenAPIImportResponse,
 )
 from app.domains.apis.service import (
     APINotFoundError,
@@ -67,6 +71,26 @@ async def create_api(
             detail="Slug already in use",
         )
     return APIResponse.model_validate(api)
+
+
+@router.post("/import", response_model=OpenAPIImportResponse)
+async def import_openapi(
+    body: OpenAPIImportRequest,
+    _: MeResponse = Depends(get_current_user),
+) -> OpenAPIImportResponse:
+    """Parseia um OpenAPI/Swagger (JSON ou YAML colado) e sugere, por operação,
+    o método e um body template — para pré-preencher o cadastro da API."""
+    try:
+        parsed = parse_text(body.spec)
+    except InvalidSpecError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        )
+    return OpenAPIImportResponse(
+        title=parsed["title"],
+        base_url=parsed["base_url"],
+        operations=[ImportedOperation(**op) for op in parsed["operations"]],
+    )
 
 
 @router.get("", response_model=APIListResponse)

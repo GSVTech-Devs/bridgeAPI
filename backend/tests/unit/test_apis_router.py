@@ -60,6 +60,42 @@ def admin_headers() -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.mark.asyncio
+async def test_import_openapi_returns_operations(client: AsyncClient) -> None:
+    spec = """
+openapi: 3.0.0
+info:
+  title: Solver
+servers:
+  - url: https://api.solver.com
+paths:
+  /solve:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key:
+                  type: string
+"""
+    resp = await client.post("/apis/import", json={"spec": spec}, headers=admin_headers())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["title"] == "Solver"
+    assert body["base_url"] == "https://api.solver.com"
+    op = body["operations"][0]
+    assert op["method"] == "POST"
+    assert '"key"' in op["request_body_template"]
+
+
+@pytest.mark.asyncio
+async def test_import_openapi_rejects_garbage(client: AsyncClient) -> None:
+    resp = await client.post("/apis/import", json={"spec": "lol"}, headers=admin_headers())
+    assert resp.status_code == 422
+
+
 # ---------------------------------------------------------------------------
 # POST /apis  (admin)
 # ---------------------------------------------------------------------------
