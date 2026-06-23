@@ -15,7 +15,10 @@ const navItems = [
   { href: "/admin/permissions", label: "Permissões", icon: "vpn_key" },
   { href: "/admin/metrics", label: "Métricas", icon: "analytics" },
   { href: "/admin/usage", label: "Uso por Cliente", icon: "account_balance_wallet" },
+  { href: "/admin/proxies", label: "Proxies", icon: "lan" },
+  { href: "/admin/status", label: "Status", icon: "monitor_heart" },
   { href: "/admin/logs", label: "Logs de Erro", icon: "error" },
+  { href: "/admin/debug", label: "Debug", icon: "bug_report" },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

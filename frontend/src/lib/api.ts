@@ -246,6 +246,7 @@ export function getApis() {
       base_url: string;
       status: string;
       auth_type: string;
+      proxy_pool_id?: string | null;
     }[];
     total: number;
   }>("/apis");
@@ -417,6 +418,203 @@ export function getAdminErrorLogs(params?: { api_id?: string; skip?: number; lim
     }[];
     total: number;
   }>(`/logs/admin/errors${qs}`);
+}
+
+// ---------------------------------------------------------------------------
+// Debug — logs estruturados das APIs e timeline por correlation_id
+// ---------------------------------------------------------------------------
+export type AppLogEntry = {
+  correlation_id: string;
+  api_id: string;
+  level: string;
+  event: string;
+  message: string | null;
+  timestamp: string | null;
+  duration_ms: number | null;
+  proxy_id: string | null;
+  captcha_provider: string | null;
+  error_code: string | null;
+  api_version: string | null;
+  sdk_version: string | null;
+  extra: Record<string, unknown>;
+  created_at: string | null;
+};
+
+export type TraceItem = {
+  source: "gateway" | "app";
+  correlation_id: string;
+  timestamp: string | null;
+  created_at: string | null;
+  path: string | null;
+  method: string | null;
+  status_code: number | null;
+  latency_ms: number | null;
+  level: string | null;
+  event: string | null;
+  message: string | null;
+  error_code: string | null;
+  proxy_id: string | null;
+  captcha_provider: string | null;
+};
+
+export function getAdminAppLogs(params?: {
+  correlation_id?: string;
+  api_id?: string;
+  level?: string;
+  event?: string;
+  error_code?: string;
+  since?: string;
+  until?: string;
+  skip?: number;
+  limit?: number;
+}) {
+  const qs = params
+    ? "?" + new URLSearchParams(
+        Object.fromEntries(
+          Object.entries(params).filter(([, v]) => v !== undefined && v !== "")
+        ) as Record<string, string>
+      ).toString()
+    : "";
+  return apiFetch<{ items: AppLogEntry[]; total: number }>(`/logs/admin/app${qs}`);
+}
+
+export function getAdminTrace(correlationId: string) {
+  return apiFetch<{ correlation_id: string; items: TraceItem[]; total: number }>(
+    `/logs/admin/trace/${encodeURIComponent(correlationId)}`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Status / readiness das APIs  →  /status/*
+// ---------------------------------------------------------------------------
+export type StatusCheck = Record<string, unknown> & { status: string };
+
+export type StatusOverviewItem = {
+  api_id: string;
+  api_name: string | null;
+  status: string;            // healthy | degraded | down | unknown
+  reported_status: string | null;
+  sdk_version: string | null;
+  uptime_s: number | null;
+  checks: Record<string, StatusCheck>;
+  last_seen: string | null;
+  stale: boolean;
+};
+
+export type StatusEvent = {
+  api_id: string;
+  api_name: string | null;
+  from_status: string;
+  to_status: string;
+  at: string | null;
+};
+
+export function getStatusOverview() {
+  return apiFetch<{ items: StatusOverviewItem[]; total: number }>("/status/overview");
+}
+
+export function getStatusEvents(limit = 50) {
+  return apiFetch<{ items: StatusEvent[]; total: number }>(
+    `/status/events?limit=${limit}`
+  );
+}
+
+// EventSource não envia o header Authorization — o token vai por query param.
+export function statusStreamUrl(token: string) {
+  return `${BASE_URL}/status/stream?token=${encodeURIComponent(token)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Proxies & pools  →  /proxies/*
+// ---------------------------------------------------------------------------
+export type ProxyPool = {
+  id: string;
+  name: string;
+  description: string | null;
+  proxy_count: number;
+  created_at: string;
+};
+
+export type Proxy = {
+  id: string;
+  pool_id: string | null;
+  name: string;
+  provider: string | null;
+  ownership: string;
+  type: string;
+  scheme: string;
+  host: string;
+  port: number;
+  username: string | null;
+  has_password: boolean;
+  rotation: string;
+  session_ttl_s: number | null;
+  status: string;
+  priority: number;
+  last_error: string | null;
+  last_error_at: string | null;
+  created_at: string;
+};
+
+export type ProxyInput = {
+  name: string;
+  host: string;
+  port: number;
+  scheme?: string;
+  type?: string;
+  ownership?: string;
+  provider?: string | null;
+  username?: string | null;
+  password?: string | null;
+  rotation?: string;
+  session_ttl_s?: number | null;
+  priority?: number;
+  pool_id?: string | null;
+};
+
+export function getProxyPools() {
+  return apiFetch<{ items: ProxyPool[]; total: number }>("/proxies/pools");
+}
+
+export function createProxyPool(name: string, description?: string) {
+  return apiFetch<ProxyPool>("/proxies/pools", {
+    method: "POST",
+    body: JSON.stringify({ name, description }),
+  });
+}
+
+export function deleteProxyPool(poolId: string) {
+  return apiFetch<void>(`/proxies/pools/${poolId}`, { method: "DELETE" });
+}
+
+export function getProxies(poolId?: string) {
+  const qs = poolId ? `?pool_id=${poolId}` : "";
+  return apiFetch<{ items: Proxy[]; total: number }>(`/proxies${qs}`);
+}
+
+export function createProxy(body: ProxyInput) {
+  return apiFetch<Proxy>("/proxies", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateProxy(proxyId: string, body: Partial<ProxyInput> & { status?: string }) {
+  return apiFetch<Proxy>(`/proxies/${proxyId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteProxy(proxyId: string) {
+  return apiFetch<void>(`/proxies/${proxyId}`, { method: "DELETE" });
+}
+
+export function assignProxyPool(apiId: string, proxyPoolId: string | null) {
+  return apiFetch<{ api_id: string; proxy_pool_id: string | null }>(
+    `/proxies/assignments/${apiId}`,
+    { method: "PUT", body: JSON.stringify({ proxy_pool_id: proxyPoolId }) }
+  );
 }
 
 // ---------------------------------------------------------------------------
