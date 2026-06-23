@@ -292,6 +292,21 @@ export function updateApi(id: string, data: {
   );
 }
 
+export type ImportedOperation = {
+  method: string;
+  path: string;
+  summary?: string | null;
+  request_body_template?: string | null;
+};
+
+export function importOpenApi(spec: string) {
+  return apiFetch<{
+    title?: string | null;
+    base_url?: string | null;
+    operations: ImportedOperation[];
+  }>("/apis/import", { method: "POST", body: JSON.stringify({ spec }) });
+}
+
 export function enableApi(id: string) {
   return apiFetch(`/apis/${id}/enable`, { method: "PATCH" });
 }

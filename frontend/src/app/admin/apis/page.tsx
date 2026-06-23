@@ -5,7 +5,8 @@ import {
   getApis, createApi, updateApi, enableApi, disableApi, deleteApi,
   getApiProxies, createApiProxy, updateApiProxy, deleteApiProxy,
   getApiCaptchas, createApiCaptcha, updateApiCaptcha, deleteApiCaptcha,
-  type Proxy, type ProxyInput, type Captcha, type CaptchaInput,
+  importOpenApi,
+  type Proxy, type ProxyInput, type Captcha, type CaptchaInput, type ImportedOperation,
 } from "@/lib/api";
 
 const BRIDGE_BASE =
@@ -212,6 +213,46 @@ export default function ApisPage() {
   const [formSuccess, setFormSuccess] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
+  // Import de OpenAPI/Swagger
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importLoading, setImportLoading] = useState(false);
+  const [importErr, setImportErr] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<{
+    title?: string | null; base_url?: string | null; operations: ImportedOperation[];
+  } | null>(null);
+
+  async function parseImport() {
+    setImportLoading(true); setImportErr(null); setImportResult(null);
+    try {
+      setImportResult(await importOpenApi(importText));
+    } catch (e) {
+      setImportErr(e instanceof Error ? e.message : "Falha ao parsear o spec");
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
+  function applyOperation(op: ImportedOperation) {
+    const server = (importResult?.base_url ?? "").replace(/\/$/, "");
+    const path = op.path.startsWith("/") ? op.path : `/${op.path}`;
+    const name = importResult?.title
+      ? `${importResult.title}${op.summary ? ` — ${op.summary}` : ""}`
+      : op.summary || op.path;
+    setEditingId(null);
+    setForm({
+      ...initialForm,
+      name: name.slice(0, 120),
+      base_url: server ? `${server}${path}` : "",
+      request_method: op.method,
+      request_body_template: op.request_body_template ?? "",
+    });
+    setFieldErrors({});
+    setFormError(null);
+    setShowImport(false);
+    setShowForm(true);
+  }
+
   async function load() {
     try {
       const data = await getApis();
@@ -361,14 +402,83 @@ export default function ApisPage() {
           <h2 className="text-4xl font-extrabold font-headline tracking-tighter text-on-surface">API Catalog</h2>
           <p className="text-on-surface-variant mt-2 text-lg">Manage, monitor and connect your technical assets through Bridge.</p>
         </div>
-        <button
-          onClick={() => { if (showForm) { closeForm(); } else { setShowForm(true); } }}
-          className="primary-gradient text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:scale-[1.02] transition-transform shadow-lg shadow-primary/20"
-        >
-          <span className="material-symbols-outlined">add_circle</span>
-          {showForm ? "Cancelar" : "Register New API"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => { setImportErr(null); setImportResult(null); setShowImport(true); }}
+            className="px-5 py-3 rounded-xl font-bold flex items-center gap-2 bg-surface-container-high text-on-surface hover:brightness-95 transition-all"
+          >
+            <span className="material-symbols-outlined">upload_file</span>
+            Importar OpenAPI
+          </button>
+          <button
+            onClick={() => { if (showForm) { closeForm(); } else { setShowForm(true); } }}
+            className="primary-gradient text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:scale-[1.02] transition-transform shadow-lg shadow-primary/20"
+          >
+            <span className="material-symbols-outlined">add_circle</span>
+            {showForm ? "Cancelar" : "Register New API"}
+          </button>
+        </div>
       </div>
+
+      {/* Modal de import de OpenAPI/Swagger */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowImport(false)}>
+          <div onClick={(e) => e.stopPropagation()}
+            className="bg-surface-container-lowest rounded-2xl p-6 w-full max-w-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold text-on-surface">Importar OpenAPI / Swagger</h3>
+              <button onClick={() => setShowImport(false)} className="text-on-surface-variant hover:text-on-surface">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <p className="text-sm text-on-surface-variant">
+              Cole o JSON ou YAML da doc da API. Escolha uma operação para pré-preencher o cadastro
+              (base URL, método e body template).
+            </p>
+            <textarea
+              rows={8}
+              className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container outline-none font-mono text-xs"
+              placeholder='{"openapi":"3.0.0", ...}  ou  openapi: 3.0.0 ...'
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+            />
+            {importErr && <div className="bg-error-container/30 text-error rounded-lg px-4 py-2 text-sm">{importErr}</div>}
+            <div className="flex justify-end">
+              <button onClick={parseImport} disabled={importLoading || !importText.trim()}
+                className="px-5 py-2 rounded-lg bg-primary text-white font-bold text-sm hover:opacity-90 disabled:opacity-50">
+                {importLoading ? "Lendo…" : "Ler spec"}
+              </button>
+            </div>
+
+            {importResult && (
+              <div className="space-y-2">
+                <p className="text-xs text-on-surface-variant">
+                  {importResult.title ?? "API"} · {importResult.base_url ?? "sem servidor"} ·{" "}
+                  {importResult.operations.length} operação(ões)
+                </p>
+                <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 divide-y divide-outline-variant/10 max-h-72 overflow-y-auto">
+                  {importResult.operations.length === 0 && (
+                    <p className="py-6 text-center text-on-surface-variant text-sm">Nenhuma operação encontrada.</p>
+                  )}
+                  {importResult.operations.map((op, i) => (
+                    <button key={i} onClick={() => applyOperation(op)}
+                      className="w-full text-left px-4 py-3 hover:bg-surface-container-high transition-colors flex items-center gap-3">
+                      <span className={`text-[10px] font-black uppercase rounded-md px-2 py-1 ${
+                        op.request_body_template ? "bg-primary/15 text-primary" : "bg-surface-container-high text-on-surface-variant"
+                      }`}>{op.method}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="font-mono text-xs text-on-surface truncate block">{op.path}</span>
+                        {op.summary && <span className="text-xs text-on-surface-variant truncate block">{op.summary}</span>}
+                      </span>
+                      <span className="material-symbols-outlined text-on-surface-variant text-[18px]">arrow_forward</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {formSuccess && (
         <div className="p-4 bg-green-100 text-green-800 rounded-xl text-sm font-medium">
