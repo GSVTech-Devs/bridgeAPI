@@ -78,6 +78,7 @@ class APIResponse(BaseModel):
     auth_type: str
     status: str
     cost_per_query: Optional[float] = None
+    proxy_pool_id: Optional[uuid.UUID] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -13,11 +13,20 @@ from app.core.mongo_client import get_mongo_db
 from app.domains.auth.router import get_current_user, require_feature
 from app.domains.auth.schemas import MeResponse
 from app.domains.keys.models import APIKey
-from app.domains.logs.schemas import LogEntryResponse, LogListResponse
+from app.domains.logs.schemas import (
+    AppLogEntryResponse,
+    AppLogListResponse,
+    LogEntryResponse,
+    LogListResponse,
+    TraceItem,
+    TraceResponse,
+)
 from app.domains.logs.service import (
     get_admin_error_logs,
     get_admin_logs,
+    get_app_logs,
     get_client_logs,
+    get_trace_by_correlation_id,
 )
 
 router = APIRouter(tags=["logs"])
@@ -82,3 +91,48 @@ async def list_admin_error_logs(
     logs = await get_admin_error_logs(mongo_db, api_id=api_id, skip=skip, limit=limit)
     items = [LogEntryResponse(**doc) for doc in logs]
     return LogListResponse(items=items, total=len(items))
+
+
+@router.get("/logs/admin/app", response_model=AppLogListResponse)
+async def list_admin_app_logs(
+    correlation_id: Optional[str] = Query(default=None),
+    api_id: Optional[str] = Query(default=None),
+    level: Optional[str] = Query(default=None),
+    event: Optional[str] = Query(default=None),
+    error_code: Optional[str] = Query(default=None),
+    since: Optional[datetime] = Query(default=None),
+    until: Optional[datetime] = Query(default=None),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
+    mongo_db=Depends(get_mongo_db),
+    _: MeResponse = Depends(get_current_user),
+) -> AppLogListResponse:
+    """Logs estruturados enviados pelas APIs (POST /ingest/logs)."""
+    logs = await get_app_logs(
+        mongo_db,
+        correlation_id=correlation_id,
+        api_id=api_id,
+        level=level,
+        event=event,
+        error_code=error_code,
+        since=since,
+        until=until,
+        skip=skip,
+        limit=limit,
+    )
+    items = [AppLogEntryResponse(**doc) for doc in logs]
+    return AppLogListResponse(items=items, total=len(items))
+
+
+@router.get("/logs/admin/trace/{correlation_id}", response_model=TraceResponse)
+async def get_trace(
+    correlation_id: str,
+    mongo_db=Depends(get_mongo_db),
+    _: MeResponse = Depends(get_current_user),
+) -> TraceResponse:
+    """Timeline unificada (gateway + app) de um correlation_id — painel de debug."""
+    docs = await get_trace_by_correlation_id(mongo_db, correlation_id)
+    items = [TraceItem(**doc) for doc in docs]
+    return TraceResponse(
+        correlation_id=correlation_id, items=items, total=len(items)
+    )

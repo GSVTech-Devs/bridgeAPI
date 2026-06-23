@@ -45,6 +45,19 @@ class ExternalAPI(Base):
     )
     url_template: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
     cost_per_query: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Token de serviço (≠ chave de cliente) com que a própria API se autentica
+    # para enviar logs estruturados via POST /ingest/logs. Gerado sob demanda.
+    service_token_prefix: Mapped[Optional[str]] = mapped_column(
+        String(32), unique=True, index=True, nullable=True
+    )
+    service_token_hash: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )
+    # Pool de proxies que esta API usa (a SDK busca a config do pool). A troca de
+    # proxy é feita repontando o pool ou alterando seus membros — sem deploy.
+    proxy_pool_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("proxy_pools.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     auth_type: Mapped[str] = mapped_column(String(20), default=APIAuthType.NONE)
     status: Mapped[str] = mapped_column(
         String(20), default=APIStatus.ACTIVE, index=True

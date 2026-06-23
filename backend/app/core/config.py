@@ -32,6 +32,16 @@ class Settings(BaseSettings):
 
     # Log retention
     log_retention_hours: int = 24
+    # Retenção dos logs estruturados enviados pelas APIs (POST /ingest/logs).
+    # Histórico mais longo para debug — independente do TTL dos request_logs.
+    app_log_retention_days: int = 7
+
+    # Status / readiness das APIs (POST /ingest/status)
+    status_history_retention_days: int = 7
+    # Após este tempo sem heartbeat, o último status é considerado defasado (stale).
+    status_stale_after_seconds: int = 90
+    # Intervalo de atualização do stream SSE do painel de status.
+    status_stream_interval_seconds: int = 5
 
     # Encryption
     encryption_key: str = "0" * 64

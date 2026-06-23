@@ -123,13 +123,19 @@ async def check_rate_limit(
 def build_upstream_headers(
     api: ExternalAPI,
     incoming_headers: dict,
+    correlation_id: Optional[str] = None,
 ) -> dict:
     """Filtra headers de entrada e injeta credencial da API upstream.
 
     Se url_template contém {token}, a credencial já vai na URL — não injeta no header.
+    Propaga o correlation_id via X-Correlation-Id para que a API downstream
+    correlacione seus logs estruturados com o gateway.
     """
     _STRIP = {"x-bridge-key", "host", "content-length", "transfer-encoding"}
     headers = {k: v for k, v in incoming_headers.items() if k.lower() not in _STRIP}
+
+    if correlation_id is not None:
+        headers["x-correlation-id"] = correlation_id
 
     if api.master_key_encrypted is None:
         return headers
