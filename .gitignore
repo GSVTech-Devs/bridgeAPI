@@ -29,3 +29,4 @@ CLAUDE.md
 .codex
 
 frontend/.env.local
+frontend/tsconfig.tsbuildinfo
