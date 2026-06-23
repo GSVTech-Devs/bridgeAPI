@@ -105,6 +105,24 @@ Modelo atual:
 - **Pendência de polish (fase 4 do plano)**: embutir a lista de proxies dentro do próprio
   formulário de cadastro de API (hoje fica na tela `/admin/proxies`, escolhendo a API).
 
+### Fase 4b — Captcha POR API (espelha a 4a) ✅
+Mesmo desenho da 4a, agora para captcha, com **saldo** como diferencial.
+
+- **Backend**: novo domínio `app/domains/captcha/`. Tabela `captcha_providers`
+  (`api_id` + `account_id`; `api_key_encrypted`, `balance_usd`, `priority`, `status`,
+  `last_error*`). `external_apis.uses_captcha` + `permissions.captcha_managed_by_client`.
+  Migration `q7f8a9b0c1d2`. Resolução por dono em `get_captcha_config_for_api` /
+  `report_captcha_failure` (idêntica ao proxy). Endpoints: admin `/apis/{id}/captchas`,
+  cliente `/client/apis/{id}/captchas` (exige `Feature.CAPTCHA` + flag), `/monitoring/captchas`,
+  ingest `GET /ingest/captcha` + `POST /ingest/captcha/report` (lê `X-Bridge-Client`). O report
+  aceita `balance_usd` p/ a SDK atualizar o saldo.
+- **SDK**: `captcha.py` — `CaptchaProvider` (`.has_balance`) e `CaptchaClient` (espelha
+  `ProxyClient`: cache/failed keyed por client + `X-Bridge-Client`; `acquire`/`with_failover`
+  **pulam provedores sem saldo**). Config `captcha_cache_ttl`.
+- **Frontend**: `/admin/captcha` (escolhe API → CRUD + monitoramento com saldo),
+  `/dashboard/captcha` (cliente, por API, guard `CAP.CAPTCHA`), checkbox **"usa captcha"** no
+  cadastro de API, toggle **CAPTCHA: ADMIN/CLIENTE** por linha na tela de permissões.
+
 ---
 
 ## Como rodar (ambiente Docker do usuário)
@@ -115,7 +133,7 @@ A imagem do backend (`bridgeapi-backend`) tem todas as deps (inclusive p/ a SDK)
 # Backend (421 testes)
 docker exec bridge_backend pytest tests/unit/ -q --no-cov
 
-# Migrations (head atual: p6e7f8a9b0c1)
+# Migrations (head atual: q7f8a9b0c1d2)
 docker exec bridge_backend alembic upgrade head
 
 # bridge-sdk (53 testes) — montada na imagem do backend
@@ -126,7 +144,7 @@ docker exec bridge_frontend npm test
 docker exec bridge_frontend npx tsc --noEmit      # erros pré-existentes só em __tests__ (sem @types/jest)
 docker exec bridge_frontend npx eslint src/...
 ```
-Estado atual dos testes: **backend 427 · sdk 64 · frontend 89** — todos verdes.
+Estado atual dos testes: **backend 442 · sdk 75 · frontend 89** — todos verdes.
 
 ---
 
@@ -143,44 +161,39 @@ Estado atual dos testes: **backend 427 · sdk 64 · frontend 89** — todos verd
 
 ---
 
-## Onde paramos — Fase 4b (PRÓXIMA): CAPTCHA por API
+## Onde paramos — Fase 4c (PRÓXIMA): polish + API POST
 
-A **Fase 4a (proxy por API)** está pronta, testada e documentada acima. A 4b é
-**captcha no MESMO padrão da 4a** (por API, admin+cliente, com toggle/editar/excluir),
-mais o **saldo** como diferencial.
+**4a (proxy) e 4b (captcha) por API estão prontas, testadas e documentadas acima.**
+As próximas duas fatias:
+
+### 4c — Embutir no formulário de cadastro da API
+Hoje proxy/captcha são gerenciados em `/admin/proxies` e `/admin/captcha` (escolhendo a API).
+O pedido do dono é configurar **dentro do cadastro da API**. Falta mover as listas (add/editar/
+toggle/excluir) para dentro do form de `/admin/apis` (modo edição), reaproveitando as funções
+`*ApiProxy*` / `*ApiCaptcha*` de `lib/api.ts`. Sem mudança de backend.
+
+### 4d — API POST
+Adicionar `external_apis.request_method` (GET/POST) e `request_body_template` (com `{query}`/
+`{token}`). No gateway (`proxy/service.py`): quando POST + template, montar o body a partir da
+requisição do cliente (`forward_to_upstream`/`_build_url_from_template` já lidam com `{query}`/
+`{token}` no URL — replicar para o body). No form de cadastro, escolher GET vs POST e editar o
+template. GET segue funcionando.
 
 ### Decisões já tomadas (não reabrir)
 - Proxy/captcha **dentro da API**, sem pools/fornecedores à parte. Vários por API.
-- Admin decide no cadastro se a API usa proxy/captcha (`uses_proxy`, futuro `uses_captcha`).
-- Na permissão, admin decide se o cliente gerencia o próprio (proxy: `proxy_managed_by_client`;
-  captcha: futuro `captcha_managed_by_client`). Ligado → cliente configura o dele; senão admin.
-
-### Como espelhar a 4a no captcha (mapa concreto)
-O **proxy é o template literal** — clonar o desenho por-API:
-1. **Modelo** `captcha_providers`: `api_id` (FK), `account_id` (NULL=admin), `name`,
-   `provider`, `api_key_encrypted`, `balance_usd`, `priority`, `status`, `last_error*`.
-   (Sem tabela de pool/override — a posse é por `api_id`+`account_id`, igual `proxies`.)
-2. **Flags**: `external_apis.uses_captcha` + `permissions.captcha_managed_by_client`.
-3. **Resolução** `captcha/service.py`: `resolve_owner_for_request` (reusa a lógica do proxy),
-   `get_captcha_config_for_api(db, api, client_id)` (vazio se `uses_captcha=False`),
-   `report_captcha_failure(db, api, data, client_id)`.
-4. **Endpoints**: ingest `GET /ingest/captcha` + `POST /ingest/captcha/report` (lê `X-Bridge-Client`,
-   já propagado); admin `/apis/{api_id}/captchas`; cliente `/client/apis/{api_id}/captchas`;
-   monitoramento `/monitoring/captchas`; `Feature.CAPTCHA` em `core/authz.py`.
-5. **SDK** `CaptchaClient` espelha `ProxyClient` (failover por prioridade + **checagem de saldo**),
-   cache/failed-set keyed por client (o contextvar `client` já existe).
-6. **Frontend**: captcha na tela `/admin/proxies` (ou `/admin/providers`) e `/dashboard`,
-   checkbox "usa captcha" no cadastro de API, toggle na permissão.
-- **Saldo** (`balance_usd`): o `CaptchaClient` pula provider sem saldo; saldo entra no `/status`
-  (degraded abaixo do limiar) e em alertas (Fase 6).
+- Admin decide no cadastro se a API usa proxy/captcha (`uses_proxy`/`uses_captcha`).
+- Na permissão, admin decide se o cliente gerencia o próprio
+  (`proxy_managed_by_client`/`captcha_managed_by_client`). Ligado → cliente configura o dele;
+  senão usa o do admin.
+- **Saldo** do captcha: a SDK pula provider sem saldo; entra no monitoramento e (Fase 6) em alertas.
 
 ### Roadmap restante
 | Fase | Status |
 |---|---|
 | 1 Observabilidade · 2 Health/Status · 3 Proxies | ✅ feito |
 | 4a Proxy POR API (admin + cliente, monitoramento) | ✅ feito |
-| 4b Captcha POR API (mesmo padrão + saldo) | ⬜ próxima |
-| 4c Polish: embutir proxy/captcha no formulário de cadastro da API | ⬜ |
+| 4b Captcha POR API (mesmo padrão + saldo) | ✅ feito |
+| 4c Polish: embutir proxy/captcha no formulário de cadastro da API | ⬜ próxima |
 | 4d API **POST**: `request_method` + `request_body_template` ({query}/{token}) no gateway | ⬜ |
 | 4e Import de OpenAPI/Swagger p/ pré-preencher o body template | ⬜ |
 | 5 Execução híbrida / jobs (timeout, 202+job, idempotência, billing) | ⬜ |
