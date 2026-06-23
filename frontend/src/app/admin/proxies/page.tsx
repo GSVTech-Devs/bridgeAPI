@@ -2,17 +2,16 @@
 
 import { useEffect, useState, useCallback } from "react";
 import {
-  getProxyPools, createProxyPool, deleteProxyPool,
-  getProxies, createProxy, updateProxy, deleteProxy,
-  getApis, assignProxyPool,
-  type ProxyPool, type Proxy, type ProxyInput,
+  getApis,
+  getApiProxies, createApiProxy, updateApiProxy, deleteApiProxy,
+  getProxyMonitor,
+  type Proxy, type ProxyInput, type ProxyMonitorItem,
 } from "@/lib/api";
 
-type Api = { id: string; name: string; proxy_pool_id?: string | null };
+type Api = { id: string; name: string; uses_proxy?: boolean };
 
 const SCHEMES = ["http", "https", "socks5"];
 const TYPES = ["datacenter", "residential", "mobile"];
-const OWNERSHIPS = ["platform", "client"];
 const ROTATIONS = ["sticky", "rotating"];
 
 function statusPill(s: string): string {
@@ -25,45 +24,45 @@ function statusPill(s: string): string {
 
 const EMPTY: ProxyInput = {
   name: "", host: "", port: 8080, scheme: "http", type: "datacenter",
-  ownership: "platform", provider: "", username: "", password: "",
-  rotation: "sticky", session_ttl_s: null, priority: 100, pool_id: null,
+  provider: "", username: "", password: "",
+  rotation: "sticky", session_ttl_s: null, priority: 100,
 };
 
-export default function ProxiesPage() {
-  const [pools, setPools] = useState<ProxyPool[]>([]);
-  const [proxies, setProxies] = useState<Proxy[]>([]);
+export default function AdminProxiesPage() {
   const [apis, setApis] = useState<Api[]>([]);
+  const [apiId, setApiId] = useState<string>("");
+  const [proxies, setProxies] = useState<Proxy[]>([]);
+  const [monitor, setMonitor] = useState<ProxyMonitorItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const [poolName, setPoolName] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<ProxyInput>(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  const refresh = useCallback(async () => {
-    const [p, px, a] = await Promise.all([getProxyPools(), getProxies(), getApis()]);
-    setPools(p.items);
-    setProxies(px.items);
+  const loadApis = useCallback(async () => {
+    const [a, m] = await Promise.all([getApis(), getProxyMonitor()]);
     setApis(a.items);
+    setMonitor(m.items);
+    if (!apiId && a.items.length) setApiId(a.items[0].id);
+  }, [apiId]);
+
+  const loadProxies = useCallback(async (id: string) => {
+    if (!id) { setProxies([]); return; }
+    const px = await getApiProxies(id);
+    setProxies(px.items);
   }, []);
 
   useEffect(() => {
-    refresh().catch((e) => setErr(String(e))).finally(() => setLoading(false));
-  }, [refresh]);
+    loadApis().catch((e) => setErr(String(e))).finally(() => setLoading(false));
+  }, [loadApis]);
 
-  async function addPool(e: React.FormEvent) {
-    e.preventDefault();
-    if (!poolName.trim()) return;
-    await createProxyPool(poolName.trim());
-    setPoolName("");
-    await refresh();
-  }
+  useEffect(() => {
+    if (apiId) loadProxies(apiId).catch((e) => setErr(String(e)));
+  }, [apiId, loadProxies]);
 
-  async function removePool(id: string) {
-    if (!confirm("Remover este pool? Os proxies ficam sem pool.")) return;
-    await deleteProxyPool(id);
-    await refresh();
+  async function refresh() {
+    await Promise.all([loadProxies(apiId), getProxyMonitor().then((m) => setMonitor(m.items))]);
   }
 
   async function submitProxy(e: React.FormEvent) {
@@ -71,12 +70,11 @@ export default function ProxiesPage() {
     setSaving(true);
     setErr(null);
     try {
-      await createProxy({
+      await createApiProxy(apiId, {
         ...form,
         provider: form.provider || null,
         username: form.username || null,
         password: form.password || null,
-        pool_id: form.pool_id || null,
       });
       setShowForm(false);
       setForm(EMPTY);
@@ -89,124 +87,90 @@ export default function ProxiesPage() {
   }
 
   async function toggleProxy(p: Proxy) {
-    await updateProxy(p.id, { status: p.status === "active" ? "inactive" : "active" });
-    await refresh();
-  }
-
-  async function moveProxy(p: Proxy, poolId: string) {
-    await updateProxy(p.id, { pool_id: poolId || null });
+    await updateApiProxy(apiId, p.id, { status: p.status === "active" ? "inactive" : "active" });
     await refresh();
   }
 
   async function removeProxy(id: string) {
     if (!confirm("Remover este proxy?")) return;
-    await deleteProxy(id);
-    await refresh();
-  }
-
-  async function assign(apiId: string, poolId: string) {
-    await assignProxyPool(apiId, poolId || null);
+    await deleteApiProxy(apiId, id);
     await refresh();
   }
 
   const field = (k: keyof ProxyInput, v: string | number | null) =>
     setForm((f) => ({ ...f, [k]: v }));
 
+  const selectedApi = apis.find((a) => a.id === apiId);
+
   return (
     <div className="max-w-7xl mx-auto space-y-10">
       <div className="flex items-end justify-between">
         <div>
           <h2 className="text-4xl font-extrabold tracking-tight text-on-surface font-headline mb-2">
-            Proxies
+            Proxies por API
           </h2>
           <p className="text-on-surface-variant font-medium">
-            Pools de proxy, status/failover e atribuição por API.
+            Os proxies da plataforma para cada API. O cliente configura os dele quando você
+            habilita isso na permissão.
           </p>
         </div>
-        <button
-          onClick={() => { setForm(EMPTY); setShowForm(true); }}
-          className="px-5 py-2.5 rounded-xl bg-primary text-white font-bold text-sm hover:opacity-90"
-        >
-          + Novo proxy
-        </button>
+        {apiId && (
+          <button
+            onClick={() => { setForm(EMPTY); setShowForm(true); }}
+            className="px-5 py-2.5 rounded-xl bg-primary text-white font-bold text-sm hover:opacity-90"
+          >
+            + Novo proxy
+          </button>
+        )}
       </div>
 
       {err && <div className="bg-error-container/30 text-error rounded-lg px-4 py-3 text-sm">{err}</div>}
 
-      {/* Pools */}
+      {/* Seleção de API + proxies dela */}
       <section className="space-y-3">
-        <h3 className="text-lg font-bold text-on-surface">Pools</h3>
-        <form onSubmit={addPool} className="flex gap-2">
-          <input
-            value={poolName}
-            onChange={(e) => setPoolName(e.target.value)}
-            placeholder="Nome do novo pool…"
-            className="flex-1 px-4 py-2.5 rounded-lg bg-surface-container-lowest border border-outline-variant/20 text-sm text-on-surface focus:outline-none focus:border-primary"
-          />
-          <button type="submit" className="px-5 py-2.5 rounded-lg bg-surface-container-high text-on-surface font-bold text-sm hover:bg-surface-container-highest">
-            Criar pool
-          </button>
-        </form>
-        <div className="flex flex-wrap gap-2">
-          {pools.map((p) => (
-            <div key={p.id} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-container-low">
-              <span className="font-bold text-sm text-on-surface">{p.name}</span>
-              <span className="text-xs text-on-surface-variant">{p.proxy_count} proxies</span>
-              <button onClick={() => removePool(p.id)} className="text-on-surface-variant hover:text-error">
-                <span className="material-symbols-outlined text-[18px]">close</span>
-              </button>
-            </div>
-          ))}
-          {pools.length === 0 && <p className="text-sm text-on-surface-variant">Nenhum pool ainda.</p>}
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-bold text-on-surface-variant">API:</label>
+          <select
+            value={apiId}
+            onChange={(e) => setApiId(e.target.value)}
+            className="px-3 py-2 rounded-lg bg-surface-container border border-outline-variant/20 text-sm text-on-surface"
+          >
+            {apis.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}{a.uses_proxy ? "" : " (não usa proxy)"}</option>
+            ))}
+          </select>
+          {selectedApi && !selectedApi.uses_proxy && (
+            <span className="text-xs text-on-surface-variant">
+              ⚠ Esta API está marcada como “não usa proxy”.
+            </span>
+          )}
         </div>
-      </section>
 
-      {/* Proxies */}
-      <section className="space-y-3">
-        <h3 className="text-lg font-bold text-on-surface">Proxies</h3>
         <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 overflow-hidden">
           {loading ? (
             <p className="py-12 text-center text-on-surface-variant text-sm">Carregando…</p>
           ) : proxies.length === 0 ? (
-            <p className="py-12 text-center text-on-surface-variant text-sm">Nenhum proxy cadastrado.</p>
+            <p className="py-12 text-center text-on-surface-variant text-sm">Nenhum proxy nesta API.</p>
           ) : (
             <div className="divide-y divide-outline-variant/10">
               {proxies.map((p) => (
-                <div key={p.id} className="grid grid-cols-[90px_1fr_160px_140px_90px_120px] items-center gap-3 px-5 py-3.5 text-sm">
+                <div key={p.id} className="grid grid-cols-[90px_1fr_140px_90px_120px] items-center gap-3 px-5 py-3.5 text-sm">
                   <span className={`text-center text-[10px] font-black uppercase rounded-md py-1 ${statusPill(p.status)}`}>
                     {p.status}
                   </span>
                   <div className="min-w-0">
                     <p className="font-bold text-on-surface truncate">{p.name}</p>
                     <p className="text-xs text-on-surface-variant font-mono truncate">
-                      {p.scheme}://{p.host}:{p.port} · {p.type} · {p.ownership}
+                      {p.scheme}://{p.host}:{p.port} · {p.type}
                       {p.provider ? ` · ${p.provider}` : ""}
                     </p>
-                    {p.last_error && (
-                      <p className="text-xs text-error truncate">⚠ {p.last_error}</p>
-                    )}
+                    {p.last_error && <p className="text-xs text-error truncate">⚠ {p.last_error}</p>}
                   </div>
-                  <select
-                    value={p.pool_id ?? ""}
-                    onChange={(e) => moveProxy(p, e.target.value)}
-                    className="px-2 py-1.5 rounded-lg bg-surface-container border border-outline-variant/20 text-xs text-on-surface"
-                  >
-                    <option value="">— sem pool —</option>
-                    {pools.map((pool) => (
-                      <option key={pool.id} value={pool.id}>{pool.name}</option>
-                    ))}
-                  </select>
                   <span className="text-xs text-on-surface-variant">prio {p.priority} · {p.rotation}</span>
-                  <button
-                    onClick={() => toggleProxy(p)}
-                    className="text-xs font-bold text-primary hover:underline justify-self-start"
-                  >
+                  <button onClick={() => toggleProxy(p)} className="text-xs font-bold text-primary hover:underline justify-self-start">
                     {p.status === "active" ? "Desativar" : "Ativar"}
                   </button>
-                  <button
-                    onClick={() => removeProxy(p.id)}
-                    className="text-on-surface-variant hover:text-error justify-self-end"
-                  >
+                  <button onClick={() => removeProxy(p.id)} className="text-on-surface-variant hover:text-error justify-self-end">
                     <span className="material-symbols-outlined text-[20px]">delete</span>
                   </button>
                 </div>
@@ -216,26 +180,27 @@ export default function ProxiesPage() {
         </div>
       </section>
 
-      {/* Atribuição API → Pool */}
+      {/* Monitoramento agregado */}
       <section className="space-y-3">
-        <h3 className="text-lg font-bold text-on-surface">APIs → Pool</h3>
+        <h3 className="text-lg font-bold text-on-surface">Monitoramento (todas as APIs)</h3>
         <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 overflow-hidden divide-y divide-outline-variant/10">
-          {apis.length === 0 ? (
-            <p className="py-10 text-center text-on-surface-variant text-sm">Nenhuma API cadastrada.</p>
+          {monitor.length === 0 ? (
+            <p className="py-10 text-center text-on-surface-variant text-sm">Nenhum proxy cadastrado.</p>
           ) : (
-            apis.map((api) => (
-              <div key={api.id} className="flex items-center justify-between px-5 py-3 text-sm">
-                <span className="font-medium text-on-surface">{api.name}</span>
-                <select
-                  value={api.proxy_pool_id ?? ""}
-                  onChange={(e) => assign(api.id, e.target.value)}
-                  className="px-3 py-1.5 rounded-lg bg-surface-container border border-outline-variant/20 text-xs text-on-surface"
-                >
-                  <option value="">— sem pool —</option>
-                  {pools.map((pool) => (
-                    <option key={pool.id} value={pool.id}>{pool.name}</option>
-                  ))}
-                </select>
+            monitor.map((m) => (
+              <div key={m.id} className="grid grid-cols-[90px_1fr_160px_120px] items-center gap-3 px-5 py-3 text-sm">
+                <span className={`text-center text-[10px] font-black uppercase rounded-md py-1 ${statusPill(m.status)}`}>
+                  {m.status}
+                </span>
+                <div className="min-w-0">
+                  <p className="font-bold text-on-surface truncate">{m.name}</p>
+                  <p className="text-xs text-on-surface-variant font-mono truncate">{m.host}:{m.port}</p>
+                  {m.last_error && <p className="text-xs text-error truncate">⚠ {m.last_error}</p>}
+                </div>
+                <span className="text-xs text-on-surface-variant truncate">{m.api_name}</span>
+                <span className="text-xs text-on-surface-variant justify-self-end">
+                  {m.account_id ? "cliente" : "plataforma"}
+                </span>
               </div>
             ))
           )}
@@ -260,20 +225,8 @@ export default function ProxiesPage() {
               <Input label="Senha" value={form.password ?? ""} onChange={(v) => field("password", v)} />
               <Select label="Scheme" value={form.scheme!} options={SCHEMES} onChange={(v) => field("scheme", v)} />
               <Select label="Tipo" value={form.type!} options={TYPES} onChange={(v) => field("type", v)} />
-              <Select label="Propriedade" value={form.ownership!} options={OWNERSHIPS} onChange={(v) => field("ownership", v)} />
               <Select label="Rotação" value={form.rotation!} options={ROTATIONS} onChange={(v) => field("rotation", v)} />
               <Input label="Prioridade" type="number" value={String(form.priority)} onChange={(v) => field("priority", Number(v))} />
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-bold text-on-surface-variant">Pool</label>
-                <select
-                  value={form.pool_id ?? ""}
-                  onChange={(e) => field("pool_id", e.target.value || null)}
-                  className="px-3 py-2 rounded-lg bg-surface-container border border-outline-variant/20 text-sm text-on-surface"
-                >
-                  <option value="">— sem pool —</option>
-                  {pools.map((pool) => <option key={pool.id} value={pool.id}>{pool.name}</option>)}
-                </select>
-              </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg text-on-surface-variant font-bold text-sm hover:bg-surface-container">

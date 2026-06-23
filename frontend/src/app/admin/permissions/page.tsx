@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAccounts, getApis, getPermissions, grantPermission, revokePermission } from "@/lib/api";
+import { getAccounts, getApis, getPermissions, grantPermission, revokePermission, setPermissionProxyManaged } from "@/lib/api";
 
 type Client = { id: string; name: string; type: string; status: string };
-type Api = { id: string; name: string; base_url: string; status: string; auth_type: string };
-type Permission = { account_id: string; api_id: string; account_name: string; api_name: string; status: string };
+type Api = { id: string; name: string; base_url: string; status: string; auth_type: string; uses_proxy?: boolean };
+type Permission = { account_id: string; api_id: string; account_name: string; api_name: string; status: string; proxy_managed_by_client: boolean };
 
 const apiIcons = ["payments", "analytics", "cloud_sync", "shield_lock", "dataset", "monitoring"];
 
@@ -69,6 +69,25 @@ export default function PermissionsPage() {
       );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erro ao revogar");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleToggleManaged(clientId: string, apiId: string, value: boolean) {
+    const key = `mng-${clientId}-${apiId}`;
+    setActionLoading(key);
+    try {
+      await setPermissionProxyManaged(clientId, apiId, value);
+      setPermissions((prev) =>
+        prev.map((p) =>
+          p.account_id === clientId && p.api_id === apiId
+            ? { ...p, proxy_managed_by_client: value }
+            : p
+        )
+      );
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao atualizar");
     } finally {
       setActionLoading(null);
     }
@@ -197,7 +216,9 @@ export default function PermissionsPage() {
               <div className="space-y-4">
                 {apis.map((api, i) => {
                   const permKey = `${selectedClient}-${api.id}`;
-                  const hasAccess = activePerms.some((p) => p.account_id === selectedClient && p.api_id === api.id);
+                  const perm = activePerms.find((p) => p.account_id === selectedClient && p.api_id === api.id);
+                  const hasAccess = perm !== undefined;
+                  const managed = perm?.proxy_managed_by_client ?? false;
                   return (
                     <div key={api.id} className="grid grid-cols-12 items-center bg-surface-container-lowest p-6 rounded-3xl hover:bg-white transition-all shadow-sm">
                       <div className="col-span-6 flex items-center gap-4">
@@ -217,7 +238,21 @@ export default function PermissionsPage() {
                           </span>
                         </div>
                       </div>
-                      <div className="col-span-3 flex justify-end gap-2">
+                      <div className="col-span-3 flex justify-end items-center gap-2">
+                        {hasAccess && api.uses_proxy && (
+                          <button
+                            onClick={() => handleToggleManaged(selectedClient, api.id, !managed)}
+                            disabled={actionLoading === `mng-${permKey}`}
+                            title="Cliente configura o próprio proxy desta API"
+                            className={`px-3 py-2 rounded-xl text-[10px] font-bold transition-all disabled:opacity-50 ${
+                              managed
+                                ? "bg-primary/15 text-primary"
+                                : "bg-surface-container-high text-on-surface-variant"
+                            }`}
+                          >
+                            {managed ? "PROXY: CLIENTE" : "PROXY: ADMIN"}
+                          </button>
+                        )}
                         {hasAccess ? (
                           <button
                             onClick={() => handleRevoke(selectedClient, api.id)}

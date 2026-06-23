@@ -17,6 +17,7 @@ type Api = {
   status: string;
   auth_type: string;
   cost_per_query?: number;
+  uses_proxy?: boolean;
 };
 
 const initialForm = {
@@ -27,6 +28,7 @@ const initialForm = {
   auth_type: "api_key",
   master_key: "",
   cost_per_query: "",
+  uses_proxy: false,
   description: "",
 };
 
@@ -252,6 +254,7 @@ export default function ApisPage() {
       auth_type: api.auth_type,
       master_key: "",
       cost_per_query: api.cost_per_query != null ? String(api.cost_per_query) : "",
+      uses_proxy: api.uses_proxy ?? false,
       description: "",
     });
     setFieldErrors({});
@@ -318,6 +321,7 @@ export default function ApisPage() {
         url_template: form.url_template || undefined,
         auth_type: form.auth_type || undefined,
         cost_per_query: costValue && !isNaN(costValue) ? costValue : undefined,
+        uses_proxy: form.uses_proxy,
       };
       if (form.master_key) payload.master_key = form.master_key;
       const updated = await updateApi(editingId, payload);
@@ -516,6 +520,22 @@ export default function ApisPage() {
                   />
                 </div>
               </div>
+
+              {/* Usa proxy? */}
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={form.uses_proxy}
+                  onChange={(e) => setForm((f) => ({ ...f, uses_proxy: e.target.checked }))}
+                  className="h-5 w-5 rounded accent-primary"
+                />
+                <span className="text-sm text-on-surface">
+                  Esta API usa proxy
+                  <span className="block text-xs text-on-surface-variant">
+                    Os proxies são configurados em “Proxies”, por API.
+                  </span>
+                </span>
+              </label>
 
               <div className="flex justify-end gap-4 pt-2">
                 <button type="button" onClick={closeForm}
