@@ -76,32 +76,34 @@ Espinha dorsal: `correlation_id` propagado ponta a ponta + ingestão de logs est
   `acquire()` por prioridade, `report_failure()`, `with_failover()`).
 - **Frontend**: `/admin/proxies` — pools, proxies (status/failover/last_error), atribuição API→pool.
 
-### Fase 4a — Proxy do cliente (autosserviço + resolução híbrida) ✅
-Camada de cliente para PROXY: cada conta gerencia seus próprios pools/proxies e escolhe,
-por API, qual pool seu a Bridge usa nas chamadas dela — senão cai no default da API (admin).
+### Fase 4a — Proxy POR API (substitui a camada de pools) ✅
+> **Mudança de direção (pedido do dono):** acabaram os "pools/fornecedores configurados fora".
+> Agora **cada API tem sua própria lista de proxies** (e, na 4b, de captchas), configurada
+> dentro da API. A migration `p6e7f8a9b0c1` **removeu** `proxy_pools`,
+> `api_client_proxy_pool` e `external_apis.proxy_pool_id` (a primeira versão da 4a).
 
-- **Backend**
-  - Modelos: `proxy_pools.account_id` e `proxies.account_id` (nullable; NULL = plataforma)
-    + nova tabela `api_client_proxy_pool (api_id, account_id, pool_id)` (override por cliente).
-    Nome de pool passa a ser único **por dono** (`uq_proxy_pools_account_name`).
-    Migration `o5d6e7f8a9b0` (head atual). FKs `ondelete=CASCADE` p/ conta.
-  - Resolução híbrida em `proxies/service.py::resolve_pool_id_for_client(db, api, client_id)`:
-    override do cliente → senão `api.proxy_pool_id`. Usada por `get_pool_config_for_api` e
-    `report_proxy_failure` (ambas agora aceitam `client_id`).
-  - Propagação do cliente: `proxy/service.py::build_upstream_headers` injeta
-    **`X-Bridge-Client: <account.id>`** (e o strip-a da entrada p/ não ser forjável);
-    chamado em `proxy/router.py::_dispatch`. O ingest lê o header (`GET/POST /ingest/proxies*`).
-  - Autosserviço: novo `proxies/client_router.py` em **`/client/proxies/*`** (pools, proxies,
-    `GET/PUT /client/proxies/assignments`), tudo escopado à conta e liberado por
-    `Feature.PROXIES` (em `core/authz.py`, atribuível por role). Helpers de posse
-    `get_owned_pool/_proxy` tratam "não é seu" como 404.
-  - **Anti-spoof**: o cliente nunca define o próprio `X-Bridge-Client`; quem manda é o gateway.
-- **SDK**: `context.py` ganhou o contextvar `client` (`set/get/use_client`,
-  `client_from_headers`, sem gerar quando ausente). O middleware FastAPI seta o client a
-  partir do header. `ProxyClient` manda `X-Bridge-Client` e tem **cache + failed-set keyed
-  por client** (pools diferem por cliente).
-- **Frontend**: `/dashboard/proxies` (espelha o admin, escopado à conta, guard por
-  `CAP.PROXIES`), item no menu do dashboard, funções `*ClientProxy*` em `lib/api.ts`.
+Modelo atual:
+- **`proxies`** pertence a UMA API (`api_id`) e a um dono (`account_id`: NULL = admin/plataforma;
+  preenchido = cliente). Vários por API, com prioridade/failover e toggle/editar/excluir.
+  `status`/`last_error` = monitoramento.
+- **`external_apis.uses_proxy`** (bool): nem toda API usa proxy — decide-se no cadastro.
+- **`permissions.proxy_managed_by_client`** (bool): no momento em que o admin libera a API pro
+  cliente, ele decide se o **cliente gerencia o próprio proxy**. Se sim, a Bridge usa os proxies
+  do cliente (ele começa sem nenhum e configura os dele); se não, usa os do admin.
+- **Resolução** (`proxies/service.py`): `resolve_owner_for_request(db, api, client_id)` →
+  dono (cliente se a permissão dele marca `proxy_managed_by_client`, senão admin/None);
+  `get_proxy_config_for_api` (vazio se `uses_proxy=False`) e `report_proxy_failure` usam isso.
+- **Propagação**: gateway injeta `X-Bridge-Client` (anti-spoof: strip da entrada); ingest lê.
+- **Endpoints**: admin `/apis/{api_id}/proxies` (CRUD), cliente `/client/apis/{api_id}/proxies`
+  (CRUD, exige `Feature.PROXIES` + `proxy_managed_by_client`), monitoramento `/monitoring/proxies`,
+  permissão `PATCH /permissions/{account}/{api}/config` (liga/desliga o autosserviço).
+- **SDK**: contextvar `client` + middleware + `ProxyClient` com `X-Bridge-Client` e cache/failed
+  keyed por client (inalterado; só consome `/ingest/proxies`).
+- **Frontend**: `/admin/proxies` (escolhe API → CRUD dos proxies dela + monitoramento agregado),
+  `/dashboard/proxies` (cliente, por API, guard `CAP.PROXIES`), checkbox **"usa proxy"** no
+  cadastro de API, toggle **PROXY: ADMIN/CLIENTE** por linha na tela de permissões.
+- **Pendência de polish (fase 4 do plano)**: embutir a lista de proxies dentro do próprio
+  formulário de cadastro de API (hoje fica na tela `/admin/proxies`, escolhendo a API).
 
 ---
 
@@ -113,7 +115,7 @@ A imagem do backend (`bridgeapi-backend`) tem todas as deps (inclusive p/ a SDK)
 # Backend (421 testes)
 docker exec bridge_backend pytest tests/unit/ -q --no-cov
 
-# Migrations (head atual: o5d6e7f8a9b0)
+# Migrations (head atual: p6e7f8a9b0c1)
 docker exec bridge_backend alembic upgrade head
 
 # bridge-sdk (53 testes) — montada na imagem do backend
@@ -124,7 +126,7 @@ docker exec bridge_frontend npm test
 docker exec bridge_frontend npx tsc --noEmit      # erros pré-existentes só em __tests__ (sem @types/jest)
 docker exec bridge_frontend npx eslint src/...
 ```
-Estado atual dos testes: **backend 435 · sdk 64 · frontend 89** — todos verdes.
+Estado atual dos testes: **backend 427 · sdk 64 · frontend 89** — todos verdes.
 
 ---
 
@@ -141,46 +143,46 @@ Estado atual dos testes: **backend 435 · sdk 64 · frontend 89** — todos verd
 
 ---
 
-## Onde paramos — Fase 4b (PRÓXIMA): CAPTCHA
+## Onde paramos — Fase 4b (PRÓXIMA): CAPTCHA por API
 
-A **Fase 4a (proxy do cliente)** está pronta, testada e documentada acima. Falta a 4b:
-**captcha inteiro já no padrão "config pelo cliente"** — espelhar tudo que foi feito p/ proxy.
+A **Fase 4a (proxy por API)** está pronta, testada e documentada acima. A 4b é
+**captcha no MESMO padrão da 4a** (por API, admin+cliente, com toggle/editar/excluir),
+mais o **saldo** como diferencial.
 
 ### Decisões já tomadas (não reabrir)
-- **Resolução híbrida**: na requisição do cliente X para a API Y, usa o proxy/captcha que o
-  cliente X configurou para Y; senão cai no default da API (admin). **(já implementado p/ proxy)**
-- **Cliente gerencia no `/dashboard`** (autosserviço, escopado à conta, liberado por capability).
-  Admin continua vendo/gerenciando tudo.
+- Proxy/captcha **dentro da API**, sem pools/fornecedores à parte. Vários por API.
+- Admin decide no cadastro se a API usa proxy/captcha (`uses_proxy`, futuro `uses_captcha`).
+- Na permissão, admin decide se o cliente gerencia o próprio (proxy: `proxy_managed_by_client`;
+  captcha: futuro `captcha_managed_by_client`). Ligado → cliente configura o dele; senão admin.
 
 ### Como espelhar a 4a no captcha (mapa concreto)
-O proxy é o template — repita o mesmo desenho:
-1. **Modelos**: `captcha_providers` com `account_id` (nullable) + creds criptografadas
-   (`api_key_encrypted`), `balance_usd`, `priority`, `status`. Override por cliente em
-   `api_client_captcha_provider (api_id, account_id, provider_id)`. Default da API em
-   `external_apis.captcha_provider_id` (ou um pool, se preferir manter simetria com proxy).
-2. **Resolução híbrida**: `captcha/service.py::resolve_provider_for_client(db, api, client_id)`
-   — clona `resolve_pool_id_for_client`. `get_captcha_config_for_api(db, api, client_id)` e
+O **proxy é o template literal** — clonar o desenho por-API:
+1. **Modelo** `captcha_providers`: `api_id` (FK), `account_id` (NULL=admin), `name`,
+   `provider`, `api_key_encrypted`, `balance_usd`, `priority`, `status`, `last_error*`.
+   (Sem tabela de pool/override — a posse é por `api_id`+`account_id`, igual `proxies`.)
+2. **Flags**: `external_apis.uses_captcha` + `permissions.captcha_managed_by_client`.
+3. **Resolução** `captcha/service.py`: `resolve_owner_for_request` (reusa a lógica do proxy),
+   `get_captcha_config_for_api(db, api, client_id)` (vazio se `uses_captcha=False`),
    `report_captcha_failure(db, api, data, client_id)`.
-3. **Propagação**: o `X-Bridge-Client` já está no upstream (4a) — captcha reusa de graça.
-4. **Endpoints SDK** no ingest router: `GET /ingest/captcha` (resolvido por cliente) +
-   `POST /ingest/captcha/report`, ambos lendo o header `X-Bridge-Client` (igual proxy).
-5. **Autosserviço**: `captcha/client_router.py` em `/client/captcha/*` + `Feature.CAPTCHA`
-   em `core/authz.py` (atribuível). Admin em `/captcha/*` (clona `proxies/router.py`).
-6. **SDK** `CaptchaClient` espelha `ProxyClient` (failover por prioridade + **checagem de
-   saldo**), cache/failed-set keyed por client (o contextvar `client` já existe).
-7. **Frontend**: `/admin/captcha` + `/dashboard/captcha` (guard `CAP.CAPTCHA`), funções em
-   `lib/api.ts`.
-
-### Detalhes específicos de captcha (além do espelho do proxy)
-- **Saldo** (`balance_usd`): além do failover por prioridade, o `CaptchaClient` pula provider
-  sem saldo; o saldo entra no `/status` (degraded abaixo do limiar) e em alertas (Fase 6).
+4. **Endpoints**: ingest `GET /ingest/captcha` + `POST /ingest/captcha/report` (lê `X-Bridge-Client`,
+   já propagado); admin `/apis/{api_id}/captchas`; cliente `/client/apis/{api_id}/captchas`;
+   monitoramento `/monitoring/captchas`; `Feature.CAPTCHA` em `core/authz.py`.
+5. **SDK** `CaptchaClient` espelha `ProxyClient` (failover por prioridade + **checagem de saldo**),
+   cache/failed-set keyed por client (o contextvar `client` já existe).
+6. **Frontend**: captcha na tela `/admin/proxies` (ou `/admin/providers`) e `/dashboard`,
+   checkbox "usa captcha" no cadastro de API, toggle na permissão.
+- **Saldo** (`balance_usd`): o `CaptchaClient` pula provider sem saldo; saldo entra no `/status`
+  (degraded abaixo do limiar) e em alertas (Fase 6).
 
 ### Roadmap restante
 | Fase | Status |
 |---|---|
 | 1 Observabilidade · 2 Health/Status · 3 Proxies | ✅ feito |
-| 4a Proxy do cliente (autosserviço + resolução híbrida) | ✅ feito |
-| 4b Captcha (mesmo padrão: admin + cliente) | ⬜ próxima |
+| 4a Proxy POR API (admin + cliente, monitoramento) | ✅ feito |
+| 4b Captcha POR API (mesmo padrão + saldo) | ⬜ próxima |
+| 4c Polish: embutir proxy/captcha no formulário de cadastro da API | ⬜ |
+| 4d API **POST**: `request_method` + `request_body_template` ({query}/{token}) no gateway | ⬜ |
+| 4e Import de OpenAPI/Swagger p/ pré-preencher o body template | ⬜ |
 | 5 Execução híbrida / jobs (timeout, 202+job, idempotência, billing) | ⬜ |
 | 6 Histórico/replay + alertas | ⬜ |
 
