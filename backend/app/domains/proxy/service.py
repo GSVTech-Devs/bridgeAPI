@@ -167,15 +167,17 @@ def build_upstream_headers(
     return headers
 
 
+def _render_template(template: str, path: str, master_key: str) -> str:
+    """Substitui {query} (o path/consulta do cliente) e {token} (master key)."""
+    return template.replace("{query}", path.lstrip("/")).replace("{token}", master_key)
+
+
 def _build_url_from_template(api: ExternalAPI, path: str) -> str:
     """Substitui {query} e {token} no url_template."""
     master_key = ""
     if api.master_key_encrypted:
         master_key = decrypt_value(api.master_key_encrypted)
-
-    return api.url_template.replace("{query}", path.lstrip("/")).replace(
-        "{token}", master_key
-    )
+    return _render_template(api.url_template, path, master_key)
 
 
 async def forward_to_upstream(
@@ -194,11 +196,27 @@ async def forward_to_upstream(
         clean_path = path.lstrip("/")
         url = f"{base}/{clean_path}" if clean_path else base
 
+    # Método com que a Bridge chama a upstream: o declarado no cadastro (API POST),
+    # senão repassa o método do cliente.
+    upstream_method = (api.request_method or method or "GET").upper()
+
+    # Corpo: se a API define um template (API POST), renderiza {query}/{token};
+    # senão repassa o body do cliente.
+    body = content
+    if api.request_body_template:
+        master_key = (
+            decrypt_value(api.master_key_encrypted) if api.master_key_encrypted else ""
+        )
+        body = _render_template(api.request_body_template, path, master_key).encode()
+        # Garante content-type p/ a upstream (default JSON) sem sobrescrever o existente.
+        if not any(k.lower() == "content-type" for k in headers):
+            headers = {**headers, "content-type": "application/json"}
+
     response = await http_client.request(
-        method=method,
+        method=upstream_method,
         url=url,
         headers=headers,
         params=params,
-        content=content,
+        content=body,
     )
     return response

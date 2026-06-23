@@ -36,6 +36,8 @@ async def register_api(
     cost_per_query: float | None = None,
     uses_proxy: bool = False,
     uses_captcha: bool = False,
+    request_method: str | None = None,
+    request_body_template: str | None = None,
 ) -> ExternalAPI:
     existing = await db.execute(select(ExternalAPI).where(ExternalAPI.name == name))
     if existing.scalar_one_or_none() is not None:
@@ -59,6 +61,8 @@ async def register_api(
         cost_per_query=cost_per_query,
         uses_proxy=uses_proxy,
         uses_captcha=uses_captcha,
+        request_method=request_method or None,
+        request_body_template=request_body_template or None,
     )
     db.add(api)
     await db.commit()
@@ -126,6 +130,8 @@ async def update_api(
     cost_per_query: float | None = None,
     uses_proxy: bool | None = None,
     uses_captcha: bool | None = None,
+    request_method: str | None = None,
+    request_body_template: str | None = None,
 ) -> ExternalAPI:
     api = await get_api_by_id(db, api_id)
 
@@ -153,6 +159,10 @@ async def update_api(
         api.uses_proxy = uses_proxy
     if uses_captcha is not None:
         api.uses_captcha = uses_captcha
+    if request_method is not None:
+        api.request_method = request_method or None  # "" limpa (repassa cliente)
+    if request_body_template is not None:
+        api.request_body_template = request_body_template or None
     if master_key:
         from app.core.security import encrypt_value
         api.master_key_encrypted = encrypt_value(master_key)

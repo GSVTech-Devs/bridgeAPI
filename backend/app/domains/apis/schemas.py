@@ -10,6 +10,20 @@ from pydantic import AnyHttpUrl, BaseModel, Field, field_validator, model_valida
 from app.domains.apis.models import APIAuthType, HTTPMethod
 
 _SLUG_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+_METHODS = {m.value for m in HTTPMethod}
+
+
+def _normalize_method(v: Optional[str]) -> Optional[str]:
+    """None = não informado; '' = repassa o método do cliente (limpa); senão
+    valida GET/POST/... e normaliza em maiúsculas."""
+    if v is None:
+        return None
+    v = v.strip().upper()
+    if v == "":
+        return ""
+    if v not in _METHODS:
+        raise ValueError(f"request_method must be one of {sorted(_METHODS)} or empty")
+    return v
 
 
 class APICreateRequest(BaseModel):
@@ -17,11 +31,18 @@ class APICreateRequest(BaseModel):
     slug: Optional[str] = None
     base_url: AnyHttpUrl
     url_template: Optional[str] = None
+    request_method: Optional[str] = None
+    request_body_template: Optional[str] = None
     master_key: Optional[str] = None
     auth_type: APIAuthType = APIAuthType.NONE
     cost_per_query: Optional[float] = None
     uses_proxy: bool = False
     uses_captcha: bool = False
+
+    @field_validator("request_method")
+    @classmethod
+    def validate_request_method(cls, v: Optional[str]) -> Optional[str]:
+        return _normalize_method(v)
 
     @field_validator("slug")
     @classmethod
@@ -50,11 +71,18 @@ class APIUpdateRequest(BaseModel):
     slug: Optional[str] = None
     base_url: Optional[AnyHttpUrl] = None
     url_template: Optional[str] = None
+    request_method: Optional[str] = None
+    request_body_template: Optional[str] = None
     master_key: Optional[str] = None
     auth_type: Optional[APIAuthType] = None
     cost_per_query: Optional[float] = None
     uses_proxy: Optional[bool] = None
     uses_captcha: Optional[bool] = None
+
+    @field_validator("request_method")
+    @classmethod
+    def validate_request_method(cls, v: Optional[str]) -> Optional[str]:
+        return _normalize_method(v)
 
     @field_validator("slug")
     @classmethod
@@ -79,6 +107,8 @@ class APIResponse(BaseModel):
     slug: Optional[str] = None
     base_url: str
     url_template: Optional[str] = None
+    request_method: Optional[str] = None
+    request_body_template: Optional[str] = None
     auth_type: str
     status: str
     cost_per_query: Optional[float] = None
@@ -120,6 +150,8 @@ class APIDetailResponse(BaseModel):
     slug: Optional[str] = None
     base_url: str
     url_template: Optional[str] = None
+    request_method: Optional[str] = None
+    request_body_template: Optional[str] = None
     auth_type: str
     status: str
     cost_per_query: Optional[float] = None

@@ -44,6 +44,12 @@ class ExternalAPI(Base):
         String(2048), nullable=True
     )
     url_template: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
+    # Método com que a Bridge chama a upstream. NULL = repassa o método do cliente
+    # (comportamento padrão/legado). GET/POST/... quando o cadastro declara o tipo.
+    request_method: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    # Corpo enviado à upstream (API POST). Renderiza {query} e {token}. NULL = repassa
+    # o body do cliente.
+    request_body_template: Mapped[Optional[str]] = mapped_column(String(8192), nullable=True)
     cost_per_query: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     # Token de serviço (≠ chave de cliente) com que a própria API se autentica
     # para enviar logs estruturados via POST /ingest/logs. Gerado sob demanda.

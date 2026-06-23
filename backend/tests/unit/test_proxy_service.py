@@ -59,6 +59,8 @@ def make_api(
     auth_type: APIAuthType = APIAuthType.API_KEY,
     master_key: str = "sk-secret-123",
     url_template: str | None = None,
+    request_method: str | None = None,
+    request_body_template: str | None = None,
 ) -> ExternalAPI:
     encrypted = encrypt_value(master_key) if master_key else None
     return ExternalAPI(
@@ -66,6 +68,8 @@ def make_api(
         name="Stripe API",
         base_url="https://api.stripe.com",
         url_template=url_template,
+        request_method=request_method,
+        request_body_template=request_body_template,
         master_key_encrypted=encrypted,
         auth_type=auth_type,
         status=status,
@@ -333,6 +337,59 @@ async def test_forward_upstream_uses_template_when_set() -> None:
     await forward_to_upstream(http_client, api, "search/bitcoin", "GET", {}, {}, None)
 
     assert captured["url"] == "https://custom.api.com/search/bitcoin/mytoken"
+
+
+@pytest.mark.asyncio
+async def test_forward_upstream_uses_declared_method() -> None:
+    # request_method=POST faz a Bridge chamar a upstream com POST, mesmo o cliente vindo GET.
+    api = make_api(request_method="POST")
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        return httpx.Response(200, text="ok")
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    await forward_to_upstream(http_client, api, "charges", "GET", {}, {}, None)
+    assert captured["method"] == "POST"
+
+
+@pytest.mark.asyncio
+async def test_forward_upstream_renders_body_template() -> None:
+    api = make_api(
+        master_key="tok-9",
+        request_method="POST",
+        request_body_template='{"q": "{query}", "key": "{token}"}',
+    )
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = request.content.decode()
+        captured["ct"] = request.headers.get("content-type")
+        return httpx.Response(200, text="ok")
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    await forward_to_upstream(http_client, api, "search/btc", "POST", {}, {}, b"ignored")
+
+    assert captured["body"] == '{"q": "search/btc", "key": "tok-9"}'
+    assert captured["ct"] == "application/json"
+
+
+@pytest.mark.asyncio
+async def test_forward_upstream_passthrough_keeps_client_method_and_body() -> None:
+    # Sem request_method/template → repassa método e body do cliente (legado).
+    api = make_api()
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["body"] = request.content.decode()
+        return httpx.Response(200, text="ok")
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    await forward_to_upstream(http_client, api, "charges", "POST", {}, {}, b"client-body")
+    assert captured["method"] == "POST"
+    assert captured["body"] == "client-body"
 
 
 @pytest.mark.asyncio
