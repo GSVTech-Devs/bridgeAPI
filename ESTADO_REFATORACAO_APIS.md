@@ -133,7 +133,7 @@ A imagem do backend (`bridgeapi-backend`) tem todas as deps (inclusive p/ a SDK)
 # Backend (421 testes)
 docker exec bridge_backend pytest tests/unit/ -q --no-cov
 
-# Migrations (head atual: r8a9b0c1d2e3)
+# Migrations (head atual: s9b0c1d2e3f4)
 docker exec bridge_backend alembic upgrade head
 
 # bridge-sdk (53 testes) — montada na imagem do backend
@@ -144,7 +144,7 @@ docker exec bridge_frontend npm test
 docker exec bridge_frontend npx tsc --noEmit      # erros pré-existentes só em __tests__ (sem @types/jest)
 docker exec bridge_frontend npx eslint src/...
 ```
-Estado atual dos testes: **backend 454 · sdk 75 · frontend 89** — todos verdes.
+Estado atual dos testes: **backend 465 · sdk 75 · frontend 89** — todos verdes.
 
 ---
 
@@ -161,11 +161,34 @@ Estado atual dos testes: **backend 454 · sdk 75 · frontend 89** — todos verd
 
 ---
 
-## Onde paramos — Fase 5 (PRÓXIMA): execução híbrida / jobs
+## Onde paramos — Fase 5b (PRÓXIMA): entrega assíncrona (SSE/webhook) + admin
 
-**Toda a Fase 4 (4a–4e) está pronta, testada e documentada.** A próxima é a **Fase 5**:
-execução híbrida — síncrono até ~90s, depois job assíncrono (202 + job id), idempotência e
-billing. (Detalhes em `REQUISITOS_REFATORACAO_APIS.md`.)
+A **5a (núcleo da execução híbrida)** está pronta. Falta a **5b**:
+- **SSE** `GET /jobs/{id}/stream` (espelha `status/stream`: auth por `?key=`/`?token=`).
+- **Webhook**: cliente registra `callback_url`; a Bridge faz `POST` ao concluir, com
+  assinatura **HMAC**. (Coluna `callback_url` em `proxy_jobs` + entrega best-effort com retry.)
+- **Admin UI** `/admin/jobs` (lista + detalhe do job; usa `GET /jobs`).
+- (Opcional) limpeza por TTL/cron usando `expires_at`.
+
+### Fase 5a — Execução híbrida (núcleo) ✅
+Timeout configurável + fork síncrono→assíncrono + jobs + polling + idempotência + billing.
+
+- **Config**: `sync_timeout_s` (90), `upstream_timeout_s` (300), `job_retention_hours` (168).
+  Removido o `30.0` hardcoded.
+- **`proxy/router.py::_dispatch`**: o forward roda num `httpx.AsyncClient` **próprio** via
+  `asyncio.create_task`, corrido contra `sync_timeout_s` com `asyncio.wait`. Dentro do limite →
+  `200` normal (contrato preservado). Excedeu → cria job (status `running`), devolve
+  **`202 + {job_id, status_url}`** e um `add_done_callback` agenda `finalize_job` em background.
+- **Domínio `app/domains/jobs/`**: modelo `proxy_jobs` (snapshot, result, status, cost, etc.;
+  migration `s9b0c1d2e3f4`), `service` (create/get/complete/list + idempotência),
+  `runner.finalize_job` (abre sessão/cliente próprios, persiste resultado + métrica/billing +
+  request log), `router` (`GET /jobs/{id}` cliente por X-Bridge-Key; `GET /jobs` admin).
+- **Billing**: síncrono cobra em `200` (como antes); assíncrono cobra em `done`+`200`
+  (`timeout`/`failed` não cobram). Métrica gravada nos dois caminhos.
+- **Idempotência**: header `Idempotency-Key`; `uq_proxy_jobs_idem (account_id, idempotency_key)`;
+  repetir devolve o estado do job (sem reprocessar). *(MVP: só cobre o caminho que virou job;
+  requests que terminam síncronos não criam job, então não são deduplicadas.)*
+- **Segurança**: `GET /jobs/{id}` exige a mesma `X-Bridge-Key` e só mostra job da própria conta.
 
 ### 4d — API POST ✅
 `external_apis.request_method` (NULL = repassa o método do cliente; legado intacto) e
@@ -209,7 +232,8 @@ do `api_id` salvo) — ao criar, salva-se a API e reabre-se para configurar. As 
 | 4c Embutir proxy/captcha no formulário de cadastro da API | ✅ feito |
 | 4d API **POST**: `request_method` + `request_body_template` ({query}/{token}) no gateway | ✅ feito |
 | 4e Import de OpenAPI/Swagger p/ pré-preencher o body template | ✅ feito |
-| 5 Execução híbrida / jobs (timeout, 202+job, idempotência, billing) | ⬜ próxima |
+| 5a Execução híbrida núcleo (timeout, 202+job, polling, idempotência, billing) | ✅ feito |
+| 5b Entrega assíncrona (SSE/webhook) + `/admin/jobs` | ⬜ próxima |
 | 6 Histórico/replay + alertas | ⬜ |
 
 ---
