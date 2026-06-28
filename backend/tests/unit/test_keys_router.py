@@ -64,6 +64,57 @@ async def test_client_can_create_api_key(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_client_can_create_global_key(client: AsyncClient) -> None:
+    api_key = make_api_key(api_id=None)
+    with patch(
+        "app.domains.keys.router.create_global_api_key",
+        new=AsyncMock(return_value=(api_key, "brg_abcd1234_global-secret")),
+    ):
+        response = await client.post(
+            "/keys/global",
+            json={"name": "Global Key"},
+            headers=client_headers(),
+        )
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == "Production Key"
+    assert body["api_key"] == "brg_abcd1234_global-secret"
+    assert body["api_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_create_global_key_over_limit_returns_409(client: AsyncClient) -> None:
+    from app.domains.keys.service import APIKeyLimitExceededError
+
+    with patch(
+        "app.domains.keys.router.create_global_api_key",
+        new=AsyncMock(side_effect=APIKeyLimitExceededError),
+    ):
+        response = await client.post(
+            "/keys/global",
+            json={"name": "Global Key"},
+            headers=client_headers(),
+        )
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_global_key_route_requires_authentication(client: AsyncClient) -> None:
+    response = await client.post("/keys/global", json={"name": "Global Key"})
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_admin_token_cannot_create_global_key(client: AsyncClient) -> None:
+    response = await client.post(
+        "/keys/global",
+        json={"name": "Global Key"},
+        headers=admin_headers(),
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_create_key_passes_api_id_to_service(client: AsyncClient) -> None:
     api_id = uuid.uuid4()
     api_key = make_api_key(api_id=api_id)

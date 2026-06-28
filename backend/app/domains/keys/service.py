@@ -18,6 +18,7 @@ from app.domains.keys.models import APIKey, APIKeyStatus
 from app.domains.permissions.models import Permission
 
 MAX_KEYS_PER_ACCOUNT_PER_API = 5
+MAX_GLOBAL_KEYS_PER_ACCOUNT = 5
 
 
 class APIKeyNotFoundError(Exception):
@@ -68,6 +69,45 @@ async def create_api_key(
             f"Maximum of {MAX_KEYS_PER_ACCOUNT_PER_API} active keys per API reached"
         )
 
+    return await _persist_api_key(db, account_id, name, api_id=api_id)
+
+
+async def create_global_api_key(
+    db: AsyncSession, account_id: uuid.UUID, name: str
+) -> tuple[APIKey, str]:
+    """Cria uma chave *global* (``api_id`` nulo) para a conta.
+
+    Uma chave global autentica para qualquer API que a conta tenha permissão
+    ativa de consumir (a checagem de ``Permission`` continua acontecendo por
+    requisição no proxy). Por isso não há checagem de permissão por API aqui.
+    O limite é por conta e independente do limite de chaves por API.
+    """
+    await _require_active_account(db, account_id)
+
+    count_result = await db.execute(
+        select(func.count())
+        .select_from(APIKey)
+        .where(
+            APIKey.account_id == account_id,
+            APIKey.api_id.is_(None),
+            APIKey.status == APIKeyStatus.ACTIVE,
+        )
+    )
+    if count_result.scalar_one() >= MAX_GLOBAL_KEYS_PER_ACCOUNT:
+        raise APIKeyLimitExceededError(
+            f"Maximum of {MAX_GLOBAL_KEYS_PER_ACCOUNT} active global keys reached"
+        )
+
+    return await _persist_api_key(db, account_id, name, api_id=None)
+
+
+async def _persist_api_key(
+    db: AsyncSession,
+    account_id: uuid.UUID,
+    name: str,
+    *,
+    api_id: uuid.UUID | None,
+) -> tuple[APIKey, str]:
     key_prefix = secrets.token_hex(4)
     raw_secret = f"brg_{key_prefix}_{secrets.token_urlsafe(24)}"
 

@@ -178,6 +178,85 @@ async def test_create_key_without_permission_returns_403(
     assert response.status_code == 403
 
 
+async def test_create_global_key_stores_null_api_id(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    account, _ = await _setup(db_session)
+
+    response = await client.post(
+        "/keys/global",
+        json={"name": "Global"},
+        headers=account_headers(account.id),
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["api_id"] is None
+    assert body["api_key"].startswith("brg_")
+
+    row = await db_session.execute(select(APIKey).where(APIKey.id == body["id"]))
+    stored = row.scalar_one()
+    assert stored.api_id is None
+    assert stored.account_id == account.id
+
+
+async def test_global_key_works_for_permitted_api_and_rejects_unpermitted(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    from app.domains.proxy.service import PermissionDeniedError, validate_request
+
+    account, permitted = await _setup(db_session)  # grant on `permitted`
+    unpermitted = await _seed_api(db_session, name="Twilio")  # no grant
+
+    creation = await client.post(
+        "/keys/global",
+        json={"name": "Global"},
+        headers=account_headers(account.id),
+    )
+    plaintext = creation.json()["api_key"]
+    await db_session.commit()
+
+    # Permitida: a chave global autentica e resolve a API.
+    _, resolved_account, resolved_api = await validate_request(
+        db_session, plaintext, str(permitted.id)
+    )
+    assert resolved_account.id == account.id
+    assert resolved_api.id == permitted.id
+
+    # Não permitida: mesma chave global é barrada pela camada de Permission.
+    with pytest.raises(PermissionDeniedError):
+        await validate_request(db_session, plaintext, str(unpermitted.id))
+
+
+async def test_global_key_limit_is_independent_from_per_api_limit(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    # 5 chaves globais ocupam o bucket global, sem afetar o limite por API.
+    account, api = await _setup(db_session)
+    for i in range(5):
+        ok = await client.post(
+            "/keys/global",
+            json={"name": f"Global {i}"},
+            headers=account_headers(account.id),
+        )
+        assert ok.status_code == 201
+
+    over = await client.post(
+        "/keys/global",
+        json={"name": "Global 6"},
+        headers=account_headers(account.id),
+    )
+    assert over.status_code == 409
+
+    # O limite por API segue independente: ainda dá pra criar chave por API.
+    per_api = await client.post(
+        "/keys",
+        json={"name": "Prod", "api_id": str(api.id)},
+        headers=account_headers(account.id),
+    )
+    assert per_api.status_code == 201
+
+
 async def test_key_prefix_is_unique_at_db_level(db_session: AsyncSession) -> None:
     from sqlalchemy.exc import IntegrityError
 

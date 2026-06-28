@@ -14,6 +14,10 @@ class APIKeyCreateRequest(BaseModel):
     api_id: uuid.UUID
 
 
+class GlobalKeyCreateRequest(BaseModel):
+    name: str
+
+
 class APIKeyResponse(BaseModel):
     id: uuid.UUID
     api_id: Optional[uuid.UUID]

@@ -7,19 +7,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Feature
 from app.core.database import get_db
-from app.domains.auth.router import require_feature
+from app.domains.auth.router import require_any_feature, require_feature
 from app.domains.auth.schemas import MeResponse
 from app.domains.keys.schemas import (
     APIKeyCreateRequest,
     APIKeyCreateResponse,
     APIKeyListResponse,
     APIKeyResponse,
+    GlobalKeyCreateRequest,
 )
 from app.domains.keys.service import (
     APIKeyLimitExceededError,
     APIKeyNotFoundError,
     UnauthorizedApiError,
     create_api_key,
+    create_global_api_key,
     list_api_keys,
     revoke_api_key,
 )
@@ -60,6 +62,34 @@ async def create(
     )
 
 
+@router.post(
+    "/global",
+    response_model=APIKeyCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_global(
+    body: GlobalKeyCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    identity: MeResponse = Depends(require_feature(Feature.GLOBAL_KEYS)),
+) -> APIKeyCreateResponse:
+    try:
+        api_key, plain_secret = await create_global_api_key(
+            db, identity.account_id, body.name
+        )
+    except APIKeyLimitExceededError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Maximum of 5 active global keys reached. "
+                "Revoke a global key before creating a new one."
+            ),
+        )
+    return APIKeyCreateResponse(
+        **APIKeyResponse.model_validate(api_key).model_dump(exclude={"api_key"}),
+        api_key=plain_secret,
+    )
+
+
 @router.get("", response_model=APIKeyListResponse)
 async def list_all(
     db: AsyncSession = Depends(get_db),
@@ -78,7 +108,9 @@ async def list_all(
 async def revoke(
     key_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    identity: MeResponse = Depends(require_feature(Feature.KEYS_ROTATE)),
+    identity: MeResponse = Depends(
+        require_any_feature(Feature.KEYS_ROTATE, Feature.GLOBAL_KEYS)
+    ),
 ) -> APIKeyResponse:
     try:
         api_key = await revoke_api_key(db, identity.account_id, str(key_id))

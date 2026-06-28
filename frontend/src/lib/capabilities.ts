@@ -5,6 +5,7 @@
 export const CAP = {
   API_KEYS: "api_keys",
   KEYS_ROTATE: "keys_rotate",
+  GLOBAL_KEYS: "global_keys",
   LOGS: "logs",
   METRICS: "metrics",
   CLIENT_USAGE: "client_usage",
@@ -34,6 +35,12 @@ export const ASSIGNABLE_CAPABILITIES: {
     label: "Rotacionar chaves",
     description: "Criar, rotacionar e revogar chaves (não só visualizar).",
     icon: "autorenew",
+  },
+  {
+    value: CAP.GLOBAL_KEYS,
+    label: "Chaves globais",
+    description: "a chave global possui acesso a todas as APIs habilitadas na conta. O comprometimento dessa credencial afeta todos os serviços simultaneamente. Adote o princípio do menor privilégio utilizando chaves dedicadas por API.",
+    icon: "key_vertical",
   },
   {
     value: CAP.LOGS,

@@ -20,6 +20,7 @@ from app.domains.auth.models import UserRole
 class Feature(str, Enum):
     API_KEYS = "api_keys"  # ver chaves de API
     KEYS_ROTATE = "keys_rotate"  # criar/rotacionar/revogar chaves
+    GLOBAL_KEYS = "global_keys"  # criar/revogar chaves globais (acesso a todas as APIs)
     CATALOG = "catalog"
     DOCS = "docs"
     LOGS = "logs"
@@ -41,6 +42,7 @@ OWNER_FEATURES: set[Feature] = set(Feature)
 ASSIGNABLE_FEATURES: set[Feature] = {
     Feature.API_KEYS,
     Feature.KEYS_ROTATE,
+    Feature.GLOBAL_KEYS,
     Feature.LOGS,
     Feature.METRICS,
     Feature.CLIENT_USAGE,

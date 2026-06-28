@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCatalog, getKeys, createKey, revokeKey } from "@/lib/api";
+import { getCatalog, getKeys, createKey, createGlobalKey, revokeKey } from "@/lib/api";
 import { useCapabilities } from "@/contexts/CapabilitiesContext";
 import { CAP } from "@/lib/capabilities";
 
@@ -29,9 +29,80 @@ function CopyButton({ value }: { value: string }) {
   );
 }
 
+function ActiveKeyCard({
+  k,
+  isVisible,
+  onToggleVisible,
+  canRotate,
+  onRevoke,
+  revoking,
+}: {
+  k: Key;
+  isVisible: boolean;
+  onToggleVisible: () => void;
+  canRotate: boolean;
+  onRevoke: () => void;
+  revoking: boolean;
+}) {
+  const full = k.api_key;
+  const displayValue = full ? (isVisible ? full : "●".repeat(32)) : `${k.key_prefix}…`;
+  const copyValue = full ?? k.key_prefix;
+
+  return (
+    <div className="bg-tertiary-container rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="font-bold text-sm text-on-surface">{k.name}</span>
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-highest">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Active</span>
+          </span>
+        </div>
+        <p className="text-xs text-on-surface-variant">
+          Criado em {new Date(k.created_at).toLocaleDateString("pt-BR")}
+        </p>
+      </div>
+
+      <div className="bg-surface-container-lowest px-4 py-2.5 rounded-lg border border-outline-variant/15 flex items-center min-w-0 flex-1 max-w-sm overflow-x-auto">
+        <code className="font-mono text-on-surface text-sm whitespace-nowrap tracking-wider">
+          {displayValue}
+        </code>
+      </div>
+
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {full && (
+          <button
+            onClick={onToggleVisible}
+            title={isVisible ? "Ocultar chave" : "Exibir chave"}
+            className="bg-surface-container-highest hover:bg-surface-variant text-on-surface rounded-lg p-2.5 transition-colors"
+          >
+            <span className="material-symbols-outlined text-[20px]">
+              {isVisible ? "visibility_off" : "visibility"}
+            </span>
+          </button>
+        )}
+        <CopyButton value={copyValue} />
+        {canRotate && (
+          <button
+            onClick={onRevoke}
+            disabled={revoking}
+            className="bg-surface-container-highest hover:bg-error-container text-on-surface hover:text-error rounded-lg p-2.5 transition-colors"
+            title="Revogar chave"
+          >
+            <span className="material-symbols-outlined text-[20px]">
+              {revoking ? "hourglass_empty" : "delete"}
+            </span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function KeysPage() {
   const { can } = useCapabilities();
   const canRotate = can(CAP.KEYS_ROTATE);
+  const canGlobal = can(CAP.GLOBAL_KEYS);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [keys, setKeys] = useState<Key[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +112,9 @@ export default function KeysPage() {
   const [newKeyNames, setNewKeyNames] = useState<Record<string, string>>({});
   const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [globalName, setGlobalName] = useState("");
+  const [creatingGlobal, setCreatingGlobal] = useState(false);
+  const [globalError, setGlobalError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([getCatalog(), getKeys()])
@@ -73,6 +147,24 @@ export default function KeysPage() {
     }
   }
 
+  async function handleCreateGlobal(e: React.FormEvent) {
+    e.preventDefault();
+    const name = globalName.trim();
+    if (!name) return;
+    setCreatingGlobal(true);
+    setGlobalError(null);
+    try {
+      const created = await createGlobalKey(name);
+      setVisible((prev) => ({ ...prev, [created.id]: false }));
+      setKeys((prev) => [{ ...created, api_key: created.api_key }, ...prev]);
+      setGlobalName("");
+    } catch (err: unknown) {
+      setGlobalError(err instanceof Error ? err.message : "Erro ao criar chave global");
+    } finally {
+      setCreatingGlobal(false);
+    }
+  }
+
   async function handleRevoke(id: string) {
     setActionLoading(id);
     try {
@@ -85,6 +177,11 @@ export default function KeysPage() {
     }
   }
 
+  const globalKeys = keys.filter((k) => k.api_id === null);
+  const activeGlobalKeys = globalKeys.filter((k) => k.status === "active");
+  const revokedGlobalKeys = globalKeys.filter((k) => k.status !== "active");
+  const atGlobalLimit = activeGlobalKeys.length >= 5;
+
   return (
     <div className="max-w-5xl mx-auto">
       <div className="mb-10">
@@ -95,6 +192,107 @@ export default function KeysPage() {
       </div>
 
       {error && <div role="alert" className="mb-6 p-4 bg-error-container text-on-error-container rounded-xl text-sm">{error}</div>}
+
+      {!loading && canGlobal && (
+        <section className="mb-10 bg-surface-container-lowest rounded-2xl border border-primary/20 overflow-hidden">
+          <div className="px-6 py-4 border-b border-outline-variant/10 flex items-center justify-between bg-primary/5">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                <span className="material-symbols-outlined text-primary text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>key_vertical</span>
+              </div>
+              <div>
+                <span className="font-headline font-bold text-on-surface">Chaves globais</span>
+                <p className="text-xs text-on-surface-variant mt-0.5 max-w-md">
+                  Uma única chave para acessar todas as APIs que a conta tem permissão de usar.
+                </p>
+              </div>
+            </div>
+            <span className={`text-xs px-2.5 py-1 rounded-full font-mono ${atGlobalLimit ? "bg-error-container text-on-error-container font-bold" : "bg-surface-container text-on-surface-variant"}`}>
+              {activeGlobalKeys.length}/5 keys
+            </span>
+          </div>
+
+          <div className="p-6 space-y-6">
+            <div className="flex items-start gap-2.5 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-sm text-on-surface">
+              <span className="material-symbols-outlined text-[18px] text-amber-600 flex-shrink-0 mt-0.5">warning</span>
+              <p>
+                <strong>Segurança:</strong> a chave global possui acesso a todas as APIs habilitadas na conta. O comprometimento dessa credencial afeta todos os serviços simultaneamente. Adote o princípio do menor privilégio utilizando chaves dedicadas por API.
+              </p>
+            </div>
+            {globalError && (
+              <div role="alert" className="p-3 bg-error-container rounded-lg text-on-error-container text-sm">
+                {globalError}
+              </div>
+            )}
+            {atGlobalLimit ? (
+              <div className="flex items-center gap-3 p-3 bg-error-container/40 border border-error/20 rounded-xl text-sm text-on-error-container">
+                <span className="material-symbols-outlined text-[18px]">block</span>
+                Limite de 5 chaves globais ativas atingido. Revogue uma chave para criar outra.
+              </div>
+            ) : (
+              <form onSubmit={handleCreateGlobal} className="flex gap-3">
+                <input
+                  className="flex-1 bg-surface-container border border-outline-variant/30 rounded-xl py-3 px-4 text-sm text-on-surface focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
+                  placeholder="Nome da chave global (ex: Backend de Produção)"
+                  value={globalName}
+                  onChange={(e) => setGlobalName(e.target.value)}
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={creatingGlobal}
+                  className="primary-gradient text-white rounded-xl px-5 py-3 text-sm font-semibold hover:opacity-90 transition-all shadow-[0_4px_14px_0_rgba(43,91,181,0.2)] flex items-center gap-2 disabled:opacity-70"
+                >
+                  <span className="material-symbols-outlined text-[16px]">add_circle</span>
+                  {creatingGlobal ? "Criando…" : "Gerar Chave Global"}
+                </button>
+              </form>
+            )}
+
+            {activeGlobalKeys.length > 0 && (
+              <div className="space-y-3">
+                {activeGlobalKeys.map((k) => (
+                  <ActiveKeyCard
+                    key={k.id}
+                    k={k}
+                    isVisible={visible[k.id] ?? false}
+                    onToggleVisible={() => setVisible((prev) => ({ ...prev, [k.id]: !(prev[k.id] ?? false) }))}
+                    canRotate={canGlobal}
+                    onRevoke={() => handleRevoke(k.id)}
+                    revoking={actionLoading === k.id}
+                  />
+                ))}
+              </div>
+            )}
+
+            {revokedGlobalKeys.length > 0 && (
+              <details className="group">
+                <summary className="cursor-pointer text-xs text-on-surface-variant hover:text-on-surface transition-colors list-none flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px] group-open:rotate-90 transition-transform">chevron_right</span>
+                  {revokedGlobalKeys.length} chave{revokedGlobalKeys.length !== 1 ? "s" : ""} global{revokedGlobalKeys.length !== 1 ? "is" : ""} revogada{revokedGlobalKeys.length !== 1 ? "s" : ""}
+                </summary>
+                <div className="space-y-2 mt-3">
+                  {revokedGlobalKeys.map((k) => (
+                    <div key={k.id} className="bg-surface-container-lowest rounded-xl p-4 flex items-center justify-between opacity-50">
+                      <div>
+                        <span className="text-sm font-bold text-on-surface">{k.name}</span>
+                        <p className="text-xs text-on-surface-variant">{new Date(k.created_at).toLocaleDateString("pt-BR")}</p>
+                      </div>
+                      <code className="font-mono text-on-surface-variant text-sm">{k.key_prefix}…</code>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+
+            {globalKeys.length === 0 && (
+              <p className="text-sm text-on-surface-variant text-center py-2">
+                Nenhuma chave global gerada ainda.
+              </p>
+            )}
+          </div>
+        </section>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-16 text-on-surface-variant gap-2">
@@ -172,64 +370,17 @@ export default function KeysPage() {
 
                   {activeKeys.length > 0 && (
                     <div className="space-y-3">
-                      {activeKeys.map((k) => {
-                        const full = k.api_key;
-                        const isVisible = visible[k.id] ?? false;
-                        const displayValue = full
-                          ? (isVisible ? full : "●".repeat(32))
-                          : `${k.key_prefix}…`;
-                        const copyValue = full ?? k.key_prefix;
-
-                        return (
-                          <div key={k.id} className="bg-tertiary-container rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <span className="font-bold text-sm text-on-surface">{k.name}</span>
-                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface-container-highest">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
-                                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Active</span>
-                                </span>
-                              </div>
-                              <p className="text-xs text-on-surface-variant">
-                                Criado em {new Date(k.created_at).toLocaleDateString("pt-BR")}
-                              </p>
-                            </div>
-
-                            <div className="bg-surface-container-lowest px-4 py-2.5 rounded-lg border border-outline-variant/15 flex items-center min-w-0 flex-1 max-w-sm overflow-x-auto">
-                              <code className="font-mono text-on-surface text-sm whitespace-nowrap tracking-wider">
-                                {displayValue}
-                              </code>
-                            </div>
-
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              {full && (
-                                <button
-                                  onClick={() => setVisible((prev) => ({ ...prev, [k.id]: !isVisible }))}
-                                  title={isVisible ? "Ocultar chave" : "Exibir chave"}
-                                  className="bg-surface-container-highest hover:bg-surface-variant text-on-surface rounded-lg p-2.5 transition-colors"
-                                >
-                                  <span className="material-symbols-outlined text-[20px]">
-                                    {isVisible ? "visibility_off" : "visibility"}
-                                  </span>
-                                </button>
-                              )}
-                              <CopyButton value={copyValue} />
-                              {canRotate && (
-                                <button
-                                  onClick={() => handleRevoke(k.id)}
-                                  disabled={actionLoading === k.id}
-                                  className="bg-surface-container-highest hover:bg-error-container text-on-surface hover:text-error rounded-lg p-2.5 transition-colors"
-                                  title="Revogar chave"
-                                >
-                                  <span className="material-symbols-outlined text-[20px]">
-                                    {actionLoading === k.id ? "hourglass_empty" : "delete"}
-                                  </span>
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {activeKeys.map((k) => (
+                        <ActiveKeyCard
+                          key={k.id}
+                          k={k}
+                          isVisible={visible[k.id] ?? false}
+                          onToggleVisible={() => setVisible((prev) => ({ ...prev, [k.id]: !(prev[k.id] ?? false) }))}
+                          canRotate={canRotate}
+                          onRevoke={() => handleRevoke(k.id)}
+                          revoking={actionLoading === k.id}
+                        />
+                      ))}
                     </div>
                   )}
 

@@ -909,6 +909,21 @@ export function createKey(name: string, apiId: string) {
   });
 }
 
+export function createGlobalKey(name: string) {
+  return apiFetch<{
+    id: string;
+    api_id: string | null;
+    name: string;
+    key_prefix: string;
+    api_key: string;
+    status: string;
+    created_at: string;
+  }>("/keys/global", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
 export function revokeKey(id: string) {
   return apiFetch(`/keys/${id}/revoke`, { method: "PATCH" });
 }

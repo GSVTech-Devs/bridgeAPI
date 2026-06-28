@@ -17,6 +17,7 @@ from app.domains.keys.service import (
     UnauthorizedApiError,
     authenticate_api_key,
     create_api_key,
+    create_global_api_key,
     list_api_keys,
     revoke_api_key,
 )
@@ -139,6 +140,64 @@ async def test_create_api_key_over_limit_raises() -> None:
     )
     with pytest.raises(APIKeyLimitExceededError):
         await create_api_key(db, account.id, "Key", api_id=api_id)
+
+
+# ---------------------------------------------------------------------------
+# create_global_api_key
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_account_can_create_global_api_key() -> None:
+    account = make_account()
+    db = make_db(
+        make_execute_result(scalar_result=account),  # get_account_by_id
+        make_execute_result(scalar_one_result=0),  # count global keys < limit
+    )
+
+    api_key, plain_secret = await create_global_api_key(
+        db, account.id, "Global Key"
+    )
+
+    assert api_key.account_id == account.id
+    assert api_key.api_id is None  # chave global não vinculada a nenhuma API
+    assert plain_secret.startswith("brg_")
+    assert api_key.key_secret_hash != plain_secret
+    db.add.assert_called_once()
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_global_api_key_does_not_check_permission() -> None:
+    # Só duas queries: account + count. Nenhuma consulta de Permission.
+    account = make_account()
+    db = make_db(
+        make_execute_result(scalar_result=account),
+        make_execute_result(scalar_one_result=0),
+    )
+
+    await create_global_api_key(db, account.id, "Global Key")
+
+    assert db.execute.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_create_global_api_key_over_limit_raises() -> None:
+    account = make_account()
+    db = make_db(
+        make_execute_result(scalar_result=account),
+        make_execute_result(scalar_one_result=5),  # já no limite de globais
+    )
+    with pytest.raises(APIKeyLimitExceededError):
+        await create_global_api_key(db, account.id, "Global Key")
+
+
+@pytest.mark.asyncio
+async def test_create_global_api_key_for_inactive_account_raises() -> None:
+    blocked = make_account(status=AccountStatus.BLOCKED)
+    db = make_db(make_execute_result(scalar_result=blocked))
+    with pytest.raises(AccountNotFoundError):
+        await create_global_api_key(db, blocked.id, "Global Key")
 
 
 # ---------------------------------------------------------------------------

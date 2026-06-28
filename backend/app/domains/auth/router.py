@@ -142,6 +142,29 @@ def require_feature(feature: Feature):
     return _dep
 
 
+def require_any_feature(*features: Feature):
+    """Dependency que exige *ao menos uma* dentre várias capabilities.
+
+    Útil quando uma rota serve a mais de um recurso (ex.: revogar tanto chaves
+    por API quanto chaves globais), aceitando quem tiver qualquer uma delas.
+    """
+
+    async def _dep(
+        identity: MeResponse = Depends(get_current_account_user),
+        db: AsyncSession = Depends(get_db),
+    ) -> MeResponse:
+        capabilities = await resolve_user_capabilities(db, identity)
+        if not any(f.value in capabilities for f in features):
+            allowed = ", ".join(f.value for f in features)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Feature not allowed: requires one of [{allowed}]",
+            )
+        return identity
+
+    return _dep
+
+
 # Mensagem genérica de falha de login. Mesma resposta para email inexistente,
 # senha errada, conta de tipo errado ou sem empresa ativa — para não revelar se
 # um email/empresa existe (evita enumeração de usuários).
