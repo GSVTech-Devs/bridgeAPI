@@ -11,6 +11,7 @@ export const CAP = {
   FINANCIAL: "financial",
   PROXIES: "proxies",
   CAPTCHA: "captcha",
+  MEMBERS: "members",
 } as const;
 
 export type Capability = (typeof CAP)[keyof typeof CAP];
@@ -69,5 +70,11 @@ export const ASSIGNABLE_CAPABILITIES: {
     label: "Captcha",
     description: "Gerenciar os próprios provedores de captcha por API.",
     icon: "verified_user",
+  },
+  {
+    value: CAP.MEMBERS,
+    label: "Gestão de usuários",
+    description: "Criar, editar e excluir usuários e papéis da empresa (gerente de equipe).",
+    icon: "group",
   },
 ];

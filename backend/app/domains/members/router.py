@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.authz import Feature
 from app.core.database import get_db
 from app.domains.accounts.models import AccountType
 from app.domains.accounts.service import AccountNotFoundError, get_account_by_id
@@ -35,6 +36,7 @@ from app.domains.members.service import (
     delete_role,
     list_members,
     list_roles,
+    resolve_user_capabilities,
     update_member,
     update_role,
 )
@@ -42,15 +44,17 @@ from app.domains.members.service import (
 router = APIRouter(prefix="/portal", tags=["members"])
 
 
-async def get_current_company_owner(
+async def require_member_management(
     identity: MeResponse = Depends(get_current_account_user),
     db: AsyncSession = Depends(get_db),
 ) -> MeResponse:
-    """Exige o responsável (owner) de uma account do tipo empresa.
+    """Autoriza gestão de usuários/roles de uma empresa.
 
-    Gestão de usuários/roles é exclusiva de empresas e do seu owner.
-    """
-    if identity.role != UserRole.OWNER.value or identity.account_id is None:
+    Liberado para o responsável (owner) OU para um membro cuja role tenha a
+    capability ``MEMBERS`` (gerente de equipe delegado). Restrito a accounts do
+    tipo empresa. Owner é resolvido sem tocar no banco; o membro tem as
+    capabilities resolvidas ao vivo (papel + role)."""
+    if identity.account_id is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",
@@ -67,7 +71,15 @@ async def get_current_company_owner(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Gestão de usuários disponível apenas para empresas.",
         )
-    return identity
+    if identity.role == UserRole.OWNER.value:
+        return identity
+    capabilities = await resolve_user_capabilities(db, identity)
+    if Feature.MEMBERS.value in capabilities:
+        return identity
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Insufficient permissions",
+    )
 
 
 def _role_response(role, member_count: int = 0) -> RoleResponse:
@@ -96,7 +108,7 @@ def _member_response(member, role_name: str | None) -> MemberResponse:
 @router.get("/roles", response_model=RoleListResponse)
 async def list_account_roles(
     db: AsyncSession = Depends(get_db),
-    identity: MeResponse = Depends(get_current_company_owner),
+    identity: MeResponse = Depends(require_member_management),
 ) -> RoleListResponse:
     rows = await list_roles(db, identity.account_id)
     return RoleListResponse(
@@ -108,7 +120,7 @@ async def list_account_roles(
 async def create_account_role(
     body: RoleCreate,
     db: AsyncSession = Depends(get_db),
-    identity: MeResponse = Depends(get_current_company_owner),
+    identity: MeResponse = Depends(require_member_management),
 ) -> RoleResponse:
     try:
         role = await create_role(
@@ -129,7 +141,7 @@ async def update_account_role(
     role_id: uuid.UUID,
     body: RoleUpdate,
     db: AsyncSession = Depends(get_db),
-    identity: MeResponse = Depends(get_current_company_owner),
+    identity: MeResponse = Depends(require_member_management),
 ) -> RoleResponse:
     try:
         role = await update_role(
@@ -154,7 +166,7 @@ async def update_account_role(
 async def delete_account_role(
     role_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    identity: MeResponse = Depends(get_current_company_owner),
+    identity: MeResponse = Depends(require_member_management),
 ) -> None:
     try:
         await delete_role(db, account_id=identity.account_id, role_id=role_id)
@@ -172,7 +184,7 @@ async def delete_account_role(
 @router.get("/members", response_model=MemberListResponse)
 async def list_account_members(
     db: AsyncSession = Depends(get_db),
-    identity: MeResponse = Depends(get_current_company_owner),
+    identity: MeResponse = Depends(require_member_management),
 ) -> MemberListResponse:
     rows = await list_members(db, identity.account_id)
     return MemberListResponse(
@@ -186,7 +198,7 @@ async def list_account_members(
 async def create_account_member(
     body: MemberCreate,
     db: AsyncSession = Depends(get_db),
-    identity: MeResponse = Depends(get_current_company_owner),
+    identity: MeResponse = Depends(require_member_management),
 ) -> MemberResponse:
     try:
         member = await create_member(
@@ -216,7 +228,7 @@ async def update_account_member(
     member_id: uuid.UUID,
     body: MemberUpdate,
     db: AsyncSession = Depends(get_db),
-    identity: MeResponse = Depends(get_current_company_owner),
+    identity: MeResponse = Depends(require_member_management),
 ) -> MemberResponse:
     try:
         member = await update_member(
@@ -250,7 +262,7 @@ async def update_account_member(
 async def delete_account_member(
     member_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    identity: MeResponse = Depends(get_current_company_owner),
+    identity: MeResponse = Depends(require_member_management),
 ) -> None:
     try:
         await delete_member(db, account_id=identity.account_id, member_id=member_id)

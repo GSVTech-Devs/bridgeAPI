@@ -31,9 +31,19 @@ def _individual():
 
 
 @pytest.mark.asyncio
-async def test_member_cannot_access_roles(client: AsyncClient) -> None:
-    # membro não é owner → bloqueado antes mesmo de checar a account
-    resp = await client.get("/portal/roles", headers=_headers("member"))
+async def test_member_without_members_capability_cannot_access_roles(client: AsyncClient) -> None:
+    # Membro de empresa sem a capability MEMBERS → bloqueado.
+    with (
+        patch(
+            "app.domains.members.router.get_account_by_id",
+            new=AsyncMock(return_value=_company()),
+        ),
+        patch(
+            "app.domains.members.router.resolve_user_capabilities",
+            new=AsyncMock(return_value={"catalog", "logs"}),
+        ),
+    ):
+        resp = await client.get("/portal/roles", headers=_headers("member"))
     assert resp.status_code == 403
 
 
@@ -68,6 +78,59 @@ async def test_company_owner_can_list_roles(client: AsyncClient) -> None:
         resp = await client.get("/portal/roles", headers=_headers("owner"))
     assert resp.status_code == 200
     assert resp.json() == {"items": []}
+
+
+@pytest.mark.asyncio
+async def test_member_with_members_capability_can_list_roles(client: AsyncClient) -> None:
+    # Gerente de equipe delegado: membro cuja role tem a capability MEMBERS.
+    with (
+        patch(
+            "app.domains.members.router.get_account_by_id",
+            new=AsyncMock(return_value=_company()),
+        ),
+        patch(
+            "app.domains.members.router.resolve_user_capabilities",
+            new=AsyncMock(return_value={"members", "catalog"}),
+        ),
+        patch(
+            "app.domains.members.router.list_roles",
+            new=AsyncMock(return_value=[]),
+        ),
+    ):
+        resp = await client.get("/portal/roles", headers=_headers("member"))
+    assert resp.status_code == 200
+    assert resp.json() == {"items": []}
+
+
+@pytest.mark.asyncio
+async def test_member_with_members_capability_can_create_member(client: AsyncClient) -> None:
+    fake_member = SimpleNamespace(
+        id=uuid.uuid4(),
+        email="novo@acme.com",
+        role_id=uuid.uuid4(),
+        created_at=datetime.now(timezone.utc),
+    )
+    with (
+        patch(
+            "app.domains.members.router.get_account_by_id",
+            new=AsyncMock(return_value=_company()),
+        ),
+        patch(
+            "app.domains.members.router.resolve_user_capabilities",
+            new=AsyncMock(return_value={"members"}),
+        ),
+        patch(
+            "app.domains.members.router.create_member",
+            new=AsyncMock(return_value=fake_member),
+        ),
+    ):
+        resp = await client.post(
+            "/portal/members",
+            json={"email": "novo@acme.com", "password": "Sup3rSenha!", "role_id": str(uuid.uuid4())},
+            headers=_headers("member"),
+        )
+    assert resp.status_code == 201
+    assert resp.json()["email"] == "novo@acme.com"
 
 
 @pytest.mark.asyncio

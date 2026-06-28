@@ -371,7 +371,9 @@ function MemberModal({
 // ---------------------------------------------------------------------------
 export default function UsersPage() {
   const router = useRouter();
-  const { loading: capsLoading, isCompanyOwner } = useCapabilities();
+  const { loading: capsLoading, isOwner, accountType, can } = useCapabilities();
+  // Owner OU gerente delegado (membro com a capability MEMBERS), só em empresas.
+  const canManage = accountType === "company" && (isOwner || can(CAP.MEMBERS));
 
   const [roles, setRoles] = useState<Role[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -388,12 +390,12 @@ export default function UsersPage() {
   });
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Guard: somente owner de empresa.
+  // Guard: owner da empresa ou gerente delegado (capability MEMBERS).
   useEffect(() => {
-    if (!capsLoading && !isCompanyOwner) {
+    if (!capsLoading && !canManage) {
       router.replace("/dashboard");
     }
-  }, [capsLoading, isCompanyOwner, router]);
+  }, [capsLoading, canManage, router]);
 
   async function load() {
     try {
@@ -408,8 +410,8 @@ export default function UsersPage() {
   }
 
   useEffect(() => {
-    if (!capsLoading && isCompanyOwner) load();
-  }, [capsLoading, isCompanyOwner]);
+    if (!capsLoading && canManage) load();
+  }, [capsLoading, canManage]);
 
   async function handleDeleteRole(role: Role) {
     setActionError(null);
@@ -433,7 +435,7 @@ export default function UsersPage() {
     }
   }
 
-  if (capsLoading || !isCompanyOwner) {
+  if (capsLoading || !canManage) {
     return <Spinner />;
   }
 

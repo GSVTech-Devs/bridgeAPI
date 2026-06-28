@@ -35,7 +35,9 @@ class Feature(str, Enum):
 OWNER_FEATURES: set[Feature] = set(Feature)
 
 # Features que o owner pode ligar/desligar por role de membro (toggles).
-# ``MEMBERS`` (gestão de usuários) e ``CATALOG``/``DOCS`` (baseline) ficam de fora.
+# ``MEMBERS`` (gestão de usuários) é atribuível: o owner pode delegar a gestão de
+# usuários/roles a uma role (ex.: "gerente de equipe"). ``CATALOG``/``DOCS``
+# (baseline) ficam de fora porque todo membro já os tem.
 ASSIGNABLE_FEATURES: set[Feature] = {
     Feature.API_KEYS,
     Feature.KEYS_ROTATE,
@@ -45,6 +47,7 @@ ASSIGNABLE_FEATURES: set[Feature] = {
     Feature.FINANCIAL,
     Feature.PROXIES,
     Feature.CAPTCHA,
+    Feature.MEMBERS,
 }
 
 # Features que todo membro de account tem por padrão, independente da role.

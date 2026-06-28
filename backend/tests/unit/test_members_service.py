@@ -70,10 +70,10 @@ def test_role_create_rejects_invalid_capability() -> None:
         RoleCreate(name="Financeiro", capabilities=["financial", "bogus"])
 
 
-def test_role_create_rejects_members_capability() -> None:
-    # 'members' não é atribuível a uma role.
-    with pytest.raises(ValidationError):
-        RoleCreate(name="Admin", capabilities=["members"])
+def test_role_create_accepts_members_capability() -> None:
+    # 'members' é atribuível: permite delegar gestão de usuários a uma role.
+    role = RoleCreate(name="Gerente", capabilities=["members"])
+    assert role.capabilities == ["members"]
 
 
 def test_role_create_accepts_valid_capabilities() -> None:

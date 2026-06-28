@@ -37,11 +37,12 @@ def test_unknown_role_has_no_capabilities() -> None:
     assert get_user_capabilities("whatever") == set()
 
 
-def test_members_and_catalog_are_not_assignable() -> None:
-    # Toggles de role nunca incluem gestão de usuários nem o baseline.
-    assert Feature.MEMBERS not in ASSIGNABLE_FEATURES
+def test_members_is_assignable_but_catalog_is_not() -> None:
+    # MEMBERS é atribuível: o owner pode delegar gestão de usuários a uma role.
+    assert Feature.MEMBERS in ASSIGNABLE_FEATURES
+    # O baseline (CATALOG/DOCS) nunca é toggle de role.
     assert Feature.CATALOG not in ASSIGNABLE_FEATURES
-    # Mas as features operacionais são atribuíveis.
+    # E as features operacionais seguem atribuíveis.
     assert Feature.API_KEYS in ASSIGNABLE_FEATURES
     assert Feature.KEYS_ROTATE in ASSIGNABLE_FEATURES
     assert Feature.FINANCIAL in ASSIGNABLE_FEATURES
