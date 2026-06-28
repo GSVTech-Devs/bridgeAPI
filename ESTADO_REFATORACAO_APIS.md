@@ -239,11 +239,17 @@ se ausente), senão repassa o body do cliente. Migration `r8a9b0c1d2e3`. No form
 select "Método na API original" + textarea "Body template". GET/passthrough seguem funcionando.
 
 ### 4e — Import de OpenAPI/Swagger ✅
-`apis/openapi.py` parseia JSON **ou** YAML colado (resolve `$ref` locais, suporta OpenAPI 3 e
+`apis/openapi.py` parseia JSON **ou** YAML (resolve `$ref` locais, suporta OpenAPI 3 e
 Swagger 2) e, por operação, gera um `request_body_template` de exemplo a partir do schema do
-request body. Endpoint admin `POST /apis/import` (`OpenAPIImportResponse`). No `/admin/apis`,
-botão **"Importar OpenAPI"** abre um modal: cola o spec → lista as operações → escolher uma
-pré-preenche o cadastro (base URL = servidor + path, método e body template). Sem migration.
+request body. `fetch_spec(url)` busca a doc **por URL** (server-side, só http(s)) e delega ao
+parser. Endpoints admin: `POST /apis/import` (recebe `{url}`, devolve `OpenAPIImportResponse`)
+e `POST /apis/import/bulk` (`bulk_register_apis` cria as operações selecionadas como
+**rascunho `inactive`**, resiliente: pula nome/slug duplicado e base_url não-http(s) com
+motivo). No `/admin/apis`, o botão **"Importar OpenAPI"** abre um modal de 3 passos: informar a
+**URL da doc** → **tabela de staging** (todas as operações pré-configuradas e editáveis: nome,
+base_url, método, body template, checkbox incluir) → **"Importar N como rascunho"** cria todas
+inativas de uma vez; o admin revisa/configura (proxy/captcha/custo) e ativa cada uma depois na
+tela de edição. Sem migration. (`register_api` ganhou o parâmetro `status`.)
 
 ### Histórico (não reabrir)
 

@@ -51,12 +51,17 @@ O que **o gateway faz por você** (não reimplemente):
 
 O que **a sua API faz**:
 - Expõe **`POST /consultar`** (consulta de débitos) + **`GET /health`** + **`GET /status`**.
+- **Valida o token de entrada do gateway** (segredo compartilhado vindo do `.env`) para
+  garantir que só a Bridge chama a sua API (ver §4.4).
 - Resolve proxy e captcha **pela SDK** (config vinda da plataforma, sem segredo hardcoded).
 - Emite **logs estruturados** e **heartbeat de status** pela SDK.
 - Devolve dados no **schema padrão** (§5) e erros na **taxonomia padrão** (§6.7).
 
-> **Regra de ouro:** a sua API confia no gateway. Ela **não** valida chave de cliente,
-> **não** aplica rate limit e **não** cobra. Quem chama a sua API é o gateway.
+> **Regra de ouro:** a sua API confia no gateway para **autenticação do cliente, rate limit
+> e billing** (não reimplemente nada disso). Mas ela **autentica que o chamador É a Bridge**:
+> valida um **token de entrada** (segredo compartilhado no `.env`) em todo endpoint de
+> negócio, recusando `401` quem não apresentar o token. Não confunda: o `X-Bridge-Key` do
+> cliente é problema do gateway; o token de entrada da Bridge é problema da sua API.
 
 ---
 
@@ -64,13 +69,47 @@ O que **a sua API faz**:
 
 | Tema | Decisão |
 |---|---|
-| **Framework** | **FastAPI é o padrão** (caminho automático via `install()`). **Flask é permitido**, adotando a SDK manualmente (§6.4). |
+| **Framework / runtime** | **Sync e async são igualmente suportados pela SDK.** FastAPI (async) via `install()`; Flask/workers (sync) via `bridge_sdk.integrations.flask.install()` / `SyncBridge`. A escolha **não é default**: cada API é **analisada antes** da refatoração e o runtime é decidido pelos critérios da §2.1. |
 | **Endpoint de consulta** | **`POST /consultar` com corpo JSON.** Os GET com path-params (`/debitos/<placa>/<renavam>/<token>`) são **descontinuados**. |
 | **Schema de resposta** | **Rígido e canônico** (§5). **Exceções são previstas** e tratadas por mecanismos explícitos (`dados_especificos`, `extra`, endpoints de tipo `documento`). |
 | **Captcha** | Solver externo (CapMonster/2Captcha/etc.) **via `CaptchaClient` da SDK**. PoW local, Playwright e cookie-service externo ficam **dentro da API**, mas **reportam status/saldo/erros pela SDK** (§6.6). |
 | **Proxy** | **Sempre via `ProxyClient` da SDK.** Zero credencial de proxy hardcoded. |
 | **Segredos** | Tudo por variável de ambiente / config da plataforma. **Nenhum segredo no código** (§7). |
 | **Docker** | Obrigatório: `Dockerfile` + `docker-compose.yml` com healthcheck no `/health` (§8). |
+
+### 2.1 Analise a API ANTES de refatorar: sync ou async?
+
+**Passo zero, obrigatório.** Antes de escrever qualquer código, analise a API e **decida e
+registre** o runtime. A SDK suporta os dois de forma equivalente, então a escolha é técnica,
+guiada pela natureza do trabalho, não por preferência.
+
+Itens a levantar na análise: framework atual; bibliotecas de I/O (requests/httpx/navegador);
+se há libs **sync-only ou thread-unsafe** (ex.: Playwright sync API); perfil do trabalho
+(I/O-bound vs CPU-bound vs browser); volume/concorrência esperada; tamanho e risco de portar.
+
+**Escolha ASYNC (FastAPI + uvicorn) quando:**
+- O trabalho é I/O-bound e dá para expressar com `httpx.AsyncClient` (a maioria dos scrapers HTTP).
+- Quer alta concorrência num único processo.
+- Não depende de lib sync-only. (CPU-bound, como PoW, ainda cabe: rode em executor.)
+
+**Escolha SYNC (Flask + gunicorn, multiprocesso) quando:**
+- Usa lib **sync-only / não thread-safe** sem equivalente async (ex.: **Playwright sync**).
+- É **automação de navegador** ou trabalho pesado por request, onde **isolamento de processo +
+  cap fixo de concorrência (workers) + reciclagem de worker** (memory leak de browser) são
+  operacionalmente melhores.
+- O código existente é grande, sync e portar para async é alto risco / baixo valor.
+
+Regra prática: scraper HTTP puro → **async**; scraper com **navegador** → **sync**. Em dúvida,
+async. **Documente a decisão e o porquê** no README/PR da API antes de codar.
+
+| Runtime | Bootstrap da SDK | Proxy/captcha | Heartbeat/health |
+|---|---|---|---|
+| **async** (FastAPI) | `logger = install(app, config, checks=...)` (§6.3) | `await proxy_client.with_failover(fn)` / `await proxy_client.acquire()` | automático no lifespan |
+| **sync** (Flask/workers) | `bridge = install(app, config, checks=...)` de `integrations.flask`, ou `SyncBridge` (§6.4) | `bridge.proxy.acquire()` / `bridge.proxy.with_failover(fn)` com `fn` **síncrono** | loop de fundo da SDK (automático) |
+
+> **Sobre failover:** na prática quase sempre há **um** proxy/captcha configurado (no máximo
+> dois). Então o caminho normal é `acquire()` (pega o único disponível). `with_failover` só
+> agrega valor quando há mais de um; não otimize para ele.
 
 ---
 
@@ -79,17 +118,21 @@ O que **a sua API faz**:
 Uma API só é considerada **"pronta para o Bridge"** quando cumpre **todos**:
 
 1. **Endpoints**: `POST /consultar`, `GET /health` (liveness), `GET /status` (readiness). Ver §4.
-2. **Schema padrão** de request e response na consulta de débitos. Ver §5.
-3. **SDK adotada**: correlation_id propagado, logging estruturado com eventos canônicos,
+2. **Validação do token de entrada do gateway**: todo endpoint de negócio exige um token
+   (definido no `.env`) que a Bridge envia; sem ele → `401`. Ver §4.4.
+3. **Schema padrão** de request e response na consulta de débitos. Ver §5.
+4. **SDK adotada**: correlation_id propagado, logging estruturado com eventos canônicos,
    erros da taxonomia `BridgeError`. Ver §6.
-4. **Proxy via SDK** (`ProxyClient`), sem proxy hardcoded. Ver §6.5.
-5. **Captcha via SDK quando externo**; casos especiais reportam pela SDK. Ver §6.6.
-6. **Heartbeat de status** ligado, com checks de readiness reais (proxy, captcha/saldo,
+5. **Proxy via SDK** (`ProxyClient`), sem proxy hardcoded. Ver §6.5.
+6. **Captcha via SDK quando externo**; casos especiais reportam pela SDK. Ver §6.6.
+7. **Heartbeat de status** ligado, com checks de readiness reais (proxy, captcha/saldo,
    alvo alcançável). Ver §6.8.
-7. **Zero segredo no código**; tudo por env. Ver §7.
-8. **Dockerizada** com healthcheck. Ver §8.
-9. **Service token** configurado (`BRIDGE_SERVICE_TOKEN`) e API registrada na plataforma. Ver §6.9.
-10. **Testes** mínimos (validação de input, parse do alvo, mapeamento de erros). Ver §10.
+8. **Zero segredo/credencial hardcoded no código.** O que a Bridge gerencia
+   (proxy/captcha) vai para a **plataforma**; **toda outra credencial hardcoded que não
+   é editada nem configurada na Bridge vai obrigatoriamente para um `.env`**. Ver §7.
+9. **Dockerizada** com healthcheck. Ver §8.
+10. **Service token** configurado (`BRIDGE_SERVICE_TOKEN`) e API registrada na plataforma. Ver §6.9.
+11. **Testes** mínimos (validação de input, parse do alvo, mapeamento de erros). Ver §10.
 
 ---
 
@@ -121,8 +164,36 @@ Uma API só é considerada **"pronta para o Bridge"** quando cumpre **todos**:
 | `X-Correlation-Id` | ID único da cadeia. **Nunca gere o seu**; a SDK lê e injeta em todo log. |
 | `X-Bridge-Client` | Conta do cliente. A SDK usa para resolver proxy/captcha do cliente. |
 | `Idempotency-Key` | (Quando presente) chave de idempotência tratada pelo gateway. |
+| `Authorization` / `X-Api-Key` | **Token de entrada da Bridge** (segredo compartilhado). A sua API **valida** (ver §4.4). |
 
 A resposta **deve** devolver `X-Correlation-Id` (a SDK já faz isso no middleware).
+
+### 4.4 Autenticação de entrada (gateway → sua API) — obrigatória
+
+A sua API fica exposta na rede; sem isso, qualquer um que descobrir a URL consulta de graça
+(gastando proxy/captcha/saldo). Por isso **todo endpoint de negócio valida um token de
+entrada** que **só a Bridge conhece** e envia em cada request.
+
+**Como funciona (segredo compartilhado):**
+- O token fica no **`.env`** da sua API (ex.: `BRIDGE_INBOUND_TOKEN`). A sua API valida cada
+  request contra ele.
+- O **mesmo valor** é cadastrado na Bridge como a **credencial da API** (campo de chave/
+  `master_key` no `/admin/apis`), com um `auth_type`. O gateway então o envia em cada forward:
+  - `auth_type=bearer` → header **`Authorization: Bearer <token>`** (recomendado);
+  - `auth_type=api_key` → header **`X-Api-Key: <token>`**;
+  - `auth_type=basic` → header **`Authorization: Basic <token>`**.
+- Escolha **um** mecanismo e valide exatamente ele. Recomendado: **bearer**.
+
+**Regras:**
+- Sem token, ou token diferente → responda **`401`** (não vaze detalhe).
+- **`GET /health` e `GET /status` ficam de fora** (liveness/readiness precisam ser públicos
+  para load balancer e para o coletor da plataforma). Todo o resto exige o token.
+- Comparação **constante** (`hmac.compare_digest`) para evitar timing attack.
+- Esse token **não é** o `X-Bridge-Key` do cliente (esse é validado pelo gateway) nem o
+  `BRIDGE_SERVICE_TOKEN` (esse a sua API **envia** para a plataforma, §6.9). São três coisas
+  distintas — ver a tabela em §6.2.
+
+Implementação em §6.10 (FastAPI e Flask).
 
 ---
 
@@ -460,12 +531,21 @@ pip install -e "../bridgeAPI/bridge-sdk[fastapi]"
 |---|---|---|
 | `BRIDGE_PLATFORM_URL` | sim | base da Bridge, ex.: `https://bridge.example.com` |
 | `BRIDGE_SERVICE_TOKEN` | sim | token de serviço da API (`brgsvc_...`), ver §6.9 |
+| `BRIDGE_INBOUND_TOKEN` | sim | token que o gateway envia e a sua API **valida** (§4.4) |
 | `BRIDGE_API_VERSION` | não | versão da sua API (carimbada em cada log) |
 
 ```python
 from bridge_sdk import SDKConfig
 config = SDKConfig.from_env(api_version="2.3.1")
 ```
+
+**Três tokens, não confunda:**
+
+| Token | Direção | Quem valida | Onde fica na sua API |
+|---|---|---|---|
+| `X-Bridge-Key` (chave do cliente) | cliente → gateway | **o gateway** | não é problema da sua API |
+| `BRIDGE_INBOUND_TOKEN` (entrada) | gateway → **sua API** | **a sua API** (§4.4) | `.env` (e cadastrado na Bridge como chave da API) |
+| `BRIDGE_SERVICE_TOKEN` (serviço) | sua API → plataforma | a plataforma | `.env` (a sua API o **envia** nos logs/status/proxy/captcha) |
 
 ### 6.3 Bootstrap FastAPI (caminho automático)
 
@@ -500,77 +580,93 @@ async def consultar(req: ConsultaRequest):
     return montar_resposta(...)  # ConsultaResponse com correlation_id=context.get_correlation_id()
 ```
 
-### 6.4 Bootstrap Flask (caminho manual — permitido)
+### 6.4 Bootstrap Flask (caminho sync — suportado)
 
-A SDK não tem `install()` para Flask; ligue as peças à mão. Padrão mínimo:
+A SDK tem um `install()` para Flask (extra `bridge-sdk[flask]`). Ele cria um **`SyncBridge`**
+(que roda um event loop num thread de fundo: flusher de log + heartbeat de status), liga o
+`correlation_id`/`X-Bridge-Client` por request, e expõe `/health` e `/status`. Você **não**
+escreve event loop nenhum.
 
 ```python
-from flask import Flask, request, jsonify, g
-from bridge_sdk import SDKConfig, BridgeLogger, StatusRegistry, context
+from flask import Flask
+from bridge_sdk import SDKConfig, events
+from bridge_sdk.integrations.flask import install
 
 app = Flask(__name__)
 config = SDKConfig.from_env(api_version="2.3.1")
-logger = BridgeLogger(config)
-logger.start()                      # inicia o flusher de logs
-status_registry = StatusRegistry()
-status_registry.register("captcha", check_captcha_balance)
-status_registry.register("alvo", check_target_reachable)
 
-@app.before_request
-def _correlation():
-    cid = context.correlation_id_from_headers(request.headers)
-    g._cid_token = context.set_correlation_id(cid)
-    g._client_token = context.set_client(context.client_from_headers(request.headers))
-    g.correlation_id = cid
+# cria o SyncBridge, inicia logger+heartbeat, registra /health e /status:
+bridge = install(app, config, checks={
+    "captcha": check_captcha_balance,   # checks sync ou async; sync roda em executor
+    "alvo": check_target_reachable,
+})
 
-@app.after_request
-def _correlation_resp(resp):
-    resp.headers[context.CORRELATION_HEADER] = g.get("correlation_id", "")
-    context.reset_client(g._client_token)
-    context.reset_correlation_id(g._cid_token)
-    return resp
+@app.post("/consultar")
+def consultar():
+    bridge.logger.info(events.REQUEST_RECEIVED, "consulta recebida")
+    proxy = bridge.proxy.acquire()                      # SÍNCRONO (1 proxy = caminho comum)
+    # ... seu scraping sync usando proxy.url (requests/httpx.Client/Playwright sync) ...
+    bridge.logger.info(events.REQUEST_COMPLETED, "ok", duration_ms=812.4)
+    return montar_resposta(...)
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-@app.get("/status")
-def status():
-    import asyncio
-    return jsonify(asyncio.run(status_registry.aggregate()))
+# no encerramento do processo (drena os logs):
+import atexit; atexit.register(bridge.close)
 ```
 
-> **Heartbeat no Flask:** o `StatusReporter` é async. Rode-o numa thread/loop próprio no
-> startup, ou (mais simples) deixe a plataforma fazer polling do seu `/status`. Documente
-> qual você escolheu. **Para casos novos, prefira FastAPI** e evite esse trabalho.
+- `bridge.logger` — mesmo `BridgeLogger`; `log()` é não-bloqueante, chamável de qualquer
+  worker thread.
+- `bridge.proxy` / `bridge.captcha` — fachadas **sync**: `acquire()`, `report_failure()`,
+  e `with_failover(fn)` com `fn` **síncrono** (o seu scraping roda no thread do worker e pode
+  bloquear; só a I/O interna da SDK vai para o loop de fundo).
+- `bridge.register_check(nome, fn)` e `bridge.status_report()` (usado pela rota `/status`).
+- Heartbeat de status: **automático** (roda no loop de fundo). Não precisa fazer mais nada.
 
-> **Flask com Playwright/sync (caso `detranmtsefaz`):** mantenha sync; rode em
-> `gunicorn` com `gthread` e timeout alto. A SDK funciona igual; só o `with_failover`
-> async precisa de `asyncio.run(...)` se você ficar em código sync.
+> **Workers/sem Flask:** use `SyncBridge` direto (`bridge = SyncBridge(config, checks=...);
+> bridge.start(); ...; bridge.close()`).
+
+> **Flask com Playwright (caso `detranmtsefaz`):** rode em `gunicorn` multiprocesso
+> (um navegador por worker, `--max-requests` para reciclar e conter vazamento de memória). O
+> Playwright sync roda no thread do worker; a SDK roda no seu próprio thread de fundo, sem
+> conflito.
 
 ### 6.5 Proxy (sempre via SDK)
 
-Remova **todo** proxy hardcoded. O `ProxyClient` busca o pool que a plataforma atribuiu à
-sua API (e ao cliente, via `X-Bridge-Client`), seleciona por prioridade, faz failover e
-reporta falhas — **trocar proxy na plataforma reflete sem deploy**.
+Remova **todo** proxy hardcoded. O `ProxyClient` busca o proxy que a plataforma atribuiu à
+sua API (e ao cliente, via `X-Bridge-Client`), seleciona por prioridade e reporta falhas —
+**trocar proxy na plataforma reflete sem deploy**. Como quase sempre há **um** proxy, o caminho
+normal é `acquire()`; `with_failover` só importa com mais de um.
 
+**Async (FastAPI):**
 ```python
 import httpx
 from bridge_sdk import errors, events
 
-async def fetch(proxy):
-    async with httpx.AsyncClient(proxy=proxy.url, verify=False, timeout=30) as http:
-        r = await http.get(alvo)
-        if r.status_code == 407:
-            raise errors.ProxyAuthFailed("login do proxy recusado")
-        return r
-
-resp = await proxy_client.with_failover(fetch)   # tenta por prioridade; reporta e troca em falha
+proxy = await proxy_client.acquire()                 # caminho comum (1 proxy)
+if proxy is None:
+    raise errors.ProxyUnavailable("sem proxy configurado")
+async with httpx.AsyncClient(proxy=proxy.url, verify=False, timeout=30) as http:
+    r = await http.get(alvo)
+    if r.status_code == 407:
+        await proxy_client.report_failure(proxy, error_code="PROXY_AUTH_FAILED")
+        raise errors.ProxyAuthFailed("login do proxy recusado")
+# com mais de um proxy: resp = await proxy_client.with_failover(async_fn)
 ```
 
-> Em código **sync** (Flask/requests), envolva com `asyncio.run(proxy_client.with_failover(...))`
-> ou use `acquire()`/`report_failure()` chamados via `asyncio.run`. O `proxy.url` já vem
-> com credenciais URL-encoded.
+**Sync (Flask/workers):** use `bridge.proxy`, com `fn` síncrono:
+```python
+proxy = bridge.proxy.acquire()
+if proxy is None:
+    raise errors.ProxyUnavailable("sem proxy configurado")
+with httpx.Client(proxy=proxy.url, verify=False, timeout=30) as http:   # ou requests
+    r = http.get(alvo)
+    if r.status_code == 407:
+        bridge.proxy.report_failure(proxy, error_code="PROXY_AUTH_FAILED")
+        raise errors.ProxyAuthFailed("login recusado")
+# com mais de um proxy: resp = bridge.proxy.with_failover(fn_sync)
+```
+
+> `proxy.url` já vem com credenciais URL-encoded. **Não** chame `asyncio.run(...)` por request:
+> no sync, use as fachadas `bridge.proxy` (elas marshalam para o loop de fundo da SDK).
 
 ### 6.6 Captcha
 
@@ -586,8 +682,16 @@ async def solve(provider):  # provider.api_key, provider.name, provider.provider
     logger.info(events.CAPTCHA_SOLVED, captcha_provider=provider.name)
     return token
 
-token = await captcha_client.with_failover(solve)   # CaptchaBalanceExhausted se ninguém tem saldo
+provider = await captcha_client.acquire()           # caminho comum (1 provedor com saldo)
+if provider is None:
+    raise errors.CaptchaBalanceExhausted("sem provedor com saldo")
+token = await solve(provider)
+# com mais de um provedor: token = await captcha_client.with_failover(solve)
 ```
+
+**Sync (Flask/workers):** idêntico via `bridge.captcha` com `solve` síncrono:
+`provider = bridge.captcha.acquire()`; `bridge.captcha.report_failure(provider, balance_usd=...)`;
+`bridge.captcha.with_failover(solve_sync)`.
 
 A API key **não fica no seu código** — vem de `provider.api_key` (config da plataforma).
 Após gastar, informe o saldo de volta no `report_failure(..., balance_usd=...)` quando souber.
@@ -646,7 +750,10 @@ async def bridge_error_handler(request: Request, exc: BridgeError):
 
 Cada check devolve `{"status": "healthy|degraded|down", ...campos}`. Exceção vira `down`.
 `/status` agrega o pior. Registre **pelo menos**: proxy, captcha/saldo (quando houver),
-alvo alcançável.
+alvo alcançável. **Checks podem ser sync ou async** — a SDK roda checks síncronos num executor,
+então um check que bloqueia (ex.: `httpx.Client` ao alvo) não trava o loop, nos dois runtimes.
+No sync, os checks vão em `install(..., checks=...)`/`bridge.register_check(...)` e a rota
+`/status` (auto-registrada) chama `bridge.status_report()`.
 
 ```python
 async def check_captcha_balance():
@@ -673,6 +780,53 @@ async def check_target_reachable():
 3. Cadastre a API no `/admin/apis` apontando a `base_url` para a sua API, com
    `request_method=POST` e `request_body_template` renderizando `{query}`/`{token}` se
    necessário. Ligue `uses_proxy`/`uses_captcha` conforme o caso.
+4. **Token de entrada (§4.4):** gere um segredo forte, coloque-o no `.env` da sua API como
+   `BRIDGE_INBOUND_TOKEN` **e** cadastre o **mesmo valor** como a chave da API no
+   `/admin/apis` (campo de credencial/`master_key`), com `auth_type=bearer` (recomendado).
+   O gateway passa a enviá-lo em cada forward; a sua API valida (§6.10).
+
+### 6.10 Validação do token de entrada (implementação)
+
+**FastAPI** — uma dependency aplicada aos endpoints de negócio (não ao `/health`/`/status`):
+
+```python
+import hmac, os
+from fastapi import Depends, Header, HTTPException
+
+INBOUND_TOKEN = os.environ["BRIDGE_INBOUND_TOKEN"]
+
+def require_bridge_token(authorization: str | None = Header(default=None)) -> None:
+    expected = f"Bearer {INBOUND_TOKEN}"
+    if not authorization or not hmac.compare_digest(authorization, expected):
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+@app.post("/consultar", response_model=ConsultaResponse,
+          dependencies=[Depends(require_bridge_token)])
+async def consultar(req: ConsultaRequest):
+    ...
+```
+
+**Flask** — cheque no `before_request`, liberando os endpoints públicos:
+
+```python
+import hmac, os
+from flask import request, jsonify
+
+INBOUND_TOKEN = os.environ["BRIDGE_INBOUND_TOKEN"]
+PUBLIC = {"/health", "/status"}
+
+@app.before_request
+def _require_bridge_token():
+    if request.path in PUBLIC:
+        return None
+    expected = f"Bearer {INBOUND_TOKEN}"
+    auth = request.headers.get("Authorization", "")
+    if not hmac.compare_digest(auth, expected):
+        return jsonify({"erro": "unauthorized"}), 401
+```
+
+> Use `api_key` (`X-Api-Key`) em vez de `bearer` se preferir — só mantenha o `auth_type`
+> cadastrado na Bridge igual ao header que você valida.
 
 ---
 
@@ -682,6 +836,21 @@ async def check_target_reachable():
 (proxy BrightData/SOAX/pyproxy hardcoded, chaves CapMonster/2Captcha em `.env`/código,
 `SECRET_KEY="GSVTECH"`, credenciais OAuth de DETRAN no `auth_manager.py`).
 
+**Regra de decisão (obrigatória) — para onde vai cada credencial hardcoded:**
+
+> A Bridge gerencia **proxy e captcha**: essas credenciais saem do código e passam a ser
+> **configuradas/editadas na plataforma** (via `ProxyClient`/`CaptchaClient`).
+> **Toda outra credencial ou segredo hoje hardcoded — que NÃO é editado nem configurado
+> na Bridge — vai obrigatoriamente para um `.env`** (lido por variável de ambiente, nunca
+> de volta para o código). Não há terceira opção: ou é gerenciado pela plataforma, ou está
+> num `.env`. Nada de credencial literal no fonte.
+
+Exemplos do que cai na regra do `.env` (não é gerenciado pela Bridge): credenciais de
+**login no alvo** (OAuth/usuário/senha do DETRAN, ex.: `detrandf`), `SECRET_KEY` da app,
+chaves de serviços externos próprios da API (ex.: cookie-service do `detranrs`),
+`sitekey`/`pageurl` de captcha, URL base do alvo, tokens de terceiros. Se algum dia esse
+valor passar a ser configurável na Bridge, ele migra para a plataforma; até lá, **`.env`**.
+
 | O que era hardcoded | Para onde vai |
 |---|---|
 | URL/credencial de **proxy** | **Plataforma** (via `ProxyClient`). Remova do código. |
@@ -689,6 +858,7 @@ async def check_target_reachable():
 | URL do **alvo** (DETRAN/SEFAZ) | env (`TARGET_BASE_URL`) — não é segredo, mas não hardcode. |
 | `sitekey`/`pageurl` do captcha | env. |
 | **Credenciais de login** no alvo (ex.: OAuth do `detrandf`) | env (`TARGET_USERNAME`/`TARGET_PASSWORD`/...). **Nunca** no código. |
+| **Token de entrada do gateway** (§4.4) | env (`BRIDGE_INBOUND_TOKEN`) + mesmo valor cadastrado como chave da API na Bridge. |
 | `BRIDGE_*` | env. |
 
 Use `.env` **apenas em dev** (não commitado) e variáveis de ambiente reais em produção
@@ -728,7 +898,7 @@ services:
     build: .
     container_name: detranXX-api
     restart: unless-stopped
-    env_file: .env          # BRIDGE_PLATFORM_URL, BRIDGE_SERVICE_TOKEN, TARGET_*, etc.
+    env_file: .env          # BRIDGE_PLATFORM_URL, BRIDGE_SERVICE_TOKEN, BRIDGE_INBOUND_TOKEN, TARGET_*, etc.
     ports:
       - "${PORT:-8000}:8000"
     healthcheck:
@@ -769,30 +939,36 @@ Notas por tecnologia:
 
 Siga nesta ordem para converter uma API existente. Faça por etapas, testando a cada uma.
 
-1. **Inventário.** Liste: framework, endpoints atuais, onde está o proxy, qual captcha,
-   segredos hardcoded, formato de resposta atual. (Use o Apêndice A se for uma das 7.)
-2. **Esqueleto novo.** Crie `app.py` (FastAPI) — ou prepare o `app` Flask (§6.4). Adicione
-   `bridge-sdk` ao `requirements.txt`.
-3. **Ligue a SDK.** `SDKConfig.from_env(...)` + `install(app, config, checks=...)` (FastAPI)
-   ou o wiring manual (Flask). Confirme `/health` e `/status` respondendo.
-4. **Migre o endpoint para `POST /consultar`** com `ConsultaRequest` (§5.7). Mantenha a
+1. **Inventário + decisão de runtime (passo zero).** Liste: framework, endpoints atuais, onde
+   está o proxy, qual captcha, segredos hardcoded, formato de resposta atual, libs sync-only e
+   perfil do trabalho. **Decida sync ou async pelos critérios da §2.1 e registre o porquê.**
+   (Use o Apêndice A se for uma das 7.)
+2. **Esqueleto novo.** Crie o `app` no runtime escolhido (FastAPI ou Flask). Adicione
+   `bridge-sdk` ao `requirements.txt` (vendorizado ou pacote).
+3. **Ligue a SDK.** `SDKConfig.from_env(...)` + `install(app, config, checks=...)`: de
+   `integrations.fastapi` (async) ou `integrations.flask` (sync, retorna o `SyncBridge`).
+   Confirme `/health` e `/status` respondendo.
+4. **Valide o token de entrada (§4.4/§6.10).** Exija `BRIDGE_INBOUND_TOKEN` nos endpoints de
+   negócio (deixe `/health` e `/status` públicos); cadastre o **mesmo valor** como chave da
+   API na Bridge (`auth_type=bearer`). Confirme que sem token responde `401`.
+5. **Migre o endpoint para `POST /consultar`** com `ConsultaRequest` (§5.7). Mantenha a
    lógica de scraping/consulta, mas **chame por dentro** os clientes da SDK.
-5. **Proxy → SDK.** Remova o proxy hardcoded; use `proxy_client.with_failover(...)` (§6.5).
-6. **Captcha → SDK (ou reporte).** Mova chave de solver para `CaptchaClient` (§6.6, caso 1),
+6. **Proxy → SDK.** Remova o proxy hardcoded; use `proxy_client.with_failover(...)` (§6.5).
+7. **Captcha → SDK (ou reporte).** Mova chave de solver para `CaptchaClient` (§6.6, caso 1),
    ou logue/checke o captcha especial (caso 2).
-7. **Mapeie a resposta para o schema canônico** (§5). Veículo, débitos, valores numéricos,
+8. **Mapeie a resposta para o schema canônico** (§5). Veículo, débitos, valores numéricos,
    pagamento. O que não couber: `extra` / `dados_especificos`. CRLV/PDF: `POST /documento`.
-8. **Erros → taxonomia.** Troque `502/500` opacos por `BridgeError` (§6.7) + handler do envelope.
-9. **Logs → eventos canônicos.** Substitua `print`/`logging` ad-hoc por
-   `logger.info(events.X, ...)` nos pontos do ciclo de vida.
-10. **Segredos → env.** Zere hardcodes; crie `.env.example` (§7).
-11. **Docker.** Adicione `Dockerfile` + `docker-compose.yml` com healthcheck (§8).
-12. **Testes (Docker).** Crie testes unitários: validação de input (`InvalidQuery`), parse do
-    HTML/JSON do alvo → schema, mapeamento de erro → `error_code`. Rode **dentro do container**
-    (padrão do ambiente, não use `py_compile`).
-13. **Registre na plataforma.** Gere o service token, cadastre a API, ligue
-    `uses_proxy`/`uses_captcha`, configure proxies/captchas dela no `/admin/apis`.
-14. **Verificação e2e.** Dispare uma consulta pelo gateway e recupere a timeline por
+9. **Erros → taxonomia.** Troque `502/500` opacos por `BridgeError` (§6.7) + handler do envelope.
+10. **Logs → eventos canônicos.** Substitua `print`/`logging` ad-hoc por
+    `logger.info(events.X, ...)` nos pontos do ciclo de vida.
+11. **Segredos → env.** Zere hardcodes; crie `.env.example` (§7).
+12. **Docker.** Adicione `Dockerfile` + `docker-compose.yml` com healthcheck (§8).
+13. **Testes (Docker).** Crie testes unitários: validação de input (`InvalidQuery`), **token de
+    entrada (401 sem token)**, parse do alvo → schema, mapeamento de erro → `error_code`. Rode
+    **dentro do container** (padrão do ambiente, não use `py_compile`).
+14. **Registre na plataforma.** Gere o service token, cadastre a API (com a chave de entrada),
+    ligue `uses_proxy`/`uses_captcha`, configure proxies/captchas dela no `/admin/apis`.
+15. **Verificação e2e.** Dispare uma consulta pelo gateway e recupere a timeline por
     `correlation_id` em `/admin/debug`; confirme status em tempo real no `/admin/status`.
 
 ---
@@ -802,8 +978,10 @@ Siga nesta ordem para converter uma API existente. Faça por etapas, testando a 
 Copie para a PR de cada API:
 
 ```
+[ ] Runtime (sync/async) analisado e decidido pelos critérios da §2.1, com o porquê documentado
 [ ] POST /consultar com ConsultaRequest (placa/renavam/documento/opcoes)
-[ ] GET /health e GET /status respondendo (SDK)
+[ ] GET /health e GET /status respondendo (SDK, públicos)
+[ ] Token de entrada validado nos endpoints de negócio (401 sem token); /health e /status livres
 [ ] Resposta no schema canônico (veiculo, debitos[], valores numéricos, totais)
 [ ] Exceções via extra / dados_especificos / POST /documento (nada de campo top-level novo)
 [ ] correlation_id propagado (header devolvido na resposta)
@@ -812,9 +990,9 @@ Copie para a PR de cada API:
 [ ] Captcha externo via CaptchaClient; captcha especial reportando pela SDK
 [ ] Heartbeat de status ligado + checks reais (proxy, captcha/saldo, alvo)
 [ ] Erros via BridgeError + handler do envelope de erro
-[ ] Zero segredo no código; tudo em env; .env.example commitado
+[ ] Zero credencial hardcoded: proxy/captcha na plataforma; todo o resto em .env (.env.example commitado)
 [ ] Dockerfile + docker-compose.yml com healthcheck no /health
-[ ] BRIDGE_PLATFORM_URL / BRIDGE_SERVICE_TOKEN / BRIDGE_API_VERSION configurados
+[ ] BRIDGE_PLATFORM_URL / BRIDGE_SERVICE_TOKEN / BRIDGE_INBOUND_TOKEN / BRIDGE_API_VERSION configurados
 [ ] Testes (validação, parse, erros) rodando no container
 [ ] API registrada no /admin/apis; e2e verificado por correlation_id
 ```
