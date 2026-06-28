@@ -58,8 +58,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen bg-surface text-on-surface font-body">
       <BrandThemeStyle theme={brandTheme} />
       {/* Sidebar */}
-      <nav className="fixed left-0 top-0 h-screen w-64 bg-surface-container-low flex flex-col py-8 px-4 z-50">
-        <div className="mb-10 px-4">
+      <nav className="fixed left-0 top-0 h-screen w-64 bg-surface-container-low flex flex-col py-8 z-50">
+        <div className="mb-10 px-6">
           {logoDataUri ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -75,7 +75,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
           <p className="text-sm text-on-surface-variant mt-1">BridgeAPI by GSV Tech</p>
         </div>
 
-        <ul className="flex-1 space-y-2">
+        <ul className="flex-1 space-y-1">
           {navItems.filter((item) => item.show).map((item) => {
             const active = pathname === item.href;
             return (
@@ -84,16 +84,11 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                   href={item.href}
                   className={
                     active
-                      ? "flex items-center gap-3 px-4 py-3 rounded-full bg-surface-container-lowest text-primary font-bold border-r-4 border-primary transition-all"
-                      : "flex items-center gap-3 px-4 py-3 rounded-full text-on-surface-variant hover:bg-surface transition-colors"
+                      ? "flex items-center gap-3 bg-surface-container-lowest text-primary font-bold rounded-l-full ml-4 shadow-sm px-6 py-3 transition-all"
+                      : "flex items-center gap-3 text-on-surface-variant hover:text-primary px-6 py-3 hover:bg-surface transition-all"
                   }
                 >
-                  <span
-                    className="material-symbols-outlined text-[20px]"
-                    style={active ? { fontVariationSettings: "'FILL' 1" } : undefined}
-                  >
-                    {item.icon}
-                  </span>
+                  <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
                   <span className="text-sm">{item.label}</span>
                 </Link>
               </li>
