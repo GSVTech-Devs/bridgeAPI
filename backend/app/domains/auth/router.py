@@ -142,6 +142,12 @@ def require_feature(feature: Feature):
     return _dep
 
 
+# Mensagem genérica de falha de login. Mesma resposta para email inexistente,
+# senha errada, conta de tipo errado ou sem empresa ativa — para não revelar se
+# um email/empresa existe (evita enumeração de usuários).
+_INVALID_CREDENTIALS = "Email ou senha inválidos."
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(
     body: LoginRequest,
@@ -152,7 +158,7 @@ async def login(
     if user is None or user.role != UserRole.ADMIN.value:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
+            detail=_INVALID_CREDENTIALS,
             headers={"WWW-Authenticate": "Bearer"},
         )
     token = create_access_token(
@@ -196,16 +202,18 @@ async def portal_login(
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials",
+            detail=_INVALID_CREDENTIALS,
             headers={"WWW-Authenticate": "Bearer"},
         )
     companies = await _portal_companies(db, body.email)
     if not companies:
         # Email autenticou mas não tem nenhuma empresa ativa (sem vínculo de
-        # portal ou todas bloqueadas).
+        # portal ou todas bloqueadas). Resposta genérica de propósito: não
+        # revelamos que a credencial era válida (anti-enumeração).
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Nenhuma empresa ativa disponível. Contate o administrador.",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=_INVALID_CREDENTIALS,
+            headers={"WWW-Authenticate": "Bearer"},
         )
     token = create_access_token(body.email, role=_PORTAL_IDENTITY_ROLE)
     return PortalLoginResponse(access_token=token, companies=companies)

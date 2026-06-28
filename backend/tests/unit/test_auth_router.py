@@ -139,10 +139,13 @@ async def test_portal_login_invalid_credentials_returns_401(
 
 
 @pytest.mark.asyncio
-async def test_portal_login_no_active_company_returns_403(
+async def test_portal_login_no_active_company_returns_generic_401(
     client: AsyncClient,
 ) -> None:
-    """Autenticou mas não há empresa ativa (todas bloqueadas / sem vínculo)."""
+    """Autenticou mas não há empresa ativa: resposta genérica (anti-enumeração).
+
+    Não pode revelar que a credencial era válida — mesma mensagem de email/senha
+    inválidos, mesmo status, que uma senha errada."""
     owner = make_owner(uuid.uuid4())
     with (
         patch(
@@ -158,12 +161,14 @@ async def test_portal_login_no_active_company_returns_403(
             "/auth/portal/login",
             json={"email": "owner@acme.com", "password": "secret123"},
         )
-    assert response.status_code == 403
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Email ou senha inválidos."
 
 
 @pytest.mark.asyncio
 async def test_admin_cannot_login_via_portal_endpoint(client: AsyncClient) -> None:
-    # Admin autentica, mas não tem nenhuma empresa de portal → 403.
+    # Admin autentica, mas não tem empresa de portal → resposta genérica 401
+    # (não revela que era um admin válido).
     with (
         patch(
             "app.domains.auth.router.authenticate_user",
@@ -178,7 +183,8 @@ async def test_admin_cannot_login_via_portal_endpoint(client: AsyncClient) -> No
             "/auth/portal/login",
             json={"email": "admin@bridge.com", "password": "secret123"},
         )
-    assert response.status_code == 403
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Email ou senha inválidos."
 
 
 @pytest.mark.asyncio
