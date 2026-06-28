@@ -14,6 +14,8 @@ dependencies = [
 [project.optional-dependencies]
 # Integração pronta com apps FastAPI (middleware de correlation_id + lifecycle).
 fastapi = ["fastapi>=0.100", "starlette>=0.27"]
+# Integração pronta com apps Flask (SyncBridge + correlation_id + /health, /status).
+flask = ["flask>=2.0"]
 # Para rodar a suíte de testes da própria SDK.
 dev = ["pytest>=7", "pytest-asyncio>=0.23"]
 

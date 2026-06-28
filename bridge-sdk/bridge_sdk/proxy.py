@@ -114,6 +114,11 @@ class ProxyClient:
         return proxies
 
     # --------------------------------------------------------------- seleção
+    async def candidates(self) -> list[ProxyEndpoint]:
+        """Proxies elegíveis (não-falhos) por prioridade — base do failover."""
+        failed = self._failed_set()
+        return [p for p in await self.get_proxies() if p.id not in failed]
+
     async def acquire(self) -> Optional[ProxyEndpoint]:
         """Retorna o proxy de maior prioridade ainda não marcado como falho."""
         failed = self._failed_set()
@@ -165,8 +170,7 @@ class ProxyClient:
         """Executa ``fn(proxy)`` tentando cada proxy por prioridade até um dar
         certo. Em falha (exceção em ``retry_on``), reporta o proxy e tenta o
         próximo. Esgotados, levanta ``ProxyUnavailable``."""
-        failed = self._failed_set()
-        proxies = [p for p in await self.get_proxies() if p.id not in failed]
+        proxies = await self.candidates()
         if not proxies:
             raise errors.ProxyUnavailable("nenhum proxy disponível no pool")
         if max_attempts is not None:

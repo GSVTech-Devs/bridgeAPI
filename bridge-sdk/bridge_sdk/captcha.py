@@ -100,6 +100,14 @@ class CaptchaClient:
         return providers
 
     # --------------------------------------------------------------- seleção
+    async def candidates(self) -> list[CaptchaProvider]:
+        """Provedores elegíveis (não-falhos e com saldo) por prioridade."""
+        failed = self._failed_set()
+        return [
+            p for p in await self.get_providers()
+            if p.id not in failed and p.has_balance
+        ]
+
     async def acquire(self) -> Optional[CaptchaProvider]:
         """Provedor de maior prioridade ainda não-falho e com saldo."""
         failed = self._failed_set()
@@ -155,11 +163,7 @@ class CaptchaClient:
     ) -> T:
         """Executa ``fn(provider)`` tentando cada provedor com saldo por prioridade
         até um dar certo. Esgotados, levanta ``CaptchaFailed``."""
-        failed = self._failed_set()
-        providers = [
-            p for p in await self.get_providers()
-            if p.id not in failed and p.has_balance
-        ]
+        providers = await self.candidates()
         if not providers:
             raise errors.CaptchaBalanceExhausted("nenhum provedor de captcha disponível")
         if max_attempts is not None:

@@ -34,9 +34,16 @@ def _worst(statuses: list[str]) -> str:
 
 async def _run_check(fn: CheckFn) -> dict[str, Any]:
     try:
-        result = fn()
-        if inspect.isawaitable(result):
-            result = await result
+        if inspect.iscoroutinefunction(fn):
+            result = await fn()
+        else:
+            # Check síncrono pode bloquear (ex.: httpx.Client a um alvo). Roda
+            # num executor para não travar o event loop — vale tanto no FastAPI
+            # quanto no loop de fundo do modo sync.
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(None, fn)
+            if inspect.isawaitable(result):  # sync que devolve awaitable (raro)
+                result = await result
         if not isinstance(result, dict):
             result = {"status": str(result)}
         result.setdefault("status", HEALTHY)

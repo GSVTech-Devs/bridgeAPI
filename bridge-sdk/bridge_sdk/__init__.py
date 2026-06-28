@@ -22,6 +22,12 @@ from .errors import BridgeError
 from .events import LogLevel
 from .logging import BridgeLogger
 from .proxy import ProxyClient, ProxyEndpoint
+from .runtime import (
+    BackgroundLoop,
+    SyncBridge,
+    SyncCaptchaClient,
+    SyncProxyClient,
+)
 from .version import __version__
 
 __all__ = [
@@ -33,6 +39,10 @@ __all__ = [
     "ProxyEndpoint",
     "CaptchaClient",
     "CaptchaProvider",
+    "BackgroundLoop",
+    "SyncBridge",
+    "SyncProxyClient",
+    "SyncCaptchaClient",
     "HEALTHY",
     "DEGRADED",
     "DOWN",
