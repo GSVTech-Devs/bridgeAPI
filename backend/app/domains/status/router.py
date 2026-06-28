@@ -11,17 +11,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.mongo_client import get_mongo_db
+from app.core.authz import Feature
 from app.core.security import decode_access_token
 from app.domains.auth.models import UserRole
-from app.domains.auth.router import get_current_user
+from app.domains.auth.router import get_current_user, require_feature
 from app.domains.auth.schemas import MeResponse
 from app.domains.status.schemas import (
+    ClientStatusItem,
+    ClientStatusResponse,
     StatusEventItem,
     StatusEventsResponse,
     StatusOverviewItem,
     StatusOverviewResponse,
 )
-from app.domains.status.service import get_events, get_overview
+from app.domains.status.service import get_client_overview, get_events, get_overview
 
 router = APIRouter(tags=["status"])
 
@@ -50,6 +53,19 @@ async def status_overview(
     docs = await get_overview(mongo_db, db)
     items = [StatusOverviewItem(**d) for d in docs]
     return StatusOverviewResponse(items=items, total=len(items))
+
+
+@router.get("/client/status", response_model=ClientStatusResponse)
+async def client_status(
+    mongo_db=Depends(get_mongo_db),
+    db: AsyncSession = Depends(get_db),
+    identity: MeResponse = Depends(require_feature(Feature.CATALOG)),
+) -> ClientStatusResponse:
+    """Status das APIs liberadas para a conta do cliente. Escopado por permissão;
+    checks de proxy/captcha desativados no cadastro são omitidos."""
+    docs = await get_client_overview(mongo_db, db, identity.account_id)
+    items = [ClientStatusItem(**d) for d in docs]
+    return ClientStatusResponse(items=items, total=len(items))
 
 
 @router.get("/status/events", response_model=StatusEventsResponse)

@@ -34,6 +34,25 @@ class StatusOverviewResponse(BaseModel):
     total: int
 
 
+class ClientStatusItem(BaseModel):
+    """Status de uma API visível ao cliente. Sem campos internos (sdk_version,
+    uptime); checks de proxy/captcha desativados já vêm filtrados pelo serviço."""
+
+    api_id: str
+    api_name: Optional[str] = None
+    status: str            # healthy | degraded | down | unknown
+    checks: dict[str, Any] = {}
+    last_seen: Optional[Any] = None
+    stale: bool = False
+    uses_proxy: bool = False
+    uses_captcha: bool = False
+
+
+class ClientStatusResponse(BaseModel):
+    items: list[ClientStatusItem]
+    total: int
+
+
 class StatusEventItem(BaseModel):
     api_id: str
     api_name: Optional[str] = None

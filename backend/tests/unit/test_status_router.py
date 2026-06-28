@@ -65,6 +65,41 @@ async def test_overview_returns_items(client: AsyncClient) -> None:
 
 
 # ---------------------------------------------------------------------------
+# GET /client/status
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_client_status_returns_scoped_items(client: AsyncClient) -> None:
+    item = {
+        "api_id": str(uuid.uuid4()),
+        "api_name": "DETRAN-PA",
+        "status": "healthy",
+        "checks": {"proxy": {"status": "healthy", "available": 1}},
+        "last_seen": datetime.now(timezone.utc).isoformat(),
+        "stale": False,
+        "uses_proxy": True,
+        "uses_captcha": False,
+    }
+    with patch(
+        "app.domains.status.router.get_client_overview",
+        new=AsyncMock(return_value=[item]),
+    ):
+        resp = await client.get("/client/status", headers=client_headers())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["items"][0]["api_name"] == "DETRAN-PA"
+    assert set(body["items"][0]["checks"].keys()) == {"proxy"}
+
+
+@pytest.mark.asyncio
+async def test_client_status_requires_authentication(client: AsyncClient) -> None:
+    resp = await client.get("/client/status")
+    assert resp.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
 # GET /status/events
 # ---------------------------------------------------------------------------
 

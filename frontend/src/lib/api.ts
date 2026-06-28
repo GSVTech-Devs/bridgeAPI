@@ -585,6 +585,23 @@ export function getStatusEvents(limit = 50) {
   );
 }
 
+// Status das APIs liberadas para a conta do cliente (escopo do portal). Checks
+// de proxy/captcha desativados no cadastro já vêm filtrados pelo backend.
+export type ClientStatusItem = {
+  api_id: string;
+  api_name: string | null;
+  status: string;            // healthy | degraded | down | unknown
+  checks: Record<string, StatusCheck>;
+  last_seen: string | null;
+  stale: boolean;
+  uses_proxy: boolean;
+  uses_captcha: boolean;
+};
+
+export function getClientStatus() {
+  return apiFetch<{ items: ClientStatusItem[]; total: number }>("/client/status");
+}
+
 // EventSource não envia o header Authorization — o token vai por query param.
 export function statusStreamUrl(token: string) {
   return `${BASE_URL}/status/stream?token=${encodeURIComponent(token)}`;

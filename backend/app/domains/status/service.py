@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.domains.apis.models import ExternalAPI
+from app.domains.permissions.models import Permission
 
 LATEST = "api_status_latest"      # um doc por api_id (estado atual)
 HISTORY = "api_status_history"    # série temporal com TTL
@@ -105,6 +106,91 @@ async def get_overview(mongo_db: Any, db: AsyncSession) -> list[dict[str, Any]]:
                 "checks": d.get("checks", {}),
                 "last_seen": d.get("received_at"),
                 "stale": stale,
+            }
+        )
+    items.sort(key=lambda i: (i["api_name"] or i["api_id"]).lower())
+    return items
+
+
+def _filter_checks(
+    checks: dict[str, Any], uses_proxy: bool, uses_captcha: bool
+) -> dict[str, Any]:
+    """Whitelist dos checks que interessam ao cliente: apenas proxy (se a API usa
+    proxy) e captcha (se usa captcha). Qualquer outro check é diagnóstico interno
+    (ex.: ``alvo``/upstream) e fica restrito ao admin, então é omitido aqui.
+
+    Casa pela chave: ``proxy`` no nome → check de proxy; ``captcha`` (cobre
+    ``captcha`` e ``mcaptcha``) → check de captcha."""
+    out: dict[str, Any] = {}
+    for key, value in checks.items():
+        k = key.lower()
+        if "proxy" in k:
+            if uses_proxy:
+                out[key] = value
+        elif "captcha" in k:
+            if uses_captcha:
+                out[key] = value
+        # demais checks (alvo/upstream/etc.) são internos → não vão para o cliente
+    return out
+
+
+async def get_client_overview(
+    mongo_db: Any, db: AsyncSession, account_id: Any
+) -> list[dict[str, Any]]:
+    """Estado atual das APIs que o cliente tem permissão de usar. Checks de
+    proxy/captcha desativados no cadastro são omitidos (ver ``_filter_checks``).
+    APIs sem heartbeat ainda aparecem como ``unknown`` sem checks."""
+    result = await db.execute(
+        select(ExternalAPI)
+        .join(Permission, Permission.api_id == ExternalAPI.id)
+        .where(
+            Permission.account_id == account_id,
+            Permission.revoked_at.is_(None),
+        )
+    )
+    apis = list(result.scalars().all())
+    if not apis:
+        return []
+
+    api_ids = [str(a.id) for a in apis]
+    docs = await mongo_db[LATEST].find({"api_id": {"$in": api_ids}}).to_list(length=1000)
+    by_id = {d["api_id"]: d for d in docs}
+    now = datetime.now(timezone.utc)
+    stale_after = settings.status_stale_after_seconds
+
+    items: list[dict[str, Any]] = []
+    for api in apis:
+        aid = str(api.id)
+        d = by_id.get(aid)
+        if d is None:
+            items.append(
+                {
+                    "api_id": aid,
+                    "api_name": api.name,
+                    "status": UNKNOWN,
+                    "checks": {},
+                    "last_seen": None,
+                    "stale": False,
+                    "uses_proxy": api.uses_proxy,
+                    "uses_captcha": api.uses_captcha,
+                }
+            )
+            continue
+        last_seen = _as_aware(d.get("received_at"))
+        stale = bool(last_seen and (now - last_seen).total_seconds() > stale_after)
+        reported = d.get("status", UNKNOWN)
+        items.append(
+            {
+                "api_id": aid,
+                "api_name": api.name,
+                "status": UNKNOWN if stale else reported,
+                "checks": _filter_checks(
+                    d.get("checks", {}), api.uses_proxy, api.uses_captcha
+                ),
+                "last_seen": d.get("received_at"),
+                "stale": stale,
+                "uses_proxy": api.uses_proxy,
+                "uses_captcha": api.uses_captcha,
             }
         )
     items.sort(key=lambda i: (i["api_name"] or i["api_id"]).lower())

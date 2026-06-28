@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getClientDashboard, getClientByApi, getClientStatusCodes, getLogs } from "@/lib/api";
+import { getClientDashboard, getClientByApi, getClientStatusCodes, getLogs, getClientStatus, type ClientStatusItem } from "@/lib/api";
 import Link from "next/link";
 import { useCapabilities } from "@/contexts/CapabilitiesContext";
 import { CAP } from "@/lib/capabilities";
@@ -67,6 +67,24 @@ function methodBadgeColor(method: string) {
   }
 }
 
+// Cor/rótulo por status de readiness (healthy/degraded/down/unknown).
+function statusTone(status: string): { dot: string; pill: string; label: string } {
+  switch (status) {
+    case "healthy": return { dot: "bg-emerald-500", pill: "bg-emerald-50 text-emerald-700", label: "Operacional" };
+    case "degraded": return { dot: "bg-yellow-500", pill: "bg-yellow-50 text-yellow-700", label: "Degradado" };
+    case "down": return { dot: "bg-red-500", pill: "bg-red-50 text-red-700", label: "Fora do ar" };
+    default: return { dot: "bg-gray-400", pill: "bg-surface-container text-on-surface-variant", label: "Desconhecido" };
+  }
+}
+
+// Status de um check individual (cada item em checks{}). Aceita o status cru.
+function checkStatusOf(value: unknown): string {
+  if (value && typeof value === "object" && "status" in value) {
+    return String((value as { status: unknown }).status);
+  }
+  return "unknown";
+}
+
 function SectionCard({ icon, title, subtitle, children, action }: {
   icon: string;
   title: string;
@@ -100,6 +118,7 @@ export default function DashboardPage() {
   const [last15, setLast15] = useState<ApiBreakdownItem[]>([]);
   const [statusCodes, setStatusCodes] = useState<StatusCodeItem[]>([]);
   const [recentLogs, setRecentLogs] = useState<LogItem[]>([]);
+  const [apiStatus, setApiStatus] = useState<ClientStatusItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,13 +132,15 @@ export default function DashboardPage() {
     if (capsLoading) return;
     (async () => {
       try {
-        const [m, all, s30, s15, sc, logs] = await Promise.all([
+        const [m, all, s30, s15, sc, logs, st] = await Promise.all([
           canMetrics ? getClientDashboard() : Promise.resolve(null),
           canUsage ? getClientByApi() : Promise.resolve({ items: [] as ApiBreakdownItem[] }),
           canUsage ? getClientByApi({ since: since(30) }) : Promise.resolve({ items: [] as ApiBreakdownItem[] }),
           canUsage ? getClientByApi({ since: since(15) }) : Promise.resolve({ items: [] as ApiBreakdownItem[] }),
           canUsage ? getClientStatusCodes() : Promise.resolve({ items: [] as StatusCodeItem[] }),
           canLogs ? getLogs(0, 10) : Promise.resolve({ items: [] as LogItem[] }),
+          // CATALOG é baseline (todo usuário do portal tem); resiliente a falha.
+          getClientStatus().catch(() => ({ items: [] as ClientStatusItem[] })),
         ]);
         setMetrics(m);
         setAllTime(all.items);
@@ -127,6 +148,7 @@ export default function DashboardPage() {
         setLast15(s15.items);
         setStatusCodes(sc.items);
         setRecentLogs(logs.items as LogItem[]);
+        setApiStatus(st.items);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Erro ao carregar");
       } finally {
@@ -373,6 +395,48 @@ export default function DashboardPage() {
                 </div>
               </SectionCard>
             </div>
+          )}
+
+          {/* Status das APIs disponibilizadas (readiness reportado pela SDK) */}
+          {apiStatus.length > 0 && (
+            <SectionCard icon="health_and_safety" title="Status das APIs" subtitle="Disponibilidade das APIs liberadas para você">
+              <div className="p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {apiStatus.map((api) => {
+                  const tone = statusTone(api.status);
+                  const checks = Object.entries(api.checks ?? {});
+                  return (
+                    <div key={api.api_id} className="bg-surface-container-low/50 rounded-xl border border-outline-variant/10 p-4 flex flex-col gap-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`shrink-0 w-2.5 h-2.5 rounded-full ${tone.dot}`} />
+                          <span className="font-semibold text-on-surface truncate">{api.api_name ?? api.api_id.slice(0, 8)}</span>
+                        </div>
+                        <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${tone.pill}`}>
+                          {tone.label}
+                        </span>
+                      </div>
+                      {checks.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {checks.map(([name, value]) => {
+                            const ct = statusTone(checkStatusOf(value));
+                            return (
+                              <span key={name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-container text-xs text-on-surface-variant">
+                                <span className={`w-1.5 h-1.5 rounded-full ${ct.dot}`} />
+                                {name}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-on-surface-variant">
+                          {api.stale ? "Sem heartbeat recente." : "Sem checks reportados."}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </SectionCard>
           )}
 
           {/* Recent Consults */}

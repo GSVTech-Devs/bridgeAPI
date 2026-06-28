@@ -3,6 +3,7 @@ import { server } from "../../src/mocks/server";
 import {
   apiFetch,
   generateServiceToken,
+  getClientStatus,
   getPortalCompanies,
   login,
   portalLogin,
@@ -141,6 +142,34 @@ describe("generateServiceToken", () => {
     expect(method).toBe("POST");
     expect(res.service_token).toBe("brgsvc_secret");
     expect(res.prefix).toBe("brgsvc_a1b2");
+  });
+});
+
+describe("getClientStatus", () => {
+  it("GETs /client/status and returns the scoped items", async () => {
+    server.use(
+      http.get(`${BASE}/client/status`, () =>
+        HttpResponse.json({
+          items: [
+            {
+              api_id: "a1",
+              api_name: "DETRAN-PA",
+              status: "healthy",
+              checks: { alvo: { status: "healthy" } },
+              last_seen: null,
+              stale: false,
+              uses_proxy: false,
+              uses_captcha: false,
+            },
+          ],
+          total: 1,
+        })
+      )
+    );
+    const res = await getClientStatus();
+    expect(res.total).toBe(1);
+    expect(res.items[0].api_name).toBe("DETRAN-PA");
+    expect(Object.keys(res.items[0].checks)).toEqual(["alvo"]);
   });
 });
 
