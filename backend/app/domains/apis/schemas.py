@@ -168,7 +168,7 @@ class APIListResponse(BaseModel):
 
 # ------------------------------------------------ import de OpenAPI/Swagger
 class OpenAPIImportRequest(BaseModel):
-    spec: str  # JSON ou YAML colado da doc da API
+    url: str  # URL da doc da API (ex.: https://api.exemplo.com/openapi.json)
 
 
 class ImportedOperation(BaseModel):
@@ -182,3 +182,32 @@ class OpenAPIImportResponse(BaseModel):
     title: Optional[str] = None
     base_url: Optional[str] = None
     operations: list[ImportedOperation]
+
+
+# -------------------------------------- import em massa (cria rascunhos inativos)
+class BulkImportItem(BaseModel):
+    name: str
+    base_url: str
+    request_method: Optional[str] = None
+    request_body_template: Optional[str] = None
+    auth_type: str = "none"
+    cost_per_query: Optional[float] = None
+    uses_proxy: bool = False
+    uses_captcha: bool = False
+
+
+class BulkImportRequest(BaseModel):
+    items: list[BulkImportItem]
+
+
+class BulkImportItemResult(BaseModel):
+    name: str
+    status: str  # "created" | "skipped"
+    id: Optional[str] = None
+    reason: Optional[str] = None
+
+
+class BulkImportResponse(BaseModel):
+    created: int
+    skipped: int
+    results: list[BulkImportItemResult]

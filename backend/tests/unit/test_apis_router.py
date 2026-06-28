@@ -61,26 +61,27 @@ def admin_headers() -> dict:
 
 
 @pytest.mark.asyncio
-async def test_import_openapi_returns_operations(client: AsyncClient) -> None:
-    spec = """
-openapi: 3.0.0
-info:
-  title: Solver
-servers:
-  - url: https://api.solver.com
-paths:
-  /solve:
-    post:
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                key:
-                  type: string
-"""
-    resp = await client.post("/apis/import", json={"spec": spec}, headers=admin_headers())
+async def test_import_openapi_fetches_url_and_returns_operations(client: AsyncClient) -> None:
+    parsed = {
+        "title": "Solver",
+        "base_url": "https://api.solver.com",
+        "operations": [
+            {
+                "method": "POST",
+                "path": "/solve",
+                "summary": "Solve",
+                "request_body_template": '{"key": "string"}',
+            }
+        ],
+    }
+    with patch(
+        "app.domains.apis.router.fetch_spec", new=AsyncMock(return_value=parsed)
+    ):
+        resp = await client.post(
+            "/apis/import",
+            json={"url": "https://api.solver.com/openapi.json"},
+            headers=admin_headers(),
+        )
     assert resp.status_code == 200
     body = resp.json()
     assert body["title"] == "Solver"
@@ -91,9 +92,58 @@ paths:
 
 
 @pytest.mark.asyncio
-async def test_import_openapi_rejects_garbage(client: AsyncClient) -> None:
-    resp = await client.post("/apis/import", json={"spec": "lol"}, headers=admin_headers())
+async def test_import_openapi_invalid_url_returns_422(client: AsyncClient) -> None:
+    from app.domains.apis.openapi import InvalidSpecError
+
+    with patch(
+        "app.domains.apis.router.fetch_spec",
+        new=AsyncMock(side_effect=InvalidSpecError("URL inválida")),
+    ):
+        resp = await client.post(
+            "/apis/import", json={"url": "notaurl"}, headers=admin_headers()
+        )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_import_openapi_requires_auth(client: AsyncClient) -> None:
+    resp = await client.post("/apis/import", json={"url": "https://x.com/o.json"})
+    assert resp.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_import_bulk_creates_drafts(client: AsyncClient) -> None:
+    results = [
+        {"name": "Solver — Solve", "status": "created", "id": "id-1"},
+        {"name": "Solver — Health", "status": "skipped", "reason": "duplicado"},
+    ]
+    with patch(
+        "app.domains.apis.router.bulk_register_apis",
+        new=AsyncMock(return_value=results),
+    ):
+        resp = await client.post(
+            "/apis/import/bulk",
+            json={
+                "items": [
+                    {"name": "Solver — Solve", "base_url": "https://api.solver.com/solve",
+                     "request_method": "POST"},
+                    {"name": "Solver — Health", "base_url": "https://api.solver.com/health",
+                     "request_method": "GET"},
+                ]
+            },
+            headers=admin_headers(),
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["created"] == 1
+    assert body["skipped"] == 1
+    assert len(body["results"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_import_bulk_requires_auth(client: AsyncClient) -> None:
+    resp = await client.post("/apis/import/bulk", json={"items": []})
+    assert resp.status_code in (401, 403)
 
 
 # ---------------------------------------------------------------------------

@@ -22,6 +22,7 @@ from app.domains.apis.service import (
     DuplicateAPINameError,
     DuplicateSlugError,
     add_endpoint,
+    bulk_register_apis,
     delete_api,
     disable_api,
     enable_api,
@@ -125,6 +126,63 @@ async def test_duplicate_api_name_raises_error() -> None:
     db = make_db(scalar_result=make_api())  # nome já existe
     with pytest.raises(DuplicateAPINameError):
         await register_api(db, name="Stripe API", base_url="https://api.stripe.com")
+
+
+@pytest.mark.asyncio
+async def test_register_api_accepts_inactive_status() -> None:
+    db = make_db(scalar_result=None)
+    await register_api(
+        db, name="Draft API", base_url="https://draft.example.com",
+        status=APIStatus.INACTIVE,
+    )
+    added: ExternalAPI = db.add.call_args[0][0]
+    assert added.status == APIStatus.INACTIVE
+
+
+# ---------------------------------------------------------------------------
+# bulk_register_apis (import em massa → rascunhos inativos)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bulk_register_creates_drafts() -> None:
+    db = make_db(scalar_result=None)  # nenhum conflito
+    results = await bulk_register_apis(
+        db,
+        [
+            {"name": "A", "base_url": "https://a.example.com", "request_method": "POST"},
+            {"name": "B", "base_url": "https://b.example.com", "request_method": "GET"},
+        ],
+    )
+    assert [r["status"] for r in results] == ["created", "created"]
+    assert db.add.call_count == 2
+    # criadas como rascunho (inativas)
+    assert all(c[0][0].status == APIStatus.INACTIVE for c in db.add.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_bulk_register_skips_invalid_base_url() -> None:
+    db = make_db(scalar_result=None)
+    results = await bulk_register_apis(
+        db,
+        [
+            {"name": "rel", "base_url": "/v2/solve"},   # relativo, sem http(s)
+            {"name": "ok", "base_url": "https://ok.example.com"},
+        ],
+    )
+    assert results[0]["status"] == "skipped"
+    assert results[1]["status"] == "created"
+    assert db.add.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_register_skips_duplicate_name() -> None:
+    db = make_db_seq(make_api())  # primeiro (e único) item: nome já existe
+    results = await bulk_register_apis(
+        db, [{"name": "Stripe API", "base_url": "https://api.stripe.com"}]
+    )
+    assert results[0]["status"] == "skipped"
+    db.add.assert_not_called()
 
 
 @pytest.mark.asyncio

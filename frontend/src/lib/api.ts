@@ -299,12 +299,37 @@ export type ImportedOperation = {
   request_body_template?: string | null;
 };
 
-export function importOpenApi(spec: string) {
+export function importOpenApi(url: string) {
   return apiFetch<{
     title?: string | null;
     base_url?: string | null;
     operations: ImportedOperation[];
-  }>("/apis/import", { method: "POST", body: JSON.stringify({ spec }) });
+  }>("/apis/import", { method: "POST", body: JSON.stringify({ url }) });
+}
+
+export type BulkImportItem = {
+  name: string;
+  base_url: string;
+  request_method?: string | null;
+  request_body_template?: string | null;
+  auth_type?: string;
+  cost_per_query?: number | null;
+  uses_proxy?: boolean;
+  uses_captcha?: boolean;
+};
+
+export type BulkImportResult = {
+  name: string;
+  status: "created" | "skipped";
+  id?: string | null;
+  reason?: string | null;
+};
+
+export function bulkImportApis(items: BulkImportItem[]) {
+  return apiFetch<{ created: number; skipped: number; results: BulkImportResult[] }>(
+    "/apis/import/bulk",
+    { method: "POST", body: JSON.stringify({ items }) }
+  );
 }
 
 export function enableApi(id: string) {

@@ -5,8 +5,9 @@ import {
   getApis, createApi, updateApi, enableApi, disableApi, deleteApi,
   getApiProxies, createApiProxy, updateApiProxy, deleteApiProxy,
   getApiCaptchas, createApiCaptcha, updateApiCaptcha, deleteApiCaptcha,
-  importOpenApi,
+  importOpenApi, bulkImportApis,
   type Proxy, type ProxyInput, type Captcha, type CaptchaInput, type ImportedOperation,
+  type BulkImportResult,
 } from "@/lib/api";
 
 const BRIDGE_BASE =
@@ -213,45 +214,84 @@ export default function ApisPage() {
   const [formSuccess, setFormSuccess] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  // Import de OpenAPI/Swagger
+  // Import de OpenAPI/Swagger (por URL → tabela de staging → criar rascunhos)
+  type StageRow = {
+    include: boolean;
+    name: string;
+    base_url: string;
+    request_method: string;
+    request_body_template: string;
+    path: string;
+    summary?: string | null;
+  };
   const [showImport, setShowImport] = useState(false);
-  const [importText, setImportText] = useState("");
+  const [importUrl, setImportUrl] = useState("");
   const [importLoading, setImportLoading] = useState(false);
   const [importErr, setImportErr] = useState<string | null>(null);
-  const [importResult, setImportResult] = useState<{
-    title?: string | null; base_url?: string | null; operations: ImportedOperation[];
-  } | null>(null);
+  const [importTitle, setImportTitle] = useState<string | null>(null);
+  const [rows, setRows] = useState<StageRow[]>([]);
+  const [importSummary, setImportSummary] = useState<{ created: number; skipped: number; results: BulkImportResult[] } | null>(null);
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
+
+  function resetImport() {
+    setImportUrl(""); setImportErr(null); setImportTitle(null);
+    setRows([]); setImportSummary(null); setExpandedRow(null);
+  }
 
   async function parseImport() {
-    setImportLoading(true); setImportErr(null); setImportResult(null);
+    setImportLoading(true); setImportErr(null); setRows([]); setImportSummary(null);
     try {
-      setImportResult(await importOpenApi(importText));
+      const res = await importOpenApi(importUrl.trim());
+      const server = (res.base_url ?? "").replace(/\/$/, "");
+      setImportTitle(res.title ?? null);
+      setRows(res.operations.map((op: ImportedOperation) => {
+        const path = op.path.startsWith("/") ? op.path : `/${op.path}`;
+        const name = res.title
+          ? `${res.title} — ${op.summary || op.path}`
+          : op.summary || op.path;
+        return {
+          include: true,
+          name: name.slice(0, 120),
+          base_url: server ? `${server}${path}` : "",
+          request_method: op.method,
+          request_body_template: op.request_body_template ?? "",
+          path,
+          summary: op.summary,
+        };
+      }));
     } catch (e) {
-      setImportErr(e instanceof Error ? e.message : "Falha ao parsear o spec");
+      setImportErr(e instanceof Error ? e.message : "Falha ao buscar a doc");
     } finally {
       setImportLoading(false);
     }
   }
 
-  function applyOperation(op: ImportedOperation) {
-    const server = (importResult?.base_url ?? "").replace(/\/$/, "");
-    const path = op.path.startsWith("/") ? op.path : `/${op.path}`;
-    const name = importResult?.title
-      ? `${importResult.title}${op.summary ? ` — ${op.summary}` : ""}`
-      : op.summary || op.path;
-    setEditingId(null);
-    setForm({
-      ...initialForm,
-      name: name.slice(0, 120),
-      base_url: server ? `${server}${path}` : "",
-      request_method: op.method,
-      request_body_template: op.request_body_template ?? "",
-    });
-    setFieldErrors({});
-    setFormError(null);
-    setShowImport(false);
-    setShowForm(true);
+  function updateRow(i: number, patch: Partial<StageRow>) {
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
+
+  async function runBulkImport() {
+    const selected = rows.filter((r) => r.include && r.name.trim() && r.base_url.trim());
+    if (selected.length === 0) { setImportErr("Selecione ao menos uma operação válida."); return; }
+    setImportLoading(true); setImportErr(null);
+    try {
+      const summary = await bulkImportApis(selected.map((r) => ({
+        name: r.name.trim(),
+        base_url: r.base_url.trim(),
+        request_method: r.request_method || null,
+        request_body_template: r.request_body_template || null,
+      })));
+      setImportSummary(summary);
+      await load();
+    } catch (e) {
+      setImportErr(e instanceof Error ? e.message : "Falha ao importar");
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
+  const allSelected = rows.length > 0 && rows.every((r) => r.include);
+  const selectedCount = rows.filter((r) => r.include).length;
 
   async function load() {
     try {
@@ -404,7 +444,7 @@ export default function ApisPage() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => { setImportErr(null); setImportResult(null); setShowImport(true); }}
+            onClick={() => { resetImport(); setShowImport(true); }}
             className="px-5 py-3 rounded-xl font-bold flex items-center gap-2 bg-surface-container-high text-on-surface hover:brightness-95 transition-all"
           >
             <span className="material-symbols-outlined">upload_file</span>
@@ -420,61 +460,147 @@ export default function ApisPage() {
         </div>
       </div>
 
-      {/* Modal de import de OpenAPI/Swagger */}
+      {/* Modal de import de OpenAPI/Swagger (URL → staging → rascunhos) */}
       {showImport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowImport(false)}>
           <div onClick={(e) => e.stopPropagation()}
-            className="bg-surface-container-lowest rounded-2xl p-6 w-full max-w-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            className="bg-surface-container-lowest rounded-2xl p-6 w-full max-w-4xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-bold text-on-surface">Importar OpenAPI / Swagger</h3>
               <button onClick={() => setShowImport(false)} className="text-on-surface-variant hover:text-on-surface">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
+
+            {/* Passo 1: URL da doc */}
             <p className="text-sm text-on-surface-variant">
-              Cole o JSON ou YAML da doc da API. Escolha uma operação para pré-preencher o cadastro
-              (base URL, método e body template).
+              Informe a URL da doc da API (ex.: <code className="font-mono">https://api.exemplo.com/openapi.json</code>).
+              Buscamos todas as operações para você revisar e importar como rascunho.
             </p>
-            <textarea
-              rows={8}
-              className="w-full bg-surface-container-low border-none rounded-xl py-3 px-4 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container outline-none font-mono text-xs"
-              placeholder='{"openapi":"3.0.0", ...}  ou  openapi: 3.0.0 ...'
-              value={importText}
-              onChange={(e) => setImportText(e.target.value)}
-            />
-            {importErr && <div className="bg-error-container/30 text-error rounded-lg px-4 py-2 text-sm">{importErr}</div>}
-            <div className="flex justify-end">
-              <button onClick={parseImport} disabled={importLoading || !importText.trim()}
-                className="px-5 py-2 rounded-lg bg-primary text-white font-bold text-sm hover:opacity-90 disabled:opacity-50">
-                {importLoading ? "Lendo…" : "Ler spec"}
+            <div className="flex gap-2">
+              <input
+                type="url"
+                className="flex-1 bg-surface-container-low border-none rounded-xl py-3 px-4 text-on-surface placeholder:text-outline-variant focus:ring-2 focus:ring-primary-container outline-none font-mono text-xs"
+                placeholder="https://api.exemplo.com/openapi.json"
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && importUrl.trim()) parseImport(); }}
+              />
+              <button onClick={parseImport} disabled={importLoading || !importUrl.trim()}
+                className="px-5 py-2 rounded-lg bg-primary text-white font-bold text-sm hover:opacity-90 disabled:opacity-50 whitespace-nowrap">
+                {importLoading ? "Lendo…" : "Ler doc"}
               </button>
             </div>
+            {importErr && <div className="bg-error-container/30 text-error rounded-lg px-4 py-2 text-sm">{importErr}</div>}
 
-            {importResult && (
+            {/* Passo 3: resumo pós-importação */}
+            {importSummary && (
               <div className="space-y-2">
-                <p className="text-xs text-on-surface-variant">
-                  {importResult.title ?? "API"} · {importResult.base_url ?? "sem servidor"} ·{" "}
-                  {importResult.operations.length} operação(ões)
-                </p>
-                <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 divide-y divide-outline-variant/10 max-h-72 overflow-y-auto">
-                  {importResult.operations.length === 0 && (
-                    <p className="py-6 text-center text-on-surface-variant text-sm">Nenhuma operação encontrada.</p>
-                  )}
-                  {importResult.operations.map((op, i) => (
-                    <button key={i} onClick={() => applyOperation(op)}
-                      className="w-full text-left px-4 py-3 hover:bg-surface-container-high transition-colors flex items-center gap-3">
-                      <span className={`text-[10px] font-black uppercase rounded-md px-2 py-1 ${
-                        op.request_body_template ? "bg-primary/15 text-primary" : "bg-surface-container-high text-on-surface-variant"
-                      }`}>{op.method}</span>
-                      <span className="min-w-0 flex-1">
-                        <span className="font-mono text-xs text-on-surface truncate block">{op.path}</span>
-                        {op.summary && <span className="text-xs text-on-surface-variant truncate block">{op.summary}</span>}
-                      </span>
-                      <span className="material-symbols-outlined text-on-surface-variant text-[18px]">arrow_forward</span>
-                    </button>
-                  ))}
+                <div className="bg-primary/10 text-on-surface rounded-lg px-4 py-3 text-sm">
+                  <strong>{importSummary.created}</strong> criada(s) como rascunho ·{" "}
+                  <strong>{importSummary.skipped}</strong> ignorada(s).
+                  As novas APIs entram <strong>inativas</strong>; revise e ative cada uma na lista.
+                </div>
+                {importSummary.results.filter((r) => r.status === "skipped").length > 0 && (
+                  <ul className="text-xs text-on-surface-variant list-disc pl-5">
+                    {importSummary.results.filter((r) => r.status === "skipped").map((r, i) => (
+                      <li key={i}>{r.name}: {r.reason ?? "ignorada"}</li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex justify-end">
+                  <button onClick={() => setShowImport(false)}
+                    className="px-5 py-2 rounded-lg bg-primary text-white font-bold text-sm hover:opacity-90">
+                    Concluir
+                  </button>
                 </div>
               </div>
+            )}
+
+            {/* Passo 2: tabela de staging */}
+            {!importSummary && rows.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-on-surface-variant">
+                    {importTitle ?? "API"} · {rows.length} operação(ões) · {selectedCount} selecionada(s)
+                  </p>
+                  <label className="flex items-center gap-2 text-xs text-on-surface-variant cursor-pointer">
+                    <input type="checkbox" checked={allSelected}
+                      onChange={(e) => setRows((prev) => prev.map((r) => ({ ...r, include: e.target.checked })))} />
+                    Selecionar todas
+                  </label>
+                </div>
+                <div className="rounded-xl border border-outline-variant/10 divide-y divide-outline-variant/10 max-h-[50vh] overflow-y-auto">
+                  {rows.map((r, i) => (
+                    <div key={i} className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <input type="checkbox" checked={r.include}
+                          onChange={(e) => updateRow(i, { include: e.target.checked })} />
+                        <span className={`text-[10px] font-black uppercase rounded-md px-2 py-1 ${
+                          r.request_body_template ? "bg-primary/15 text-primary" : "bg-surface-container-high text-on-surface-variant"
+                        }`}>{r.request_method}</span>
+                        <input
+                          className="flex-1 min-w-0 bg-surface-container-low border-none rounded-lg py-1.5 px-2 text-on-surface text-xs outline-none focus:ring-2 focus:ring-primary-container"
+                          value={r.name}
+                          onChange={(e) => updateRow(i, { name: e.target.value })}
+                          placeholder="Nome da API"
+                        />
+                        <button onClick={() => setExpandedRow(expandedRow === i ? null : i)}
+                          className="text-on-surface-variant hover:text-on-surface" title="Detalhes">
+                          <span className="material-symbols-outlined text-[18px]">
+                            {expandedRow === i ? "expand_less" : "expand_more"}
+                          </span>
+                        </button>
+                      </div>
+                      {expandedRow === i && (
+                        <div className="mt-2 pl-7 space-y-2">
+                          <label className="block text-[11px] text-on-surface-variant">Base URL</label>
+                          <input
+                            className="w-full bg-surface-container-low border-none rounded-lg py-1.5 px-2 text-on-surface text-xs font-mono outline-none focus:ring-2 focus:ring-primary-container"
+                            value={r.base_url}
+                            onChange={(e) => updateRow(i, { base_url: e.target.value })}
+                          />
+                          <div className="flex items-center gap-2">
+                            <label className="text-[11px] text-on-surface-variant">Método</label>
+                            <select
+                              className="bg-surface-container-low border-none rounded-lg py-1.5 px-2 text-on-surface text-xs outline-none focus:ring-2 focus:ring-primary-container"
+                              value={r.request_method}
+                              onChange={(e) => updateRow(i, { request_method: e.target.value })}>
+                              {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
+                                <option key={m} value={m}>{m}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <label className="block text-[11px] text-on-surface-variant">Body template</label>
+                          <textarea
+                            rows={4}
+                            className="w-full bg-surface-container-low border-none rounded-lg py-1.5 px-2 text-on-surface text-xs font-mono outline-none focus:ring-2 focus:ring-primary-container"
+                            value={r.request_body_template}
+                            onChange={(e) => updateRow(i, { request_body_template: e.target.value })}
+                            placeholder="(sem body template)"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setShowImport(false)}
+                    className="px-4 py-2 rounded-lg text-sm text-on-surface-variant hover:bg-surface-container-high">
+                    Cancelar
+                  </button>
+                  <button onClick={runBulkImport} disabled={importLoading || selectedCount === 0}
+                    className="px-5 py-2 rounded-lg bg-primary text-white font-bold text-sm hover:opacity-90 disabled:opacity-50">
+                    {importLoading ? "Importando…" : `Importar ${selectedCount} como rascunho`}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!importSummary && rows.length === 0 && !importLoading && importUrl && importErr === null && (
+              <p className="py-2 text-center text-on-surface-variant text-sm">
+                Clique em &quot;Ler doc&quot; para buscar as operações.
+              </p>
             )}
           </div>
         </div>

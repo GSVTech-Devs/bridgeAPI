@@ -6,13 +6,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.domains.apis.openapi import InvalidSpecError, parse_text
+from app.domains.apis.openapi import InvalidSpecError, fetch_spec
 from app.domains.apis.schemas import (
     APICreateRequest,
     APIDetailResponse,
     APIListResponse,
     APIResponse,
     APIUpdateRequest,
+    BulkImportRequest,
+    BulkImportResponse,
     EndpointCreateRequest,
     EndpointResponse,
     ImportedOperation,
@@ -24,6 +26,7 @@ from app.domains.apis.service import (
     DuplicateAPINameError,
     DuplicateSlugError,
     add_endpoint,
+    bulk_register_apis,
     delete_api,
     disable_api,
     enable_api,
@@ -78,10 +81,10 @@ async def import_openapi(
     body: OpenAPIImportRequest,
     _: MeResponse = Depends(get_current_user),
 ) -> OpenAPIImportResponse:
-    """Parseia um OpenAPI/Swagger (JSON ou YAML colado) e sugere, por operação,
-    o método e um body template — para pré-preencher o cadastro da API."""
+    """Busca o OpenAPI/Swagger na URL da doc e devolve, por operação, o método e
+    um body template — para o admin revisar e importar em massa (ver /import/bulk)."""
     try:
-        parsed = parse_text(body.spec)
+        parsed = await fetch_spec(body.url)
     except InvalidSpecError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
@@ -91,6 +94,22 @@ async def import_openapi(
         base_url=parsed["base_url"],
         operations=[ImportedOperation(**op) for op in parsed["operations"]],
     )
+
+
+@router.post("/import/bulk", response_model=BulkImportResponse)
+async def import_bulk(
+    body: BulkImportRequest,
+    db: AsyncSession = Depends(get_db),
+    _: MeResponse = Depends(get_current_user),
+) -> BulkImportResponse:
+    """Cria as APIs selecionadas do import como rascunho (``inactive``).
+
+    Cada item vem pré-configurado da tela de import; o admin ativa e termina de
+    configurar (proxy/captcha/custo) depois, na tela de edição de cada uma."""
+    results = await bulk_register_apis(db, [item.model_dump() for item in body.items])
+    created = sum(1 for r in results if r["status"] == "created")
+    skipped = len(results) - created
+    return BulkImportResponse(created=created, skipped=skipped, results=results)
 
 
 @router.get("", response_model=APIListResponse)

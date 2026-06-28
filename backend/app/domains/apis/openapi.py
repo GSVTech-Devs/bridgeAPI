@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import json
 from typing import Any, Optional
+from urllib.parse import urlparse
+
+import httpx
 
 _METHODS = ("get", "post", "put", "patch", "delete")
 _MAX_DEPTH = 8
@@ -170,3 +173,24 @@ def parse_text(text: str) -> dict:
     if not isinstance(doc, dict) or ("paths" not in doc and "swagger" not in doc and "openapi" not in doc):
         raise InvalidSpecError("Documento não parece um OpenAPI/Swagger válido")
     return parse_spec(doc)
+
+
+async def fetch_spec(url: str, *, timeout: float = 15.0) -> dict:
+    """Busca o spec na URL da doc (ex.: ``/openapi.json``) e devolve ``parse_spec``.
+
+    Faz o fetch no servidor (evita CORS no front). Aceita só http(s); o corpo pode
+    ser JSON ou YAML (delegado a ``parse_text``). Erros viram ``InvalidSpecError``.
+    """
+    parsed = urlparse((url or "").strip())
+    if parsed.scheme not in ("http", "https"):
+        raise InvalidSpecError("A URL deve começar com http:// ou https://")
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            resp = await client.get(url, headers={"Accept": "application/json, application/yaml, text/yaml, */*"})
+            resp.raise_for_status()
+            text = resp.text
+    except InvalidSpecError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise InvalidSpecError(f"Não foi possível buscar o spec na URL: {exc}")
+    return parse_text(text)

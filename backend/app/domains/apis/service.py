@@ -38,6 +38,7 @@ async def register_api(
     uses_captcha: bool = False,
     request_method: str | None = None,
     request_body_template: str | None = None,
+    status: APIStatus = APIStatus.ACTIVE,
 ) -> ExternalAPI:
     existing = await db.execute(select(ExternalAPI).where(ExternalAPI.name == name))
     if existing.scalar_one_or_none() is not None:
@@ -63,11 +64,55 @@ async def register_api(
         uses_captcha=uses_captcha,
         request_method=request_method or None,
         request_body_template=request_body_template or None,
+        status=status,
     )
     db.add(api)
     await db.commit()
     await db.refresh(api)
     return api
+
+
+async def bulk_register_apis(
+    db: AsyncSession, items: list[dict]
+) -> list[dict]:
+    """Cria várias APIs como rascunho (``INACTIVE``), uma por item.
+
+    Resiliente: itens com nome/slug duplicado ou base_url inválido são pulados
+    com um motivo, sem abortar o lote. Devolve um resultado por item:
+    ``{name, status: created|skipped, id?, reason?}``.
+    """
+    results: list[dict] = []
+    for item in items:
+        name = item.get("name") or ""
+        base_url = (item.get("base_url") or "").strip()
+        if not name or not base_url:
+            results.append({"name": name, "status": "skipped", "reason": "nome ou base_url ausente"})
+            continue
+        if not (base_url.startswith("http://") or base_url.startswith("https://")):
+            results.append({"name": name, "status": "skipped", "reason": "base_url deve ser http(s)"})
+            continue
+        auth_raw = item.get("auth_type") or "none"
+        try:
+            auth_type = APIAuthType(auth_raw)
+        except ValueError:
+            auth_type = APIAuthType.NONE
+        try:
+            api = await register_api(
+                db,
+                name=name,
+                base_url=base_url,
+                auth_type=auth_type,
+                cost_per_query=item.get("cost_per_query"),
+                uses_proxy=bool(item.get("uses_proxy", False)),
+                uses_captcha=bool(item.get("uses_captcha", False)),
+                request_method=item.get("request_method"),
+                request_body_template=item.get("request_body_template"),
+                status=APIStatus.INACTIVE,
+            )
+            results.append({"name": name, "status": "created", "id": str(api.id)})
+        except (DuplicateAPINameError, DuplicateSlugError) as exc:
+            results.append({"name": name, "status": "skipped", "reason": str(exc)})
+    return results
 
 
 async def list_apis(
