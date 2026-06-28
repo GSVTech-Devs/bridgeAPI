@@ -5,7 +5,7 @@ import {
   getApis, createApi, updateApi, enableApi, disableApi, deleteApi,
   getApiProxies, createApiProxy, updateApiProxy, deleteApiProxy,
   getApiCaptchas, createApiCaptcha, updateApiCaptcha, deleteApiCaptcha,
-  importOpenApi, bulkImportApis,
+  importOpenApi, bulkImportApis, generateServiceToken,
   type Proxy, type ProxyInput, type Captcha, type CaptchaInput, type ImportedOperation,
   type BulkImportResult,
 } from "@/lib/api";
@@ -859,6 +859,13 @@ export default function ApisPage() {
               </div>
             </form>
 
+            {/* Conexão/integração — só em edição (precisa do api_id salvo) */}
+            {editingId && (
+              <div className="mt-10 border-t border-outline-variant/15 pt-8">
+                <ConnectionPanel apiId={editingId} slug={form.slug} authType={form.auth_type} />
+              </div>
+            )}
+
             {/* Proxy/captcha da API — só em edição (precisa do api_id salvo) */}
             {editingId && (form.uses_proxy || form.uses_captcha) && (
               <div className="mt-10 space-y-8 border-t border-outline-variant/15 pt-8">
@@ -1001,6 +1008,139 @@ function statusPill(s: string): string {
     case "failing": return "bg-error text-on-error";
     default: return "bg-surface-container-high text-on-surface-variant";
   }
+}
+
+// ---------------------------------------------------------------------------
+// Conexão/integração: mostra o api_id, a URL no Bridge e gera o service token
+// (consumido pela SDK da API downstream). Tira o admin do curl manual.
+// ---------------------------------------------------------------------------
+function CopyField({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard indisponível (http/sem permissão) — ignora */
+    }
+  }
+  return (
+    <div className="space-y-1">
+      <label className="block text-xs font-bold text-on-surface-variant">{label}</label>
+      <div className="flex items-center gap-2">
+        <code className={`flex-1 min-w-0 bg-surface-container-low rounded-lg py-2 px-3 text-on-surface text-xs break-all ${mono ? "font-mono" : ""}`}>
+          {value}
+        </code>
+        <button type="button" onClick={copy} aria-label={`Copiar ${label}`}
+          className="shrink-0 px-3 py-2 rounded-lg bg-surface-container-high text-on-surface text-xs font-bold hover:bg-surface-container-highest flex items-center gap-1">
+          <span className="material-symbols-outlined text-[16px]">{copied ? "check" : "content_copy"}</span>
+          {copied ? "Copiado" : "Copiar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ConnectionPanel({ apiId, slug, authType }: { apiId: string; slug?: string; authType?: string }) {
+  const [token, setToken] = useState<string | null>(null);
+  const [prefix, setPrefix] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [confirmRotate, setConfirmRotate] = useState(false);
+
+  const proxyUrl = `${BRIDGE_BASE}/proxy/${apiId}/`;
+
+  async function generate() {
+    setLoading(true); setErr(null);
+    try {
+      const res = await generateServiceToken(apiId);
+      setToken(res.service_token);
+      setPrefix(res.prefix);
+      setConfirmRotate(false);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Falha ao gerar o service token");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <h4 className="text-lg font-bold text-on-surface flex items-center gap-2">
+        <span className="material-symbols-outlined text-[20px]">cable</span> Conexão / Integração
+      </h4>
+
+      <CopyField label="API ID" value={apiId} />
+      <CopyField label="URL no Bridge (proxy)" value={`${proxyUrl}{path}`} />
+      {slug && (
+        <p className="text-xs text-on-surface-variant">
+          Ou pela rota com slug: <code className="font-mono">{BRIDGE_BASE}/apis/{slug}/{"{path}"}/{"{api_key}"}</code>
+        </p>
+      )}
+
+      <div className="bg-surface-container-low rounded-xl p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-bold text-on-surface">Service token (SDK)</p>
+            <p className="text-xs text-on-surface-variant">
+              A API downstream usa este token (<code className="font-mono">BRIDGE_SERVICE_TOKEN</code>) para enviar logs/status e buscar proxies.
+            </p>
+          </div>
+          {!token && (
+            <button type="button" onClick={generate} disabled={loading}
+              className="shrink-0 px-4 py-2 rounded-lg bg-primary text-white font-bold text-xs hover:opacity-90 disabled:opacity-50">
+              {loading ? "Gerando…" : prefix ? "Gerar de novo" : "Gerar token"}
+            </button>
+          )}
+        </div>
+
+        {err && <p className="text-xs text-error">{err}</p>}
+
+        {token ? (
+          <div className="space-y-2">
+            <CopyField label="Token (copie agora — não será exibido de novo)" value={token} />
+            <p className="text-xs text-amber-700 flex items-center gap-1">
+              <span className="material-symbols-outlined text-[14px]">warning</span>
+              Guarde no <code className="font-mono">.env</code> da API. A plataforma só armazena o hash.
+            </p>
+          </div>
+        ) : prefix ? (
+          <p className="text-xs text-on-surface-variant">
+            Token ativo com prefixo <code className="font-mono">{prefix}</code>. Gere de novo para rotacionar (invalida o anterior).
+          </p>
+        ) : null}
+
+        {/* Confirmação de rotação quando já existe um token gerado nesta sessão */}
+        {token && (
+          confirmRotate ? (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-on-surface-variant">Rotacionar invalida o token atual. Confirmar?</span>
+              <button type="button" onClick={generate} disabled={loading}
+                className="px-3 py-1.5 rounded-lg bg-error text-on-error font-bold hover:opacity-90 disabled:opacity-50">
+                {loading ? "…" : "Rotacionar"}
+              </button>
+              <button type="button" onClick={() => setConfirmRotate(false)}
+                className="px-3 py-1.5 rounded-lg text-on-surface-variant hover:bg-surface-container-high">
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setConfirmRotate(true)}
+              className="text-xs font-bold text-primary hover:underline">
+              Rotacionar token
+            </button>
+          )
+        )}
+      </div>
+
+      <p className="text-xs text-on-surface-variant">
+        Lembrete: a Bridge autentica na API downstream pela <strong>Master Key</strong>
+        {authType ? <> (auth <code className="font-mono">{authType}</code>)</> : null}; esse valor deve ser igual ao
+        {" "}<code className="font-mono">BRIDGE_INBOUND_TOKEN</code> do <code className="font-mono">.env</code> dela.
+      </p>
+    </div>
+  );
 }
 
 const PROXY_SCHEMES = ["http", "https", "socks5"];

@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../src/mocks/server";
 import {
   apiFetch,
+  generateServiceToken,
   getPortalCompanies,
   login,
   portalLogin,
@@ -120,6 +121,26 @@ describe("login", () => {
     await expect(login("bad@email.com", "wrong")).rejects.toThrow(
       "Invalid credentials"
     );
+  });
+});
+
+describe("generateServiceToken", () => {
+  it("POSTs to the ingest token endpoint and returns the raw token", async () => {
+    let method = "";
+    server.use(
+      http.post(`${BASE}/ingest/apis/api-123/token`, ({ request }) => {
+        method = request.method;
+        return HttpResponse.json({
+          api_id: "api-123",
+          service_token: "brgsvc_secret",
+          prefix: "brgsvc_a1b2",
+        });
+      })
+    );
+    const res = await generateServiceToken("api-123");
+    expect(method).toBe("POST");
+    expect(res.service_token).toBe("brgsvc_secret");
+    expect(res.prefix).toBe("brgsvc_a1b2");
   });
 });
 

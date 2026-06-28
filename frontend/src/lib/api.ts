@@ -344,6 +344,15 @@ export function deleteApi(id: string) {
   return apiFetch(`/apis/${id}`, { method: "DELETE" });
 }
 
+// Gera (ou rotaciona) o service token de uma API. O token cru só é revelado
+// aqui, no momento da geração; a plataforma guarda apenas o hash.
+export function generateServiceToken(apiId: string) {
+  return apiFetch<{ api_id: string; service_token: string; prefix: string }>(
+    `/ingest/apis/${apiId}/token`,
+    { method: "POST" }
+  );
+}
+
 export function getPermissions() {
   return apiFetch<{
     items: {
