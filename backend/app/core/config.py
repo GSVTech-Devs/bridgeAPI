@@ -15,6 +15,16 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
 
+    # CORS — origens permitidas, separadas por vírgula.
+    # Dev usa localhost; em produção defina CORS_ORIGINS com o domínio do front.
+    cors_origins: str = (
+        "http://localhost:3000,http://127.0.0.1:3000,http://172.16.254.21:3000"
+    )
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
     # PostgreSQL
     database_url: str = "postgresql+asyncpg://bridge:bridge@localhost:5432/bridgeapi"
 

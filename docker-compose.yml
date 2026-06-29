@@ -81,8 +81,9 @@ services:
       target: production
     container_name: bridge_backend
     env_file: .env
+    # BIND_IP=127.0.0.1 em produção (nginx no host faz o proxy); 0.0.0.0 em dev/LAN.
     ports:
-      - "8000:8000"
+      - "${BIND_IP:-0.0.0.0}:8000:8000"
     depends_on:
       migrator:
         condition: service_completed_successfully
@@ -99,7 +100,7 @@ services:
     environment:
       NODE_ENV: production
     ports:
-      - "3000:3000"
+      - "${BIND_IP:-0.0.0.0}:3000:3000"
     depends_on:
       - backend
     profiles: [app]
