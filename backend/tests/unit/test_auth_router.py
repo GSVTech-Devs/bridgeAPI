@@ -31,6 +31,16 @@ def make_owner(account_id: uuid.UUID, email: str = "owner@acme.com") -> User:
     )
 
 
+def make_member(account_id: uuid.UUID, email: str = "person@x.com") -> User:
+    return User(
+        id=uuid.uuid4(),
+        email=email,
+        password_hash=hash_password("secret123"),
+        role=UserRole.MEMBER,
+        account_id=account_id,
+    )
+
+
 def make_account(status: AccountStatus = AccountStatus.ACTIVE) -> Account:
     return Account(
         id=uuid.uuid4(), name="Acme", type=AccountType.COMPANY, status=status
@@ -225,6 +235,72 @@ async def test_portal_companies_rejects_non_portal_token(client: AsyncClient) ->
             headers={"Authorization": f"Bearer {token}"},
         )
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_portal_companies_includes_member_not_only_owner(
+    client: AsyncClient,
+) -> None:
+    # Um mesmo email como owner de uma empresa e member (sub-usuário criado pela
+    # empresa) de outra deve enxergar AS DUAS no seletor — membros não são
+    # tratados diferente de owners no acesso multi-empresa.
+    acct_a, acct_b = make_account(), make_account()
+    owner = make_owner(acct_a.id, email="person@x.com")
+    member = make_member(acct_b.id, email="person@x.com")
+    by_id = {str(acct_a.id): acct_a, str(acct_b.id): acct_b}
+    token = create_access_token("person@x.com", role="portal_identity")
+    with (
+        patch(
+            "app.domains.auth.router.get_users_by_email",
+            new=AsyncMock(return_value=[owner, member]),
+        ),
+        patch(
+            "app.domains.auth.router.get_account_by_id",
+            new=AsyncMock(side_effect=lambda db, account_id: by_id[str(account_id)]),
+        ),
+    ):
+        response = await client.get(
+            "/auth/portal/companies",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert response.status_code == 200
+    by_account = {
+        c["account_id"]: c["role"] for c in response.json()["companies"]
+    }
+    assert by_account == {
+        str(acct_a.id): UserRole.OWNER.value,
+        str(acct_b.id): UserRole.MEMBER.value,
+    }
+
+
+@pytest.mark.asyncio
+async def test_portal_select_works_for_member(client: AsyncClient) -> None:
+    # Membro (não account holder) consegue escolher a empresa e receber o token
+    # escopado, igual ao owner.
+    account = make_account()
+    member = make_member(account.id, email="person@x.com")
+    token = create_access_token("person@x.com", role="portal_identity")
+    with (
+        patch(
+            "app.domains.auth.router.get_users_by_email",
+            new=AsyncMock(return_value=[member]),
+        ),
+        patch(
+            "app.domains.auth.router.get_account_user",
+            new=AsyncMock(return_value=member),
+        ),
+        patch(
+            "app.domains.auth.router.get_account_by_id",
+            new=AsyncMock(return_value=account),
+        ),
+    ):
+        response = await client.post(
+            "/auth/portal/select",
+            json={"account_id": str(account.id)},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert response.status_code == 200
+    assert "access_token" in response.json()
 
 
 @pytest.mark.asyncio

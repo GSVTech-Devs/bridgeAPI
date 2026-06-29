@@ -259,7 +259,9 @@ function MemberModal({
       setError("Selecione uma role.");
       return;
     }
-    if (!isValidPassword(password)) {
+    // Senha opcional: se o email já existir em outra empresa, o backend reusa a
+    // credencial existente e ignora a senha. Só validamos quando preenchida.
+    if (password && !isValidPassword(password)) {
       setError(PASSWORD_REQUIREMENTS_MESSAGE);
       return;
     }
@@ -267,7 +269,7 @@ function MemberModal({
     try {
       await adminCreateMember(accountId, {
         email: email.trim(),
-        password,
+        password: password || undefined,
         role_id: roleId,
       });
       onSaved();
@@ -315,7 +317,7 @@ function MemberModal({
 
           <div>
             <label className="block text-xs font-bold text-outline uppercase tracking-widest mb-1.5">
-              {member ? "Nova senha" : "Senha inicial"}
+              {member ? "Nova senha" : "Senha inicial (opcional)"}
             </label>
             <input
               aria-label="Senha"
@@ -325,10 +327,11 @@ function MemberModal({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               minLength={member ? undefined : 8}
-              required={!member}
             />
             <p className="text-xs text-on-surface-variant mt-1.5">
-              {PASSWORD_REQUIREMENTS_MESSAGE}
+              {member
+                ? PASSWORD_REQUIREMENTS_MESSAGE
+                : "Se o email já existir em outra empresa, o usuário entra com a senha que já possui; deixe em branco. Para um email novo, defina uma senha inicial."}
             </p>
           </div>
 

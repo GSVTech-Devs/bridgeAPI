@@ -1071,7 +1071,7 @@ export function getMembers() {
 
 export function createMember(data: {
   email: string;
-  password: string;
+  password?: string;
   role_id: string;
 }) {
   return apiFetch<Member>("/portal/members", {
@@ -1135,7 +1135,7 @@ export function adminGetMembers(accountId: string) {
 
 export function adminCreateMember(
   accountId: string,
-  data: { email: string; password: string; role_id: string }
+  data: { email: string; password?: string; role_id: string }
 ) {
   return apiFetch<Member>(`/admin/accounts/${accountId}/members`, {
     method: "POST",
