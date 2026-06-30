@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getUserApiDocs, type UserDocOperation } from "@/lib/api";
+import Markdown from "@/components/Markdown";
 
 const BRIDGE_BASE =
   process.env.NEXT_PUBLIC_BRIDGE_URL ??
@@ -70,7 +71,7 @@ function OperationCard({ op, slug }: { op: UserDocOperation; slug: string | null
         <code className="font-mono text-sm text-on-surface break-all">{op.path}</code>
       </div>
       {op.summary && <p className="text-on-surface font-bold mt-2">{op.summary}</p>}
-      {op.description && <p className="text-sm text-on-surface-variant mt-1">{op.description}</p>}
+      {op.description && <Markdown className="mt-1">{op.description}</Markdown>}
 
       {url && (
         <div className="bg-surface-container-low rounded-lg p-3 mt-4">
