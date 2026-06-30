@@ -809,3 +809,90 @@ async def test_slug_route_records_metric(client: AsyncClient) -> None:
         await client.get(slug_url())
 
     mock_metric.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Rota com auth no header: /apis/{slug}/{query}
+# (Authorization: Bearer <bridge_key> ou X-Bridge-Key). Sem o token na URL.
+# ---------------------------------------------------------------------------
+
+
+def header_url(query: str = "consultar") -> str:
+    return f"/apis/{SLUG}/{query}"
+
+
+def _header_route_patches(active_api, validate=None):
+    return (
+        patch(
+            "app.domains.proxy.router.get_api_by_slug",
+            new=AsyncMock(return_value=active_api),
+        ),
+        patch(
+            "app.domains.proxy.router.validate_request",
+            new=validate
+            or AsyncMock(return_value=(make_api_key(), make_client(), active_api)),
+        ),
+        patch("app.domains.proxy.router.build_upstream_headers", return_value={}),
+        patch(
+            "app.domains.proxy.router.forward_to_upstream",
+            new=AsyncMock(return_value=make_upstream_response(200, json_body={"ok": True})),
+        ),
+        patch("app.domains.proxy.router.record_metric", new=AsyncMock()),
+    )
+
+
+@pytest.mark.asyncio
+async def test_header_route_post_with_bearer_returns_200(client: AsyncClient) -> None:
+    active_api = make_api(slug=SLUG)
+    p = _header_route_patches(active_api)
+    with p[0], p[1], p[2], p[3], p[4]:
+        response = await client.post(
+            header_url("consultar"),
+            headers={"Authorization": f"Bearer {BRIDGE_KEY}"},
+            json={"placa": "ABC1234"},
+        )
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_header_route_passes_bearer_token_as_presented_key(
+    client: AsyncClient,
+) -> None:
+    active_api = make_api(slug=SLUG)
+    validate = AsyncMock(return_value=(make_api_key(), make_client(), active_api))
+    p = _header_route_patches(active_api, validate=validate)
+    with p[0], p[1], p[2], p[3], p[4]:
+        await client.post(
+            header_url(), headers={"Authorization": f"Bearer {BRIDGE_KEY}"}
+        )
+    # validate_request(db, presented_key, api_id, redis)
+    assert validate.call_args.args[1] == BRIDGE_KEY
+
+
+@pytest.mark.asyncio
+async def test_header_route_accepts_x_bridge_key(client: AsyncClient) -> None:
+    active_api = make_api(slug=SLUG)
+    validate = AsyncMock(return_value=(make_api_key(), make_client(), active_api))
+    p = _header_route_patches(active_api, validate=validate)
+    with p[0], p[1], p[2], p[3], p[4]:
+        await client.post(header_url(), headers={"X-Bridge-Key": BRIDGE_KEY})
+    assert validate.call_args.args[1] == BRIDGE_KEY
+
+
+@pytest.mark.asyncio
+async def test_header_route_missing_auth_returns_401(client: AsyncClient) -> None:
+    response = await client.post(header_url("consultar"))
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_header_route_unknown_slug_returns_404(client: AsyncClient) -> None:
+    with patch(
+        "app.domains.proxy.router.get_api_by_slug",
+        new=AsyncMock(side_effect=APINotFoundError("nope")),
+    ):
+        response = await client.post(
+            header_url(), headers={"Authorization": f"Bearer {BRIDGE_KEY}"}
+        )
+    assert response.status_code == 404

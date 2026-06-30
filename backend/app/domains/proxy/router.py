@@ -278,6 +278,60 @@ async def proxy_by_slug(
     )
 
 
+def _presented_key_from_headers(request: Request) -> Optional[str]:
+    """Lê a bridge key do cabeçalho: Authorization: Bearer <key> ou X-Bridge-Key.
+
+    Usada quando o cliente não coloca o token na URL (comum em POST, onde a
+    convenção é mandar a credencial no header Authorization)."""
+    auth = request.headers.get("authorization")
+    if auth and auth[:7].lower() == "bearer ":
+        token = auth[7:].strip()
+        if token:
+            return token
+    return request.headers.get("x-bridge-key")
+
+
+@router.api_route(
+    "/apis/{slug}/{query}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+)
+async def proxy_by_slug_header_auth(
+    slug: str,
+    query: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    redis=Depends(get_redis),
+    mongo_db=Depends(get_mongo_db),
+) -> Response:
+    """Mesma semântica de ``proxy_by_slug``, mas com a bridge key no header
+    (Authorization: Bearer / X-Bridge-Key) em vez de no final da URL."""
+    presented_key = _presented_key_from_headers(request)
+    if not presented_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing bridge key: send 'Authorization: Bearer <key>' or "
+            "'X-Bridge-Key', or put the key in the URL path.",
+        )
+
+    try:
+        api = await get_api_by_slug(db, slug)
+    except APINotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"API '{slug}' not found",
+        )
+
+    return await _dispatch(
+        api_id=str(api.id),
+        path=query,
+        presented_key=presented_key,
+        request=request,
+        db=db,
+        redis=redis,
+        mongo_db=mongo_db,
+    )
+
+
 @router.api_route(
     "/proxy/{api_id}/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
