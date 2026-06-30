@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getClientDashboard, getClientByApi, getClientStatusCodes, getLogs, getClientStatus, type ClientStatusItem } from "@/lib/api";
+import { statusTone } from "@/lib/status";
 import Link from "next/link";
 import { useCapabilities } from "@/contexts/CapabilitiesContext";
 import { CAP } from "@/lib/capabilities";
@@ -64,16 +65,6 @@ function methodBadgeColor(method: string) {
     case "PATCH": return "bg-yellow-50 text-yellow-700";
     case "DELETE": return "bg-red-50 text-red-700";
     default: return "bg-surface-container text-on-surface-variant";
-  }
-}
-
-// Cor/rótulo por status de readiness (healthy/degraded/down/unknown).
-function statusTone(status: string): { dot: string; pill: string; label: string } {
-  switch (status) {
-    case "healthy": return { dot: "bg-emerald-500", pill: "bg-emerald-50 text-emerald-700", label: "Operacional" };
-    case "degraded": return { dot: "bg-yellow-500", pill: "bg-yellow-50 text-yellow-700", label: "Degradado" };
-    case "down": return { dot: "bg-red-500", pill: "bg-red-50 text-red-700", label: "Fora do ar" };
-    default: return { dot: "bg-gray-400", pill: "bg-surface-container text-on-surface-variant", label: "Desconhecido" };
   }
 }
 

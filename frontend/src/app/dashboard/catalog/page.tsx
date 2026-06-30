@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCatalog } from "@/lib/api";
+import { getCatalog, getClientStatus } from "@/lib/api";
+import { statusTone } from "@/lib/status";
 import Link from "next/link";
 
 const BRIDGE_BASE =
@@ -89,6 +90,9 @@ function ApiUrlBlock({ api }: { api: ApiEntry }) {
 
 export default function CatalogPage() {
   const [catalog, setCatalog] = useState<ApiEntry[]>([]);
+  // Status real (heartbeat) por api_id, igual ao dashboard. Vazio se a API
+  // ainda não reportou ou se o cliente não tem a feature de status.
+  const [statusByApi, setStatusByApi] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,6 +101,11 @@ export default function CatalogPage() {
       .then((data) => setCatalog(data.items))
       .catch((err: unknown) => setError(err instanceof Error ? err.message : "Erro ao carregar"))
       .finally(() => setLoading(false));
+    getClientStatus()
+      .then((data) =>
+        setStatusByApi(Object.fromEntries(data.items.map((i) => [i.api_id, i.status])))
+      )
+      .catch(() => setStatusByApi({}));
   }, []);
 
   return (
@@ -137,7 +146,9 @@ export default function CatalogPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-16">
-              {catalog.map((api) => (
+              {catalog.map((api) => {
+                const tone = statusTone(statusByApi[api.id] ?? "unknown");
+                return (
                 <div
                   key={api.id}
                   className="bg-surface-container-lowest rounded-xl p-8 border border-outline-variant/15 flex flex-col hover:shadow-[0_8px_30px_rgb(7,30,39,0.04)] transition-all"
@@ -154,9 +165,9 @@ export default function CatalogPage() {
                     <div>
                       <h2 className="font-headline font-bold text-xl text-on-surface">{api.name}</h2>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className={`w-2 h-2 rounded-full ${api.status === "active" ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" : "bg-outline"}`} />
+                        <span className={`w-2 h-2 rounded-full ${tone.dot}`} />
                         <span className="text-xs text-on-surface-variant uppercase tracking-wider font-semibold">
-                          {api.status === "active" ? "Operational" : api.status}
+                          {tone.label}
                         </span>
                       </div>
                     </div>
@@ -176,7 +187,8 @@ export default function CatalogPage() {
                     <ApiUrlBlock api={api} />
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>
