@@ -15,8 +15,10 @@ class RequestMetric(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id"), index=True)
-    api_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("external_apis.id"), index=True
+    # Nullable: a FK usa ON DELETE SET NULL para preservar o histórico quando a
+    # API é deletada (o vínculo é desfeito, a linha permanece).
+    api_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("external_apis.id"), index=True, nullable=True
     )
     key_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("api_keys.id"), index=True)
     path: Mapped[str] = mapped_column(String(2048))

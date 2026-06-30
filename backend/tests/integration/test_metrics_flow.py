@@ -250,3 +250,39 @@ async def test_empty_metrics_return_zeros_without_division_error(
         "billable_requests": 0,
         "non_billable_requests": 0,
     }
+
+
+async def test_delete_api_preserves_metrics_and_nulls_api_id(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Deletar uma API não pode falhar nem apagar o histórico: o vínculo
+    request_metrics.api_id é desfeito (SET NULL), preservando a linha."""
+    from sqlalchemy import select
+
+    from app.domains.apis.service import delete_api
+
+    acme, _ = await seed_account(db_session)
+    api = await _seed_api(db_session, name="Doomed")
+    key = await _seed_key(db_session, acme.id, "doomedp")
+    await _insert_metric(
+        db_session,
+        account_id=acme.id,
+        api_id=api.id,
+        key_id=key.id,
+        status_code=200,
+        latency_ms=12.0,
+        cost=0.05,
+    )
+
+    await delete_api(db_session, str(api.id))
+
+    # Lê as colunas direto do banco (o SET NULL acontece no nível do Postgres).
+    rows = (
+        await db_session.execute(
+            select(RequestMetric.id, RequestMetric.api_id).where(
+                RequestMetric.account_id == acme.id
+            )
+        )
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].api_id is None
