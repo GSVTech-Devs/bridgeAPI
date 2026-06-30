@@ -38,6 +38,7 @@ _DOMAIN_TABLES = (
     "request_metrics",
     "permissions",
     "api_keys",
+    "api_doc_operations",
     "endpoints",
     "external_apis",
     "users",

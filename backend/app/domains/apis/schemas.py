@@ -26,6 +26,18 @@ def _normalize_method(v: Optional[str]) -> Optional[str]:
     return v
 
 
+def _normalize_openapi_url(v: Optional[str]) -> Optional[str]:
+    """None = não informado; '' = limpa; senão exige http(s)."""
+    if v is None:
+        return None
+    v = v.strip()
+    if v == "":
+        return ""
+    if not v.startswith(("http://", "https://")):
+        raise ValueError("openapi_url must start with http:// or https://")
+    return v
+
+
 class APICreateRequest(BaseModel):
     name: str
     slug: Optional[str] = None
@@ -38,6 +50,12 @@ class APICreateRequest(BaseModel):
     cost_per_query: Optional[float] = None
     uses_proxy: bool = False
     uses_captcha: bool = False
+    openapi_url: Optional[str] = None
+
+    @field_validator("openapi_url")
+    @classmethod
+    def validate_openapi_url_create(cls, v: Optional[str]) -> Optional[str]:
+        return _normalize_openapi_url(v)
 
     @field_validator("request_method")
     @classmethod
@@ -78,6 +96,12 @@ class APIUpdateRequest(BaseModel):
     cost_per_query: Optional[float] = None
     uses_proxy: Optional[bool] = None
     uses_captcha: Optional[bool] = None
+    openapi_url: Optional[str] = None
+
+    @field_validator("openapi_url")
+    @classmethod
+    def validate_openapi_url_update(cls, v: Optional[str]) -> Optional[str]:
+        return _normalize_openapi_url(v)
 
     @field_validator("request_method")
     @classmethod
@@ -88,7 +112,9 @@ class APIUpdateRequest(BaseModel):
     @classmethod
     def validate_slug(cls, v: Optional[str]) -> Optional[str]:
         if v is not None and not _SLUG_RE.match(v):
-            raise ValueError("slug must contain only letters, numbers, hyphens and underscores")
+            raise ValueError(
+                "slug must contain only letters, numbers, hyphens and underscores"
+            )
         return v
 
     @model_validator(mode="after")
@@ -97,7 +123,9 @@ class APIUpdateRequest(BaseModel):
             if "{query}" not in self.url_template:
                 raise ValueError("url_template must contain the {query} placeholder")
             if not self.url_template.startswith(("http://", "https://")):
-                raise ValueError("url_template must be a full URL starting with http:// or https://")
+                raise ValueError(
+                    "url_template must be a full URL starting with http:// or https://"
+                )
         return self
 
 
@@ -114,6 +142,9 @@ class APIResponse(BaseModel):
     cost_per_query: Optional[float] = None
     uses_proxy: bool = False
     uses_captcha: bool = False
+    openapi_url: Optional[str] = None
+    # Existe ≥1 operação de doc visível? Preenchido pelo catálogo do cliente.
+    has_docs: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -157,6 +188,7 @@ class APIDetailResponse(BaseModel):
     cost_per_query: Optional[float] = None
     uses_proxy: bool = False
     uses_captcha: bool = False
+    openapi_url: Optional[str] = None
     created_at: datetime
     endpoints: list[EndpointResponse] = Field(default_factory=list)
 
@@ -211,3 +243,119 @@ class BulkImportResponse(BaseModel):
     created: int
     skipped: int
     results: list[BulkImportItemResult]
+
+
+# ------------------------------------------------ documentação do cliente (docs)
+class DocParameter(BaseModel):
+    name: str
+    in_: Optional[str] = Field(default=None, alias="in")
+    required: bool = False
+    description: Optional[str] = None
+    type: Optional[str] = None
+    example: Optional[object] = None
+
+    model_config = {"populate_by_name": True}
+
+
+class DocResponseItem(BaseModel):
+    status: str
+    description: Optional[str] = None
+    example: Optional[str] = None
+
+
+class DocOperationResponse(BaseModel):
+    """Operação da doc para o admin editar (inclui o flag `visible`)."""
+
+    id: uuid.UUID
+    method: str
+    path: str
+    summary: Optional[str] = None
+    description: Optional[str] = None
+    visible: bool = True
+    parameters: list[DocParameter] = Field(default_factory=list)
+    request_example: Optional[str] = None
+    responses: list[DocResponseItem] = Field(default_factory=list)
+
+
+class DocOperationListResponse(BaseModel):
+    items: list[DocOperationResponse]
+    total: int
+
+
+class DocSyncResponse(BaseModel):
+    created: int
+    updated: int
+    removed: int
+    total: int
+
+
+class DocOperationVisibilityRequest(BaseModel):
+    visible: bool
+
+
+# ------------------------------------------------ doc exibida ao cliente
+class UserDocOperation(BaseModel):
+    method: str
+    path: str
+    summary: Optional[str] = None
+    description: Optional[str] = None
+    parameters: list[DocParameter] = Field(default_factory=list)
+    request_example: Optional[str] = None
+    responses: list[DocResponseItem] = Field(default_factory=list)
+
+
+class UserDocResponse(BaseModel):
+    api_id: uuid.UUID
+    api_name: str
+    slug: Optional[str] = None
+    base_url: str
+    operations: list[UserDocOperation] = Field(default_factory=list)
+
+
+def _parse_operation_json(raw: Optional[str]) -> dict:
+    """Desserializa ``operation_json`` (defensivo: estrutura vazia se inválido)."""
+    if not raw:
+        return {"parameters": [], "request_example": None, "responses": []}
+    try:
+        import json
+
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return {"parameters": [], "request_example": None, "responses": []}
+        return {
+            "parameters": data.get("parameters") or [],
+            "request_example": data.get("request_example"),
+            "responses": data.get("responses") or [],
+        }
+    except Exception:  # noqa: BLE001
+        return {"parameters": [], "request_example": None, "responses": []}
+
+
+def build_doc_operation_response(row: object) -> DocOperationResponse:
+    """Constrói a resposta de admin a partir de uma linha ApiDocOperation."""
+    payload = _parse_operation_json(getattr(row, "operation_json", None))
+    return DocOperationResponse(
+        id=row.id,
+        method=row.method,
+        path=row.path,
+        summary=row.summary,
+        description=row.description,
+        visible=row.visible,
+        parameters=[DocParameter.model_validate(p) for p in payload["parameters"]],
+        request_example=payload["request_example"],
+        responses=[DocResponseItem.model_validate(r) for r in payload["responses"]],
+    )
+
+
+def build_user_doc_operation(row: object) -> UserDocOperation:
+    """Constrói a operação exibida ao cliente a partir de uma linha ApiDocOperation."""
+    payload = _parse_operation_json(getattr(row, "operation_json", None))
+    return UserDocOperation(
+        method=row.method,
+        path=row.path,
+        summary=row.summary,
+        description=row.description,
+        parameters=[DocParameter.model_validate(p) for p in payload["parameters"]],
+        request_example=payload["request_example"],
+        responses=[DocResponseItem.model_validate(r) for r in payload["responses"]],
+    )

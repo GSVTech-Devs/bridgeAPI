@@ -16,6 +16,7 @@ type ApiEntry = {
   base_url: string;
   url_template?: string;
   status: string;
+  has_docs?: boolean;
 };
 
 function CopyButton({ value }: { value: string }) {
@@ -136,7 +137,7 @@ export default function CatalogPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-16">
-              {catalog.map((api, i) => (
+              {catalog.map((api) => (
                 <div
                   key={api.id}
                   className="bg-surface-container-lowest rounded-xl p-8 border border-outline-variant/15 flex flex-col hover:shadow-[0_8px_30px_rgb(7,30,39,0.04)] transition-all"
@@ -161,17 +162,19 @@ export default function CatalogPage() {
                     </div>
                   </div>
 
-                  <ApiUrlBlock api={api} />
-
-                  {/* <div className="flex items-center justify-between border-t border-outline-variant/10 pt-4">
-                    <a href="#" className="text-primary text-sm font-medium hover:underline flex items-center gap-1">
-                      View Documentation
-                      <span className="material-symbols-outlined text-xs">arrow_forward</span>
-                    </a>
-                    <button className="bg-surface-container-high text-on-surface px-4 py-2 rounded-lg text-sm font-medium hover:bg-surface-variant transition-colors">
-                      Testar API
-                    </button>
-                  </div> */}
+                  {api.has_docs ? (
+                    <div className="flex-1 flex items-end mb-6">
+                      <Link
+                        href={`/dashboard/docs/${api.id}`}
+                        className="primary-gradient text-white w-full px-5 py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+                      >
+                        <span className="material-symbols-outlined text-[20px]">menu_book</span>
+                        Ver documentação
+                      </Link>
+                    </div>
+                  ) : (
+                    <ApiUrlBlock api={api} />
+                  )}
                 </div>
               ))}
             </div>

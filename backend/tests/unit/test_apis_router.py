@@ -19,6 +19,7 @@ from app.domains.apis.models import (
     ExternalAPI,
     HTTPMethod,
 )
+from app.domains.apis.openapi import InvalidSpecError
 
 
 def make_api(
@@ -61,7 +62,9 @@ def admin_headers() -> dict:
 
 
 @pytest.mark.asyncio
-async def test_import_openapi_fetches_url_and_returns_operations(client: AsyncClient) -> None:
+async def test_import_openapi_fetches_url_and_returns_operations(
+    client: AsyncClient,
+) -> None:
     parsed = {
         "title": "Solver",
         "base_url": "https://api.solver.com",
@@ -125,10 +128,16 @@ async def test_import_bulk_creates_drafts(client: AsyncClient) -> None:
             "/apis/import/bulk",
             json={
                 "items": [
-                    {"name": "Solver — Solve", "base_url": "https://api.solver.com/solve",
-                     "request_method": "POST"},
-                    {"name": "Solver — Health", "base_url": "https://api.solver.com/health",
-                     "request_method": "GET"},
+                    {
+                        "name": "Solver — Solve",
+                        "base_url": "https://api.solver.com/solve",
+                        "request_method": "POST",
+                    },
+                    {
+                        "name": "Solver — Health",
+                        "base_url": "https://api.solver.com/health",
+                        "request_method": "GET",
+                    },
                 ]
             },
             headers=admin_headers(),
@@ -577,9 +586,7 @@ async def test_delete_missing_api_returns_404(client: AsyncClient) -> None:
         "app.domains.apis.router.delete_api",
         new=AsyncMock(side_effect=APINotFoundError),
     ):
-        response = await client.delete(
-            f"/apis/{uuid.uuid4()}", headers=admin_headers()
-        )
+        response = await client.delete(f"/apis/{uuid.uuid4()}", headers=admin_headers())
     assert response.status_code == 404
 
 
@@ -587,3 +594,164 @@ async def test_delete_missing_api_returns_404(client: AsyncClient) -> None:
 async def test_delete_api_requires_auth(client: AsyncClient) -> None:
     response = await client.delete(f"/apis/{uuid.uuid4()}")
     assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# openapi_url no cadastro
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_register_api_with_openapi_url(client: AsyncClient) -> None:
+    api = make_api()
+    api.openapi_url = "https://api.stripe.com/openapi.json"
+    with patch(
+        "app.domains.apis.router.register_api",
+        new=AsyncMock(return_value=api),
+    ):
+        response = await client.post(
+            "/apis",
+            json={
+                "name": "Stripe API",
+                "base_url": "https://api.stripe.com",
+                "openapi_url": "https://api.stripe.com/openapi.json",
+            },
+            headers=admin_headers(),
+        )
+    assert response.status_code == 201
+    assert response.json()["openapi_url"] == "https://api.stripe.com/openapi.json"
+
+
+@pytest.mark.asyncio
+async def test_register_api_with_invalid_openapi_url_returns_422(
+    client: AsyncClient,
+) -> None:
+    response = await client.post(
+        "/apis",
+        json={
+            "name": "X",
+            "base_url": "https://api.example.com",
+            "openapi_url": "ftp://nope",
+        },
+        headers=admin_headers(),
+    )
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Documentação do cliente (docs)  (admin)
+# ---------------------------------------------------------------------------
+
+
+def make_doc_op(api_id: uuid.UUID | None = None, visible: bool = True):
+    from app.domains.apis.models import ApiDocOperation
+
+    return ApiDocOperation(
+        id=uuid.uuid4(),
+        api_id=api_id or uuid.uuid4(),
+        method="GET",
+        path="/people",
+        summary="List people",
+        description=None,
+        operation_json='{"parameters": [], "request_example": null, "responses": []}',
+        visible=visible,
+        sort_order=0,
+        created_at=datetime.now(timezone.utc),
+    )
+
+
+@pytest.mark.asyncio
+async def test_sync_docs_returns_counters(client: AsyncClient) -> None:
+    with patch(
+        "app.domains.apis.router.sync_doc_operations",
+        new=AsyncMock(
+            return_value={"created": 3, "updated": 1, "removed": 2, "total": 4}
+        ),
+    ):
+        response = await client.post(
+            f"/apis/{uuid.uuid4()}/docs/sync", headers=admin_headers()
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["created"] == 3
+    assert body["total"] == 4
+
+
+@pytest.mark.asyncio
+async def test_sync_docs_without_openapi_url_returns_400(client: AsyncClient) -> None:
+    from app.domains.apis.service import DocsNotConfiguredError
+
+    with patch(
+        "app.domains.apis.router.sync_doc_operations",
+        new=AsyncMock(side_effect=DocsNotConfiguredError("sem url")),
+    ):
+        response = await client.post(
+            f"/apis/{uuid.uuid4()}/docs/sync", headers=admin_headers()
+        )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_sync_docs_invalid_spec_returns_422(client: AsyncClient) -> None:
+    with patch(
+        "app.domains.apis.router.sync_doc_operations",
+        new=AsyncMock(side_effect=InvalidSpecError("ruim")),
+    ):
+        response = await client.post(
+            f"/apis/{uuid.uuid4()}/docs/sync", headers=admin_headers()
+        )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_sync_docs_requires_auth(client: AsyncClient) -> None:
+    response = await client.post(f"/apis/{uuid.uuid4()}/docs/sync")
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_list_docs_returns_operations(client: AsyncClient) -> None:
+    api_id = uuid.uuid4()
+    ops = [make_doc_op(api_id, visible=True), make_doc_op(api_id, visible=False)]
+    with patch(
+        "app.domains.apis.router.list_doc_operations",
+        new=AsyncMock(return_value=ops),
+    ):
+        response = await client.get(f"/apis/{api_id}/docs", headers=admin_headers())
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert {o["visible"] for o in body["items"]} == {True, False}
+
+
+@pytest.mark.asyncio
+async def test_set_doc_visibility_toggles(client: AsyncClient) -> None:
+    api_id = uuid.uuid4()
+    op = make_doc_op(api_id, visible=False)
+    with patch(
+        "app.domains.apis.router.set_doc_operation_visibility",
+        new=AsyncMock(return_value=op),
+    ):
+        response = await client.patch(
+            f"/apis/{api_id}/docs/{op.id}",
+            json={"visible": False},
+            headers=admin_headers(),
+        )
+    assert response.status_code == 200
+    assert response.json()["visible"] is False
+
+
+@pytest.mark.asyncio
+async def test_set_doc_visibility_missing_returns_404(client: AsyncClient) -> None:
+    from app.domains.apis.service import DocOperationNotFoundError
+
+    with patch(
+        "app.domains.apis.router.set_doc_operation_visibility",
+        new=AsyncMock(side_effect=DocOperationNotFoundError),
+    ):
+        response = await client.patch(
+            f"/apis/{uuid.uuid4()}/docs/{uuid.uuid4()}",
+            json={"visible": True},
+            headers=admin_headers(),
+        )
+    assert response.status_code == 404

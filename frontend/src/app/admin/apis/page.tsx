@@ -6,8 +6,9 @@ import {
   getApiProxies, createApiProxy, updateApiProxy, deleteApiProxy,
   getApiCaptchas, createApiCaptcha, updateApiCaptcha, deleteApiCaptcha,
   importOpenApi, bulkImportApis, generateServiceToken,
+  syncApiDocs, getApiDocsAdmin, setApiDocVisible,
   type Proxy, type ProxyInput, type Captcha, type CaptchaInput, type ImportedOperation,
-  type BulkImportResult,
+  type BulkImportResult, type DocOperation,
 } from "@/lib/api";
 
 const BRIDGE_BASE =
@@ -28,6 +29,7 @@ type Api = {
   cost_per_query?: number;
   uses_proxy?: boolean;
   uses_captcha?: boolean;
+  openapi_url?: string;
 };
 
 const initialForm = {
@@ -42,6 +44,7 @@ const initialForm = {
   request_body_template: "",
   uses_proxy: false,
   uses_captcha: false,
+  openapi_url: "",
   description: "",
 };
 
@@ -77,6 +80,10 @@ function validateForm(form: typeof initialForm): FormErrors {
     if (isNaN(v) || v < 0) {
       errors.cost_per_query = "Cost must be a positive number.";
     }
+  }
+
+  if (form.openapi_url.trim() && !/^https?:\/\/.+/.test(form.openapi_url.trim())) {
+    errors.openapi_url = "OpenAPI URL must start with http:// or https://.";
   }
 
   return errors;
@@ -350,6 +357,7 @@ export default function ApisPage() {
       request_body_template: api.request_body_template ?? "",
       uses_proxy: api.uses_proxy ?? false,
       uses_captcha: api.uses_captcha ?? false,
+      openapi_url: api.openapi_url ?? "",
       description: "",
     });
     setFieldErrors({});
@@ -420,6 +428,7 @@ export default function ApisPage() {
         request_body_template: form.request_body_template,
         uses_proxy: form.uses_proxy,
         uses_captcha: form.uses_captcha,
+        openapi_url: form.openapi_url,
       };
       if (form.master_key) payload.master_key = form.master_key;
       const updated = await updateApi(editingId, payload);
@@ -699,6 +708,28 @@ export default function ApisPage() {
                 </div>
               </div>
 
+              {/* OpenAPI / Swagger URL */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <label className="block text-sm font-bold text-on-surface-variant">URL do OpenAPI / Swagger</label>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">opcional</span>
+                </div>
+                <p className="text-xs text-on-surface-variant">
+                  Ex.: <code className="font-mono">https://api.provider.com/openapi.json</code>. Usada para gerar a documentação do cliente.{" "}
+                  {editingId ? "Sincronize a doc no painel abaixo." : "Salve e edite a API para sincronizar a doc."}
+                </p>
+                <div className="relative">
+                  <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">description</span>
+                  <input
+                    className={`w-full bg-surface-container-low border-none rounded-xl py-4 pl-12 pr-5 text-on-surface placeholder:text-outline-variant focus:ring-2 transition-all outline-none font-mono text-sm ${fieldErrors.openapi_url ? "ring-2 ring-error" : "focus:ring-primary-container"}`}
+                    placeholder="https://api.provider.com/openapi.json"
+                    value={form.openapi_url}
+                    onChange={(e) => { setForm((f) => ({ ...f, openapi_url: e.target.value })); setFieldErrors((fe) => ({ ...fe, openapi_url: undefined })); }}
+                  />
+                </div>
+                {fieldErrors.openapi_url && <p className="text-xs text-error">{fieldErrors.openapi_url}</p>}
+              </div>
+
               {/* Master key */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
@@ -863,6 +894,13 @@ export default function ApisPage() {
             {editingId && (
               <div className="mt-10 border-t border-outline-variant/15 pt-8">
                 <ConnectionPanel apiId={editingId} slug={form.slug} authType={form.auth_type} />
+              </div>
+            )}
+
+            {/* Documentação do cliente — só em edição (precisa do api_id salvo) */}
+            {editingId && (
+              <div className="mt-10 border-t border-outline-variant/15 pt-8">
+                <ApiDocsPanel apiId={editingId} hasOpenApi={!!form.openapi_url.trim()} />
               </div>
             )}
 
@@ -1151,6 +1189,110 @@ const EMPTY_PROXY: ProxyInput = {
   name: "", host: "", port: 8080, scheme: "http", type: "datacenter",
   provider: "", username: "", password: "", rotation: "sticky", priority: 100,
 };
+
+function methodPill(method: string): string {
+  switch (method.toUpperCase()) {
+    case "GET": return "bg-emerald-100 text-emerald-700";
+    case "POST": return "bg-blue-100 text-blue-700";
+    case "PUT": return "bg-amber-100 text-amber-700";
+    case "PATCH": return "bg-violet-100 text-violet-700";
+    case "DELETE": return "bg-rose-100 text-rose-700";
+    default: return "bg-surface-container-high text-on-surface-variant";
+  }
+}
+
+function ApiDocsPanel({ apiId, hasOpenApi }: { apiId: string; hasOpenApi: boolean }) {
+  const [items, setItems] = useState<DocOperation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await getApiDocsAdmin(apiId);
+      setItems(r.items);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erro ao carregar documentação");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiId]);
+  useEffect(() => { load(); }, [load]);
+
+  async function sync() {
+    setSyncing(true); setErr(null); setMsg(null);
+    try {
+      const r = await syncApiDocs(apiId);
+      setMsg(`Sincronizado: ${r.created} novas, ${r.updated} atualizadas, ${r.removed} removidas.`);
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Falha ao sincronizar");
+    } finally { setSyncing(false); }
+  }
+
+  async function toggle(op: DocOperation) {
+    // Optimista: reflete o toggle antes da resposta.
+    setItems((prev) => prev.map((o) => o.id === op.id ? { ...o, visible: !o.visible } : o));
+    try {
+      await setApiDocVisible(apiId, op.id, !op.visible);
+    } catch (e) {
+      setItems((prev) => prev.map((o) => o.id === op.id ? { ...o, visible: op.visible } : o));
+      setErr(e instanceof Error ? e.message : "Falha ao atualizar visibilidade");
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-lg font-bold text-on-surface flex items-center gap-2">
+          <span className="material-symbols-outlined text-[20px]">menu_book</span> Documentação do cliente
+        </h4>
+        <button type="button" onClick={sync} disabled={syncing || !hasOpenApi}
+          title={hasOpenApi ? "" : "Configure a URL do OpenAPI acima e salve para sincronizar"}
+          className="px-4 py-2 rounded-lg bg-surface-container-high text-on-surface font-bold text-xs hover:bg-surface-container-highest disabled:opacity-50">
+          {syncing ? "Sincronizando…" : "Sincronizar do OpenAPI"}
+        </button>
+      </div>
+      <p className="text-xs text-on-surface-variant">
+        Operações importadas do OpenAPI. Desative as que o cliente não deve ver (endpoints operacionais).
+      </p>
+      {!hasOpenApi && (
+        <p className="text-xs text-on-surface-variant">
+          Configure a URL do OpenAPI no campo acima e salve a API para habilitar a sincronização.
+        </p>
+      )}
+      {err && <p className="text-xs text-error">{err}</p>}
+      {msg && <p className="text-xs text-emerald-600">{msg}</p>}
+
+      <div className="bg-surface-container-lowest rounded-xl border border-outline-variant/10 overflow-hidden">
+        {loading ? (
+          <p className="py-6 text-center text-on-surface-variant text-sm">Carregando…</p>
+        ) : items.length === 0 ? (
+          <p className="py-6 text-center text-on-surface-variant text-sm">
+            Nenhuma operação. Clique em &quot;Sincronizar do OpenAPI&quot;.
+          </p>
+        ) : (
+          <div className="divide-y divide-outline-variant/10">
+            {items.map((op) => (
+              <div key={op.id} className="grid grid-cols-[70px_1fr_auto] items-center gap-3 px-4 py-2.5 text-sm">
+                <span className={`text-center text-[10px] font-black uppercase rounded-md py-1 ${methodPill(op.method)}`}>{op.method}</span>
+                <div className="min-w-0">
+                  <p className="font-mono text-on-surface truncate">{op.path}</p>
+                  {op.summary && <p className="text-xs text-on-surface-variant truncate">{op.summary}</p>}
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer justify-self-end">
+                  <span className="text-xs text-on-surface-variant">{op.visible ? "Visível" : "Oculto"}</span>
+                  <input type="checkbox" checked={op.visible} onChange={() => toggle(op)} className="accent-primary w-4 h-4" />
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function ApiProxyPanel({ apiId }: { apiId: string }) {
   const [items, setItems] = useState<Proxy[]>([]);

@@ -248,6 +248,7 @@ export function getApis() {
       auth_type: string;
       uses_proxy?: boolean;
       uses_captcha?: boolean;
+      openapi_url?: string;
     }[];
     total: number;
   }>("/apis");
@@ -265,9 +266,10 @@ export function createApi(data: {
   cost_per_query?: number;
   uses_proxy?: boolean;
   uses_captcha?: boolean;
+  openapi_url?: string;
   description?: string;
 }) {
-  return apiFetch<{ id: string; name: string; slug?: string; base_url: string; url_template?: string; status: string; auth_type: string; cost_per_query?: number; uses_proxy?: boolean; uses_captcha?: boolean }>(
+  return apiFetch<{ id: string; name: string; slug?: string; base_url: string; url_template?: string; status: string; auth_type: string; cost_per_query?: number; uses_proxy?: boolean; uses_captcha?: boolean; openapi_url?: string }>(
     "/apis",
     { method: "POST", body: JSON.stringify(data) }
   );
@@ -285,8 +287,9 @@ export function updateApi(id: string, data: {
   cost_per_query?: number;
   uses_proxy?: boolean;
   uses_captcha?: boolean;
+  openapi_url?: string;
 }) {
-  return apiFetch<{ id: string; name: string; slug?: string; base_url: string; url_template?: string; status: string; auth_type: string; cost_per_query?: number; uses_proxy?: boolean; uses_captcha?: boolean }>(
+  return apiFetch<{ id: string; name: string; slug?: string; base_url: string; url_template?: string; status: string; auth_type: string; cost_per_query?: number; uses_proxy?: boolean; uses_captcha?: boolean; openapi_url?: string }>(
     `/apis/${id}`,
     { method: "PATCH", body: JSON.stringify(data) }
   );
@@ -871,9 +874,74 @@ export function getCatalog() {
       status: string;
       uses_proxy?: boolean;
       uses_captcha?: boolean;
+      has_docs?: boolean;
     }[];
     total: number;
   }>("/catalog");
+}
+
+// ---------------------------------------------------------------------------
+// Documentação do cliente (docs)
+// ---------------------------------------------------------------------------
+export type DocParameter = {
+  name: string;
+  in?: string | null;
+  required: boolean;
+  description?: string | null;
+  type?: string | null;
+  example?: unknown;
+};
+
+export type DocResponseItem = {
+  status: string;
+  description?: string | null;
+  example?: string | null;
+};
+
+export type DocOperation = {
+  id: string;
+  method: string;
+  path: string;
+  summary?: string | null;
+  description?: string | null;
+  visible: boolean;
+  parameters: DocParameter[];
+  request_example?: string | null;
+  responses: DocResponseItem[];
+};
+
+export type UserDocOperation = Omit<DocOperation, "id" | "visible">;
+
+// Admin: sincroniza a doc a partir do openapi_url da API.
+export function syncApiDocs(apiId: string) {
+  return apiFetch<{ created: number; updated: number; removed: number; total: number }>(
+    `/apis/${apiId}/docs/sync`,
+    { method: "POST" }
+  );
+}
+
+// Admin: lista todas as operações da doc (com o flag visible) para edição.
+export function getApiDocsAdmin(apiId: string) {
+  return apiFetch<{ items: DocOperation[]; total: number }>(`/apis/${apiId}/docs`);
+}
+
+// Admin: liga/desliga a visibilidade de uma operação.
+export function setApiDocVisible(apiId: string, opId: string, visible: boolean) {
+  return apiFetch<DocOperation>(`/apis/${apiId}/docs/${opId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ visible }),
+  });
+}
+
+// Cliente: doc de uma API autorizada (só operações visíveis).
+export function getUserApiDocs(apiId: string) {
+  return apiFetch<{
+    api_id: string;
+    api_name: string;
+    slug?: string | null;
+    base_url: string;
+    operations: UserDocOperation[];
+  }>(`/catalog/${apiId}/docs`);
 }
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authz import Feature
 from app.core.database import get_db
-from app.domains.apis.schemas import APIResponse
+from app.domains.apis.schemas import (
+    APIResponse,
+    UserDocResponse,
+    build_user_doc_operation,
+)
+from app.domains.apis.service import (
+    APINotFoundError,
+    api_ids_with_visible_docs,
+    get_api_by_id,
+    list_doc_operations,
+)
 from app.domains.auth.router import get_current_user, require_feature
 from app.domains.auth.schemas import MeResponse
 from app.domains.permissions.schemas import (
@@ -21,6 +31,7 @@ from app.domains.permissions.service import (
     DuplicatePermissionError,
     PermissionNotFoundError,
     get_account_authorized_apis,
+    get_permission,
     grant_permission,
     list_permissions,
     revoke_permission,
@@ -119,5 +130,41 @@ async def catalog(
     identity: MeResponse = Depends(require_feature(Feature.CATALOG)),
 ) -> CatalogResponse:
     apis = await get_account_authorized_apis(db, identity.account_id)
-    items = [APIResponse.model_validate(api).model_dump() for api in apis]
+    docs_ids = await api_ids_with_visible_docs(db, [api.id for api in apis])
+    items = []
+    for api in apis:
+        item = APIResponse.model_validate(api).model_dump()
+        item["has_docs"] = api.id in docs_ids
+        items.append(item)
     return CatalogResponse(items=items, total=len(items))
+
+
+@router.get("/catalog/{api_id}/docs", response_model=UserDocResponse)
+async def catalog_api_docs(
+    api_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    identity: MeResponse = Depends(require_feature(Feature.DOCS)),
+) -> UserDocResponse:
+    """Documentação do cliente para uma API autorizada (só operações visíveis).
+
+    Gating: a conta precisa de permissão ativa para a API; sem ela responde 404
+    (não revela a existência da API)."""
+    permission = await get_permission(db, str(identity.account_id), str(api_id))
+    if permission is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="API not found"
+        )
+    try:
+        api = await get_api_by_id(db, str(api_id))
+    except APINotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="API not found"
+        )
+    rows = await list_doc_operations(db, api.id, only_visible=True)
+    return UserDocResponse(
+        api_id=api.id,
+        api_name=api.name,
+        slug=api.slug,
+        base_url=api.base_url,
+        operations=[build_user_doc_operation(r) for r in rows],
+    )

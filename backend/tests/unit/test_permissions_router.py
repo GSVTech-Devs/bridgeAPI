@@ -193,14 +193,43 @@ async def test_account_sees_only_authorized_apis_in_catalog(
     client: AsyncClient,
 ) -> None:
     apis = [make_api(), make_api()]
-    with patch(
-        "app.domains.permissions.router.get_account_authorized_apis",
-        new=AsyncMock(return_value=apis),
+    with (
+        patch(
+            "app.domains.permissions.router.get_account_authorized_apis",
+            new=AsyncMock(return_value=apis),
+        ),
+        patch(
+            "app.domains.permissions.router.api_ids_with_visible_docs",
+            new=AsyncMock(return_value=set()),
+        ),
     ):
         response = await client.get("/catalog", headers=account_headers())
 
     assert response.status_code == 200
     assert response.json()["total"] == 2
+
+
+@pytest.mark.asyncio
+async def test_catalog_marks_has_docs_for_apis_with_visible_docs(
+    client: AsyncClient,
+) -> None:
+    apis = [make_api(), make_api()]
+    with (
+        patch(
+            "app.domains.permissions.router.get_account_authorized_apis",
+            new=AsyncMock(return_value=apis),
+        ),
+        patch(
+            "app.domains.permissions.router.api_ids_with_visible_docs",
+            new=AsyncMock(return_value={apis[0].id}),
+        ),
+    ):
+        response = await client.get("/catalog", headers=account_headers())
+
+    assert response.status_code == 200
+    items = {item["id"]: item for item in response.json()["items"]}
+    assert items[str(apis[0].id)]["has_docs"] is True
+    assert items[str(apis[1].id)]["has_docs"] is False
 
 
 @pytest.mark.asyncio
@@ -213,3 +242,72 @@ async def test_catalog_requires_authentication(client: AsyncClient) -> None:
 async def test_admin_cannot_access_account_catalog(client: AsyncClient) -> None:
     response = await client.get("/catalog", headers=admin_headers())
     assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# GET /catalog/{api_id}/docs  (account user)
+# ---------------------------------------------------------------------------
+
+
+def make_doc_op(api_id: uuid.UUID, visible: bool = True):
+    from app.domains.apis.models import ApiDocOperation
+
+    return ApiDocOperation(
+        id=uuid.uuid4(),
+        api_id=api_id,
+        method="GET",
+        path="/people",
+        summary="List",
+        description=None,
+        operation_json='{"parameters": [], "request_example": null, "responses": []}',
+        visible=visible,
+        sort_order=0,
+        created_at=datetime.now(timezone.utc),
+    )
+
+
+@pytest.mark.asyncio
+async def test_user_docs_returns_only_visible_operations(client: AsyncClient) -> None:
+    api = make_api()
+    visible_rows = [make_doc_op(api.id, visible=True)]
+    with (
+        patch(
+            "app.domains.permissions.router.get_permission",
+            new=AsyncMock(return_value=make_permission(api_id=api.id)),
+        ),
+        patch(
+            "app.domains.permissions.router.get_api_by_id",
+            new=AsyncMock(return_value=api),
+        ),
+        patch(
+            "app.domains.permissions.router.list_doc_operations",
+            new=AsyncMock(return_value=visible_rows),
+        ) as mock_list,
+    ):
+        response = await client.get(
+            f"/catalog/{api.id}/docs", headers=account_headers()
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["api_name"] == api.name
+    assert len(body["operations"]) == 1
+    # gating: só operações visíveis são pedidas ao service
+    assert mock_list.await_args.kwargs.get("only_visible") is True
+
+
+@pytest.mark.asyncio
+async def test_user_docs_without_permission_returns_404(client: AsyncClient) -> None:
+    with patch(
+        "app.domains.permissions.router.get_permission",
+        new=AsyncMock(return_value=None),
+    ):
+        response = await client.get(
+            f"/catalog/{uuid.uuid4()}/docs", headers=account_headers()
+        )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_user_docs_requires_authentication(client: AsyncClient) -> None:
+    response = await client.get(f"/catalog/{uuid.uuid4()}/docs")
+    assert response.status_code == 401
