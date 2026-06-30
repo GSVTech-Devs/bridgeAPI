@@ -52,6 +52,7 @@ async def register_api(
     request_method: str | None = None,
     request_body_template: str | None = None,
     openapi_url: str | None = None,
+    custom_docs_md: str | None = None,
     status: APIStatus = APIStatus.ACTIVE,
 ) -> ExternalAPI:
     existing = await db.execute(select(ExternalAPI).where(ExternalAPI.name == name))
@@ -79,6 +80,7 @@ async def register_api(
         request_method=request_method or None,
         request_body_template=request_body_template or None,
         openapi_url=openapi_url or None,
+        custom_docs_md=custom_docs_md or None,
         status=status,
     )
     db.add(api)
@@ -203,6 +205,7 @@ async def update_api(
     request_method: str | None = None,
     request_body_template: str | None = None,
     openapi_url: str | None = None,
+    custom_docs_md: str | None = None,
 ) -> ExternalAPI:
     api = await get_api_by_id(db, api_id)
 
@@ -236,6 +239,8 @@ async def update_api(
         api.request_body_template = request_body_template or None
     if openapi_url is not None:
         api.openapi_url = openapi_url or None  # "" limpa
+    if custom_docs_md is not None:
+        api.custom_docs_md = custom_docs_md or None  # "" limpa
     if master_key:
         from app.core.security import encrypt_value
 

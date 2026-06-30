@@ -73,6 +73,7 @@ async def create_api(
             request_method=body.request_method,
             request_body_template=body.request_body_template,
             openapi_url=body.openapi_url,
+            custom_docs_md=body.custom_docs_md,
         )
     except DuplicateAPINameError:
         raise HTTPException(
@@ -218,6 +219,7 @@ async def update(
             request_method=body.request_method,
             request_body_template=body.request_body_template,
             openapi_url=body.openapi_url,
+            custom_docs_md=body.custom_docs_md,
         )
     except APINotFoundError:
         raise HTTPException(

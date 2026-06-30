@@ -134,7 +134,8 @@ async def catalog(
     items = []
     for api in apis:
         item = APIResponse.model_validate(api).model_dump()
-        item["has_docs"] = api.id in docs_ids
+        # Tem doc se há operações visíveis OU uma visão geral personalizada.
+        item["has_docs"] = api.id in docs_ids or bool(api.custom_docs_md)
         items.append(item)
     return CatalogResponse(items=items, total=len(items))
 
@@ -166,5 +167,6 @@ async def catalog_api_docs(
         api_name=api.name,
         slug=api.slug,
         base_url=api.base_url,
+        custom_docs_md=api.custom_docs_md,
         operations=[build_user_doc_operation(r) for r in rows],
     )

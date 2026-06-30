@@ -58,6 +58,9 @@ class ExternalAPI(Base):
     # URL da doc OpenAPI/Swagger da API (ex.: https://api.exemplo.com/openapi.json).
     # Usada para sincronizar a documentação exibida ao cliente (ApiDocOperation).
     openapi_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    # Documentação personalizada (Markdown) escrita pelo admin. Exibida como
+    # visão geral no topo da doc do cliente, acima das operações importadas.
+    custom_docs_md: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # Método com que a Bridge chama a upstream. NULL = repassa o método do cliente
     # (comportamento padrão/legado). GET/POST/... quando o cadastro declara o tipo.
     request_method: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)

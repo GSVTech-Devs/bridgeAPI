@@ -18,6 +18,7 @@ from app.domains.apis.service import (
     register_api,
     set_doc_operation_visibility,
     sync_doc_operations,
+    update_api,
 )
 
 if TYPE_CHECKING:
@@ -129,6 +130,38 @@ async def test_sync_injects_master_key_when_openapi_is_protected(
     assert mock.await_args.kwargs["auth_headers"] == {
         "authorization": "Bearer sk-secret"
     }
+
+
+async def test_register_api_persists_custom_docs_md(db_session: AsyncSession) -> None:
+    api = await register_api(
+        db_session,
+        name="Custom Doc API",
+        base_url="https://api.doc.com",
+        custom_docs_md="# Visão geral\n\nComo usar a API.",
+        status=APIStatus.ACTIVE,
+    )
+    assert api.custom_docs_md == "# Visão geral\n\nComo usar a API."
+
+
+async def test_update_api_sets_and_clears_custom_docs_md(
+    db_session: AsyncSession,
+) -> None:
+    api = await register_api(
+        db_session,
+        name="Editable Doc API",
+        base_url="https://api.doc.com",
+        status=APIStatus.ACTIVE,
+    )
+    assert api.custom_docs_md is None
+
+    # Define
+    await update_api(db_session, str(api.id), custom_docs_md="## Guia rápido")
+    refreshed = await update_api(db_session, str(api.id))  # no-op re-read
+    assert refreshed.custom_docs_md == "## Guia rápido"
+
+    # Limpa com string vazia → None
+    cleared = await update_api(db_session, str(api.id), custom_docs_md="")
+    assert cleared.custom_docs_md is None
 
 
 async def test_list_doc_operations_only_visible(db_session: AsyncSession) -> None:

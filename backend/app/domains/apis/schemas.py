@@ -51,6 +51,7 @@ class APICreateRequest(BaseModel):
     uses_proxy: bool = False
     uses_captcha: bool = False
     openapi_url: Optional[str] = None
+    custom_docs_md: Optional[str] = None
 
     @field_validator("openapi_url")
     @classmethod
@@ -97,6 +98,7 @@ class APIUpdateRequest(BaseModel):
     uses_proxy: Optional[bool] = None
     uses_captcha: Optional[bool] = None
     openapi_url: Optional[str] = None
+    custom_docs_md: Optional[str] = None
 
     @field_validator("openapi_url")
     @classmethod
@@ -143,6 +145,7 @@ class APIResponse(BaseModel):
     uses_proxy: bool = False
     uses_captcha: bool = False
     openapi_url: Optional[str] = None
+    custom_docs_md: Optional[str] = None
     # Existe ≥1 operação de doc visível? Preenchido pelo catálogo do cliente.
     has_docs: bool = False
     created_at: datetime
@@ -309,6 +312,7 @@ class UserDocResponse(BaseModel):
     api_name: str
     slug: Optional[str] = None
     base_url: str
+    custom_docs_md: Optional[str] = None
     operations: list[UserDocOperation] = Field(default_factory=list)
 
 

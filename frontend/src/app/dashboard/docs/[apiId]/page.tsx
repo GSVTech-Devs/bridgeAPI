@@ -16,6 +16,7 @@ type Doc = {
   api_name: string;
   slug?: string | null;
   base_url: string;
+  custom_docs_md?: string | null;
   operations: UserDocOperation[];
 };
 
@@ -184,7 +185,13 @@ export default function ApiDocsPage() {
             <p className="text-on-surface-variant text-lg">Documentação e endpoints disponíveis.</p>
           </div>
 
-          {doc.operations.length === 0 ? (
+          {doc.custom_docs_md && (
+            <div className="bg-surface-container-lowest rounded-xl p-6 border border-outline-variant/15 mb-6">
+              <Markdown>{doc.custom_docs_md}</Markdown>
+            </div>
+          )}
+
+          {doc.operations.length === 0 && !doc.custom_docs_md ? (
             <div className="text-center py-16 text-on-surface-variant">
               <span className="material-symbols-outlined text-5xl mb-4 block opacity-40">menu_book</span>
               <p>Documentação ainda não disponível para esta API.</p>

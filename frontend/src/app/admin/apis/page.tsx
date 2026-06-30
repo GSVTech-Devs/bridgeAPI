@@ -10,6 +10,7 @@ import {
   type Proxy, type ProxyInput, type Captcha, type CaptchaInput, type ImportedOperation,
   type BulkImportResult, type DocOperation,
 } from "@/lib/api";
+import Markdown from "@/components/Markdown";
 
 const BRIDGE_BASE =
   process.env.NEXT_PUBLIC_BRIDGE_URL ??
@@ -30,6 +31,7 @@ type Api = {
   uses_proxy?: boolean;
   uses_captcha?: boolean;
   openapi_url?: string;
+  custom_docs_md?: string;
 };
 
 const initialForm = {
@@ -45,6 +47,7 @@ const initialForm = {
   uses_proxy: false,
   uses_captcha: false,
   openapi_url: "",
+  custom_docs_md: "",
   description: "",
 };
 
@@ -220,6 +223,7 @@ export default function ApisPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [docsPreview, setDocsPreview] = useState(false);
 
   // Import de OpenAPI/Swagger (por URL → tabela de staging → criar rascunhos)
   type StageRow = {
@@ -358,10 +362,12 @@ export default function ApisPage() {
       uses_proxy: api.uses_proxy ?? false,
       uses_captcha: api.uses_captcha ?? false,
       openapi_url: api.openapi_url ?? "",
+      custom_docs_md: api.custom_docs_md ?? "",
       description: "",
     });
     setFieldErrors({});
     setFormError(null);
+    setDocsPreview(false);
     setShowForm(true);
   }
 
@@ -371,6 +377,7 @@ export default function ApisPage() {
     setForm(initialForm);
     setFieldErrors({});
     setFormError(null);
+    setDocsPreview(false);
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -429,6 +436,7 @@ export default function ApisPage() {
         uses_proxy: form.uses_proxy,
         uses_captcha: form.uses_captcha,
         openapi_url: form.openapi_url,
+        custom_docs_md: form.custom_docs_md,
       };
       if (form.master_key) payload.master_key = form.master_key;
       const updated = await updateApi(editingId, payload);
@@ -728,6 +736,40 @@ export default function ApisPage() {
                   />
                 </div>
                 {fieldErrors.openapi_url && <p className="text-xs text-error">{fieldErrors.openapi_url}</p>}
+              </div>
+
+              {/* Documentação personalizada (Markdown) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <label className="block text-sm font-bold text-on-surface-variant">Documentação personalizada (Markdown)</label>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">opcional</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDocsPreview((v) => !v)}
+                    className="text-xs font-bold text-primary hover:underline"
+                  >
+                    {docsPreview ? "Editar" : "Pré-visualizar"}
+                  </button>
+                </div>
+                <p className="text-xs text-on-surface-variant">
+                  Visão geral exibida no topo da doc do cliente, acima das operações importadas. Suporta títulos, listas, negrito, código e tabelas.
+                </p>
+                {docsPreview ? (
+                  <div className="w-full bg-surface-container-low rounded-xl py-4 px-5 min-h-[10rem]">
+                    {form.custom_docs_md.trim()
+                      ? <Markdown>{form.custom_docs_md}</Markdown>
+                      : <p className="text-sm text-outline-variant">Nada para pré-visualizar.</p>}
+                  </div>
+                ) : (
+                  <textarea
+                    className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface placeholder:text-outline-variant focus:ring-2 transition-all outline-none font-mono text-sm min-h-[10rem] resize-y"
+                    placeholder={"# Como usar a API\n\nAutentique com a sua chave Bridge...\n\n## Exemplos\n..."}
+                    value={form.custom_docs_md}
+                    onChange={(e) => setForm((f) => ({ ...f, custom_docs_md: e.target.value }))}
+                  />
+                )}
               </div>
 
               {/* Master key */}

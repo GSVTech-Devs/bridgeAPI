@@ -249,6 +249,7 @@ export function getApis() {
       uses_proxy?: boolean;
       uses_captcha?: boolean;
       openapi_url?: string;
+      custom_docs_md?: string;
     }[];
     total: number;
   }>("/apis");
@@ -267,6 +268,7 @@ export function createApi(data: {
   uses_proxy?: boolean;
   uses_captcha?: boolean;
   openapi_url?: string;
+  custom_docs_md?: string;
   description?: string;
 }) {
   return apiFetch<{ id: string; name: string; slug?: string; base_url: string; url_template?: string; status: string; auth_type: string; cost_per_query?: number; uses_proxy?: boolean; uses_captcha?: boolean; openapi_url?: string }>(
@@ -288,6 +290,7 @@ export function updateApi(id: string, data: {
   uses_proxy?: boolean;
   uses_captcha?: boolean;
   openapi_url?: string;
+  custom_docs_md?: string;
 }) {
   return apiFetch<{ id: string; name: string; slug?: string; base_url: string; url_template?: string; status: string; auth_type: string; cost_per_query?: number; uses_proxy?: boolean; uses_captcha?: boolean; openapi_url?: string }>(
     `/apis/${id}`,
@@ -940,6 +943,7 @@ export function getUserApiDocs(apiId: string) {
     api_name: string;
     slug?: string | null;
     base_url: string;
+    custom_docs_md?: string | null;
     operations: UserDocOperation[];
   }>(`/catalog/${apiId}/docs`);
 }
