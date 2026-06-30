@@ -39,8 +39,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 
   const navItems: NavItem[] = [
     { href: "/dashboard", label: "Dashboard", icon: "dashboard", show: true },
-    { href: "/dashboard/catalog", label: "Catalog", icon: "api", show: true },
-    { href: "/dashboard/keys", label: "My Keys", icon: "vpn_key", show: can(CAP.API_KEYS) },
+    { href: "/dashboard/catalog", label: "Catálogo", icon: "api", show: true },
+    { href: "/dashboard/keys", label: "MInhas Chaves", icon: "vpn_key", show: can(CAP.API_KEYS) },
     {
       href: "/dashboard/metrics",
       label: "Logs & Métricas",
