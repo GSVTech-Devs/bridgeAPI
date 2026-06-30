@@ -1,10 +1,57 @@
+"use client";
+
+import { isValidElement, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+/** Extrai o texto cru de um nó (o conteúdo do <code> dentro do <pre>). */
+function extractText(node: ReactNode): string {
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(extractText).join("");
+  if (isValidElement(node)) {
+    return extractText((node.props as { children?: ReactNode }).children);
+  }
+  return "";
+}
+
+/** Bloco de código com destaque próprio e botão de copiar. */
+function CodeBlock({ children }: { children: ReactNode }) {
+  const [copied, setCopied] = useState(false);
+  const text = extractText(children).replace(/\n$/, "");
+
+  function copy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="relative my-3 group">
+      <button
+        type="button"
+        onClick={copy}
+        title="Copiar"
+        aria-label="Copiar código"
+        className="absolute top-2 right-2 z-10 p-1.5 rounded-md bg-surface-container-high/80 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors"
+      >
+        <span className="material-symbols-outlined text-[16px]">
+          {copied ? "check" : "content_copy"}
+        </span>
+      </button>
+      <pre className="bg-surface-container-highest border border-outline-variant/25 rounded-lg p-4 pr-12 text-xs font-mono text-on-surface overflow-x-auto [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-on-surface">
+        {children}
+      </pre>
+    </div>
+  );
+}
+
 /**
- * Renderiza Markdown (descrições de operações vindas do openapi.json) com os
- * tokens visuais do app. Não habilita HTML cru: o conteúdo vem do spec de uma
- * API externa, então mantemos só o subconjunto seguro de Markdown/GFM.
+ * Renderiza Markdown (descrições de operações vindas do openapi.json e a doc
+ * personalizada do admin) com os tokens visuais do app. Não habilita HTML cru:
+ * o conteúdo vem do spec de uma API externa ou do admin, então mantemos só o
+ * subconjunto seguro de Markdown/GFM.
  */
 const components: Components = {
   h1: ({ children }) => (
@@ -54,11 +101,7 @@ const components: Components = {
       {children}
     </code>
   ),
-  pre: ({ children }) => (
-    <pre className="bg-surface-container-low rounded-lg p-3 my-3 text-xs font-mono text-on-surface overflow-x-auto [&_code]:bg-transparent [&_code]:p-0">
-      {children}
-    </pre>
-  ),
+  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
   blockquote: ({ children }) => (
     <blockquote className="border-l-2 border-outline-variant/40 pl-3 my-3 text-sm text-on-surface-variant italic">
       {children}
