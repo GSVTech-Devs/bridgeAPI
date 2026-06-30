@@ -31,6 +31,10 @@ from app.core.security import hash_password  # noqa: E402
 # Importar o modelo Account registra a tabela "accounts" no metadata, para que
 # a FK users.account_id consiga resolver a tabela de destino durante o flush.
 from app.domains.accounts.models import Account  # noqa: E402, F401
+
+# Importar AccountRole registra a tabela "account_roles" no metadata, para que
+# a FK users.role_id consiga resolver a tabela de destino durante o flush.
+from app.domains.members.models import AccountRole  # noqa: E402, F401
 from app.domains.auth.models import User  # noqa: E402
 from app.domains.auth.models import UserRole  # noqa: E402
 
