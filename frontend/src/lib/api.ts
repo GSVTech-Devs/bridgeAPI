@@ -928,6 +928,12 @@ export function getApiDocsAdmin(apiId: string) {
   return apiFetch<{ items: DocOperation[]; total: number }>(`/apis/${apiId}/docs`);
 }
 
+// Admin: remove todas as operações importadas do OpenAPI (ex.: para usar doc
+// personalizada no lugar). Devolve quantas foram removidas.
+export function clearApiDocs(apiId: string) {
+  return apiFetch<{ removed: number }>(`/apis/${apiId}/docs`, { method: "DELETE" });
+}
+
 // Admin: liga/desliga a visibilidade de uma operação.
 export function setApiDocVisible(apiId: string, opId: string, visible: boolean) {
   return apiFetch<DocOperation>(`/apis/${apiId}/docs/${opId}`, {

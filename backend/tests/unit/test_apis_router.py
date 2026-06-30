@@ -755,3 +755,36 @@ async def test_set_doc_visibility_missing_returns_404(client: AsyncClient) -> No
             headers=admin_headers(),
         )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_clear_docs_returns_removed_count(client: AsyncClient) -> None:
+    with patch(
+        "app.domains.apis.router.clear_doc_operations",
+        new=AsyncMock(return_value=4),
+    ):
+        response = await client.delete(
+            f"/apis/{uuid.uuid4()}/docs", headers=admin_headers()
+        )
+    assert response.status_code == 200
+    assert response.json()["removed"] == 4
+
+
+@pytest.mark.asyncio
+async def test_clear_docs_api_not_found_returns_404(client: AsyncClient) -> None:
+    from app.domains.apis.service import APINotFoundError
+
+    with patch(
+        "app.domains.apis.router.clear_doc_operations",
+        new=AsyncMock(side_effect=APINotFoundError),
+    ):
+        response = await client.delete(
+            f"/apis/{uuid.uuid4()}/docs", headers=admin_headers()
+        )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_clear_docs_requires_auth(client: AsyncClient) -> None:
+    response = await client.delete(f"/apis/{uuid.uuid4()}/docs")
+    assert response.status_code == 401

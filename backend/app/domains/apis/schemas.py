@@ -292,6 +292,10 @@ class DocSyncResponse(BaseModel):
     total: int
 
 
+class DocClearResponse(BaseModel):
+    removed: int
+
+
 class DocOperationVisibilityRequest(BaseModel):
     visible: bool
 

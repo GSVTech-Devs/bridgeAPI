@@ -15,6 +15,7 @@ from app.domains.apis.schemas import (
     APIUpdateRequest,
     BulkImportRequest,
     BulkImportResponse,
+    DocClearResponse,
     DocOperationListResponse,
     DocOperationResponse,
     DocOperationVisibilityRequest,
@@ -34,6 +35,7 @@ from app.domains.apis.service import (
     DuplicateSlugError,
     add_endpoint,
     bulk_register_apis,
+    clear_doc_operations,
     delete_api,
     disable_api,
     enable_api,
@@ -318,6 +320,24 @@ async def list_docs(
     rows = await list_doc_operations(db, api_id)
     items = [build_doc_operation_response(r) for r in rows]
     return DocOperationListResponse(items=items, total=len(items))
+
+
+@router.delete("/{api_id}/docs", response_model=DocClearResponse)
+async def clear_docs(
+    api_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: MeResponse = Depends(get_current_user),
+) -> DocClearResponse:
+    """Remove todas as operações de doc importadas do OpenAPI desta API.
+
+    Útil quando o admin prefere uma doc personalizada (``custom_docs_md``)."""
+    try:
+        removed = await clear_doc_operations(db, str(api_id))
+    except APINotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="API not found"
+        )
+    return DocClearResponse(removed=removed)
 
 
 @router.patch("/{api_id}/docs/{op_id}", response_model=DocOperationResponse)

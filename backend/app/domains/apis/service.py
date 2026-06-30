@@ -384,6 +384,23 @@ async def list_doc_operations(
     return list(result.scalars().all())
 
 
+async def clear_doc_operations(db: AsyncSession, api_id: str) -> int:
+    """Remove todas as operações de doc importadas da API.
+
+    Usado quando o admin opta por uma doc personalizada (``custom_docs_md``) no
+    lugar das operações sincronizadas do OpenAPI. Devolve quantas foram removidas.
+    """
+    api = await get_api_by_id(db, api_id)
+    result = await db.execute(
+        select(ApiDocOperation).where(ApiDocOperation.api_id == api.id)
+    )
+    rows = list(result.scalars().all())
+    for row in rows:
+        await db.delete(row)
+    await db.commit()
+    return len(rows)
+
+
 async def set_doc_operation_visibility(
     db: AsyncSession, api_id: str, op_id: str, visible: bool
 ) -> ApiDocOperation:

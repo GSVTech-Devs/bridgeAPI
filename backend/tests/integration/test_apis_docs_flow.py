@@ -14,6 +14,8 @@ import pytest
 
 from app.domains.apis.models import APIAuthType, APIStatus
 from app.domains.apis.service import (
+    APINotFoundError,
+    clear_doc_operations,
     list_doc_operations,
     register_api,
     set_doc_operation_visibility,
@@ -178,3 +180,35 @@ async def test_list_doc_operations_only_visible(db_session: AsyncSession) -> Non
     visible = await list_doc_operations(db_session, api_id, only_visible=True)
     assert len(visible) == 1
     assert visible[0].visible is True
+
+
+async def test_clear_doc_operations_removes_all(db_session: AsyncSession) -> None:
+    api_id = await _make_api(db_session)
+    with patch(
+        "app.domains.apis.service.fetch_spec_docs",
+        new=AsyncMock(return_value=_parsed([_op("GET", "/a"), _op("POST", "/a")])),
+    ):
+        await sync_doc_operations(db_session, api_id)
+    assert len(await list_doc_operations(db_session, api_id)) == 2
+
+    removed = await clear_doc_operations(db_session, api_id)
+
+    assert removed == 2
+    assert await list_doc_operations(db_session, api_id) == []
+
+
+async def test_clear_doc_operations_empty_returns_zero(
+    db_session: AsyncSession,
+) -> None:
+    api_id = await _make_api(db_session)
+    removed = await clear_doc_operations(db_session, api_id)
+    assert removed == 0
+
+
+async def test_clear_doc_operations_unknown_api_raises(
+    db_session: AsyncSession,
+) -> None:
+    import uuid
+
+    with pytest.raises(APINotFoundError):
+        await clear_doc_operations(db_session, str(uuid.uuid4()))

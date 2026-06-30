@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../src/mocks/server";
 import {
   apiFetch,
+  clearApiDocs,
   generateServiceToken,
   getClientStatus,
   getPortalCompanies,
@@ -142,6 +143,21 @@ describe("generateServiceToken", () => {
     expect(method).toBe("POST");
     expect(res.service_token).toBe("brgsvc_secret");
     expect(res.prefix).toBe("brgsvc_a1b2");
+  });
+});
+
+describe("clearApiDocs", () => {
+  it("DELETEs /apis/:id/docs and returns the removed count", async () => {
+    let method = "";
+    server.use(
+      http.delete(`${BASE}/apis/api-123/docs`, ({ request }) => {
+        method = request.method;
+        return HttpResponse.json({ removed: 7 });
+      })
+    );
+    const res = await clearApiDocs("api-123");
+    expect(method).toBe("DELETE");
+    expect(res.removed).toBe(7);
   });
 });
 
