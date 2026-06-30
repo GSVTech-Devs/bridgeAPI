@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.strip().lower() == "production"
+
     # PostgreSQL
     database_url: str = "postgresql+asyncpg://bridge:bridge@localhost:5432/bridgeapi"
 

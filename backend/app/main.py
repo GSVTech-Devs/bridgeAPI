@@ -25,10 +25,15 @@ from app.domains.proxies.router import router as proxies_router
 from app.domains.proxy.router import router as proxy_router
 from app.domains.status.router import router as status_router
 
+# Em produção desativamos a documentação interativa embutida (Swagger UI, ReDoc)
+# e o schema OpenAPI público, que expõem o desenho completo da API.
 app = FastAPI(
     title="Bridge API",
     description="Centralized API gateway — proxy and access management",
     version="0.1.0",
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
 )
 
 app.add_middleware(
