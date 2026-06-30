@@ -292,6 +292,19 @@ def test_build_upstream_headers_skips_injection_when_token_in_template() -> None
     assert "x-api-key" not in headers
 
 
+def test_build_upstream_headers_bearer_injects_when_template_has_no_token() -> None:
+    # Config produzida pelo cadastro de API POST: auth_type=bearer com url_template
+    # que só usa {query} (sem {token}). A credencial deve ir no header Authorization.
+    api = make_api(
+        auth_type=APIAuthType.BEARER,
+        master_key="token-xyz-789",
+        request_method="POST",
+        url_template="https://api.example.com/v1/{query}",
+    )
+    headers = build_upstream_headers(api, {})
+    assert headers["authorization"] == "Bearer token-xyz-789"
+
+
 # ---------------------------------------------------------------------------
 # url_template / forward_to_upstream
 # ---------------------------------------------------------------------------

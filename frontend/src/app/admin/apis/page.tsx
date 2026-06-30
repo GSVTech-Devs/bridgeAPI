@@ -75,6 +75,11 @@ function validateForm(form: typeof initialForm): FormErrors {
       errors.url_template = "URL Template must start with http:// or https://.";
     } else if (!form.url_template.includes("{query}")) {
       errors.url_template = "URL Template must contain the {query} placeholder.";
+    } else if (form.auth_type === "bearer" && form.url_template.includes("{token}")) {
+      // Bearer envia a credencial no header Authorization; ter {token} na URL faz
+      // o gateway pôr o token na URL e pular o header (não duplica) — fica incoerente.
+      errors.url_template =
+        "Com Bearer Token a credencial vai no header Authorization. Remova {token} da URL Template.";
     }
   }
 
@@ -144,9 +149,12 @@ function BridgeUrlPreview({ slug }: { slug: string }) {
 function UrlTemplateBuilder({
   value,
   onChange,
+  headerAuth = false,
 }: {
   value: string;
   onChange: (v: string) => void;
+  // Auth via header (ex.: Bearer): o token não deve ir na URL.
+  headerAuth?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -184,11 +192,13 @@ function UrlTemplateBuilder({
           <span className="material-symbols-outlined text-[14px]">search</span>
           {"{query}"}{hasQuery && <span className="material-symbols-outlined text-[14px]">check</span>}
         </button>
-        <button type="button" onClick={() => insertPlaceholder("{token}")}
-          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors">
-          <span className="material-symbols-outlined text-[14px]">vpn_key</span>
-          {"{token}"}{hasToken && <span className="material-symbols-outlined text-[14px]">check</span>}
-        </button>
+        {!headerAuth && (
+          <button type="button" onClick={() => insertPlaceholder("{token}")}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors">
+            <span className="material-symbols-outlined text-[14px]">vpn_key</span>
+            {"{token}"}{hasToken && <span className="material-symbols-outlined text-[14px]">check</span>}
+          </button>
+        )}
         {value && (
           <button type="button" onClick={() => onChange("")}
             className="ml-auto text-xs text-on-surface-variant hover:text-error transition-colors">
@@ -203,8 +213,14 @@ function UrlTemplateBuilder({
       {value && !hasQuery && (
         <p className="text-xs text-error">O template deve conter <code className="font-bold">{"{query}"}</code>.</p>
       )}
-      {hasToken && (
-        <p className="text-xs text-on-surface-variant">O token será inserido na URL — não será enviado como header.</p>
+      {hasToken && !headerAuth && (
+        <p className="text-xs text-on-surface-variant">O token será inserido na URL, não será enviado como header.</p>
+      )}
+      {hasToken && headerAuth && (
+        <p className="text-xs text-error">
+          Com Bearer Token a credencial vai no header Authorization. Remova{" "}
+          <code className="font-bold">{"{token}"}</code> da URL Template.
+        </p>
       )}
     </div>
   );
@@ -808,6 +824,7 @@ export default function ApisPage() {
                 <UrlTemplateBuilder
                   value={form.url_template}
                   onChange={(v) => { setForm((f) => ({ ...f, url_template: v })); setFieldErrors((fe) => ({ ...fe, url_template: undefined })); }}
+                  headerAuth={form.auth_type === "bearer"}
                 />
                 {fieldErrors.url_template && <p className="text-xs text-error">{fieldErrors.url_template}</p>}
               </div>
@@ -822,7 +839,17 @@ export default function ApisPage() {
                   <select
                     className="w-full bg-surface-container-low border-none rounded-xl py-4 px-5 text-on-surface focus:ring-2 focus:ring-primary-container transition-all outline-none text-sm"
                     value={form.request_method}
-                    onChange={(e) => setForm((f) => ({ ...f, request_method: e.target.value }))}
+                    onChange={(e) => {
+                      const method = e.target.value;
+                      setForm((f) => ({
+                        ...f,
+                        request_method: method,
+                        // POST: a credencial vai no header Authorization: Bearer, não na URL.
+                        // Default coerente com a convenção REST; o admin ainda pode trocar.
+                        auth_type: method === "POST" ? "bearer" : f.auth_type,
+                      }));
+                      setFieldErrors((fe) => ({ ...fe, url_template: undefined }));
+                    }}
                   >
                     <option value="">Repassar o método do cliente</option>
                     <option value="GET">GET</option>
@@ -834,6 +861,11 @@ export default function ApisPage() {
                   <p className="text-xs text-on-surface-variant">
                     Vazio = a Bridge chama a API original com o mesmo método do cliente.
                   </p>
+                  {form.request_method === "POST" && (
+                    <p className="text-xs text-primary">
+                      POST: a credencial vai no header <code className="font-mono">Authorization: Bearer</code>, não na URL.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <label className="block text-sm font-bold text-on-surface-variant">Body template (API POST)</label>
