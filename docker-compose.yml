@@ -73,6 +73,13 @@ services:
     command: alembic upgrade head
     env_file: .env
     # DB URLs vêm do .env (dev usa o override docker-compose.dev.yml).
+    # Espera o postgres ficar saudável quando ele faz parte do mesmo run
+    # (single-VPS). required:false não força/quebra o cenário de DB em VPS
+    # separada, onde o postgres não está neste compose.
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     profiles: [app]
 
   backend:
